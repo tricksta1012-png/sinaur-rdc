@@ -43,5 +43,15 @@ __pycache__/
 # Docker volumes (local dev)
 infra/volumes/
 
+# Certificats SSL — ne jamais versionner les clés privées
+infra/certs/*.key
+infra/certs/*.pem
+infra/certs/*.crt
+!infra/certs/.gitkeep
+
+# Secrets de déploiement
+infra/secrets/
+.env.prod
+
 # Tiles cache
 apps/mobile/tiles-cache/

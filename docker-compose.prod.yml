@@ -229,6 +229,34 @@ services:
         limits:
           memory: 64m
 
+  # ── Reverse proxy ────────────────────────────────────────────────────────────
+
+  nginx:
+    build:
+      context: ./infra/nginx
+      dockerfile: Dockerfile
+    container_name: sinaur-nginx
+    <<: *service-defaults
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./infra/certs:/etc/nginx/certs:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      api:
+        condition: service_healthy
+      sync-gateway:
+        condition: service_started
+      command-center:
+        condition: service_started
+      public:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
   # ── Observabilité ─────────────────────────────────────────────────────────────
 
   prometheus:
@@ -287,3 +315,4 @@ volumes:
   ai_models:
   prometheus_data:
   grafana_data:
+  nginx_logs:

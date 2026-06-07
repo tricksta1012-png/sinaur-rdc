@@ -132,6 +132,29 @@ pnpm dev
 | **Phase 7** — Sync & UI | Sync Gateway offline (port 3003), `@sinaur/ui`, CI/CD GitHub Actions | ✅ Terminé |
 | **Phase 8** — Observabilité | `@sinaur/metrics` Prometheus, Grafana dashboards, `docker-compose.prod.yml` | ✅ Terminé |
 | **Phase 9** — Tests & qualité | Suite Vitest : sécurité, RBAC, public routes (PII check), sync conflicts, delta | ✅ Terminé |
+| **Phase 10** — Déploiement souverain | Nginx reverse proxy SSL, scripts backup/restore/deploy/healthcheck, OpenAPI | ✅ Terminé |
+
+## Déploiement souverain
+
+```bash
+# 1. Copier et remplir les variables de production
+cp .env.example .env.prod  # puis éditer avec les vrais secrets
+
+# 2. Placer les certificats SSL
+cp sinaur-rdc.crt infra/certs/
+cp sinaur-rdc.key infra/certs/
+
+# 3. Déployer un tag
+IMAGE_TAG=v1.0.0 ./infra/scripts/deploy.sh
+
+# 4. Vérifier l'état des services
+./infra/scripts/healthcheck.sh
+
+# 5. Sauvegarder la base de données
+./infra/scripts/backup.sh daily
+```
+
+Documentation API (Swagger UI) disponible sur `/docs` en développement ou si `SWAGGER_ENABLED=true`.
 
 ## Sécurité
 

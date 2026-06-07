@@ -8,6 +8,8 @@ import fastifyHelmet from '@fastify/helmet'
 import fastifyRateLimit from '@fastify/rate-limit'
 import fastifyWebsocket from '@fastify/websocket'
 import fastifyMultipart from '@fastify/multipart'
+import fastifySwagger from '@fastify/swagger'
+import fastifySwaggerUi from '@fastify/swagger-ui'
 import { config } from './config.js'
 import { checkDatabaseConnection } from './db.js'
 import { authRoutes } from './routes/auth.js'
@@ -58,6 +60,53 @@ export async function createApp(): Promise<FastifyInstance> {
   await fastify.register(fastifyWebsocket)
   await fastify.register(fastifyMultipart)
   await registerMetrics(fastify, { service: 'api' })
+
+  // OpenAPI — uniquement hors production ou si SWAGGER_ENABLED=true
+  if (config.NODE_ENV !== 'production' || process.env.SWAGGER_ENABLED === 'true') {
+    await fastify.register(fastifySwagger, {
+      openapi: {
+        openapi: '3.0.3',
+        info: {
+          title: 'SINAUR-RDC API',
+          description: 'Système National Intelligent d\'Alerte, d\'Urgence et de Réponse aux Sinistres — RDC',
+          version: '0.8.0',
+          contact: { name: 'SINAUR-RDC', email: 'api@sinaur-rdc.cd' },
+          license: { name: 'Usage gouvernemental et humanitaire — RDC' },
+        },
+        servers: [
+          { url: 'https://api.sinaur-rdc.cd', description: 'Production' },
+          { url: 'http://localhost:3000', description: 'Développement' },
+        ],
+        components: {
+          securitySchemes: {
+            bearerAuth: {
+              type: 'http',
+              scheme: 'bearer',
+              bearerFormat: 'JWT',
+              description: 'JWT obtenu via POST /auth/login',
+            },
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        tags: [
+          { name: 'auth',     description: 'Authentification et tokens' },
+          { name: 'events',   description: 'Événements catastrophes' },
+          { name: 'alerts',   description: 'Alertes CAP 1.2' },
+          { name: 'registry', description: 'Registre des sinistrés' },
+          { name: 'aids',     description: 'Suivi des aides' },
+          { name: 'crises',   description: 'Gestion de crise (GLIDE)' },
+          { name: 'public',   description: 'Endpoints publics (sans auth)' },
+          { name: 'geo',      description: 'Divisions administratives COD-AB' },
+        ],
+      },
+    })
+
+    await fastify.register(fastifySwaggerUi, {
+      routePrefix: '/docs',
+      uiConfig: { deepLinking: true, persistAuthorization: true },
+      staticCSP: true,
+    })
+  }
 
   await fastify.register(authRoutes)
   await fastify.register(geoRoutes)
