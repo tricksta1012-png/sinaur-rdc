@@ -1,0 +1,72 @@
+{
+  "nav.dashboard": "Tableau wa mudimu",
+  "nav.map": "Kalata wa nzubu",
+  "nav.events": "Bienzeka",
+  "nav.report": "Bika bienzeka",
+  "nav.registry": "Rejisitu",
+  "nav.distributions": "Kupanga bilumbu",
+  "nav.settings": "Milambu",
+
+  "alert.flood": "Mema atomboke",
+  "alert.landslide": "Butoka bwawile",
+  "alert.mass_displacement": "Bantu babine bungi",
+  "alert.humanitarian_crisis": "Mukakatano wa binadamu",
+  "alert.health_epidemic": "Bulwele bwa bukabu / Mukakatano wa nsangu",
+  "alert.volcanic_eruption": "Vulukanu utomboke",
+  "alert.drought": "Kakatane",
+  "alert.fire": "Moto",
+  "alert.conflict": "Bitumba",
+  "alert.earthquake": "Butoka bushindane",
+  "alert.other": "Binansha",
+
+  "severity.Minor": "Tshia noke",
+  "severity.Moderate": "Pa katshi",
+  "severity.Severe": "Tshia bungi",
+  "severity.Extreme": "Tshia bungi pende",
+  "severity.Unknown": "Tudibue ko",
+
+  "action.report": "Bika",
+  "action.validate": "Diakanyisha",
+  "action.cancel": "Leka",
+  "action.submit": "Tumisha",
+  "action.register": "Longolola",
+  "action.scan": "Scaner",
+
+  "report.title": "Diina dia bienzeka",
+  "report.description": "Tshikolwa",
+  "report.location": "Muaba",
+  "report.submit_success": "Kubika kwenze bimpe",
+
+  "registry.title": "Rejisitu ya bantu batoshibua",
+  "registry.new": "Longolola muntu mushinga",
+  "registry.search": "Usha",
+  "registry.status.pending": "Pa kulindila",
+  "registry.status.validated": "Diakanyishiwe",
+  "registry.status.rejected": "Lwanganyishiwe",
+
+  "distribution.title": "Kupanga bilumbu bya lusaku",
+  "distribution.scan_qr": "Scaner QR",
+  "distribution.confirm": "Diakanyisha kupanga bilumbu",
+  "distribution.success": "Lusaku lupangilwe bimpe",
+  "distribution.already_received": "Wamono kale",
+
+  "sync.pending": "Pa kulindila kusangisha",
+  "sync.syncing": "Kusangisha kuzadi...",
+  "sync.failed": "Kusangisha kwakome",
+  "sync.manual": "Sangisha tshienu",
+
+  "settings.language": "Ciluba",
+  "settings.data_saver": "Njila ya kubomba data",
+  "settings.about": "Pele pa app",
+
+  "ussd.welcome": "Uya bimpe SINAUR-RDC",
+  "ussd.report": "Bika bienzeka",
+  "ussd.confirm": "Diakanyisha?",
+  "ussd.sent": "Kubika kwatumishiwe",
+
+  "error.unauthorized": "Kuya ko",
+  "error.network": "Nzala ya réseau. Tala connexion webe.",
+  "error.generic": "Tshienzeke tshimue. Usha tshifue.",
+  "error.duplicate": "Muntu uyu wolongololwa kale",
+  "error.not_validated": "Diakanyishiwe ko"
+}

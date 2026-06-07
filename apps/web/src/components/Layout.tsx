@@ -1,6 +1,8 @@
 import { Outlet, NavLink } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth.js';
 import { OfflineIndicator } from './OfflineIndicator.js';
+import { LanguageSelector } from './LanguageSelector.js';
+import { I18nProvider } from '@sinaur-rdc/i18n/react';
 
 const NAV_ITEMS = [
   { to: '/dashboard',     label: 'Tableau de bord',   icon: '📊' },
@@ -11,7 +13,7 @@ const NAV_ITEMS = [
   { to: '/distributions', label: 'Distributions',      icon: '📦' },
 ] as const;
 
-export function Layout() {
+function LayoutInner() {
   const logout = useAuthStore((s) => s.logout);
 
   return (
@@ -43,7 +45,10 @@ export function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="px-4 py-3 border-t border-gray-700">
+        <div className="px-2 pb-1 border-t border-gray-700 pt-2">
+          <LanguageSelector />
+        </div>
+        <div className="px-4 py-3">
           <button
             onClick={logout}
             className="w-full text-left text-sm text-gray-400 hover:text-white transition-colors py-1"
@@ -60,5 +65,13 @@ export function Layout() {
 
       <OfflineIndicator />
     </div>
+  );
+}
+
+export function Layout() {
+  return (
+    <I18nProvider>
+      <LayoutInner />
+    </I18nProvider>
   );
 }

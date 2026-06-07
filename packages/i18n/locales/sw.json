@@ -1,0 +1,72 @@
+{
+  "nav.dashboard": "Dashibodi",
+  "nav.map": "Ramani",
+  "nav.events": "Matukio",
+  "nav.report": "Ripoti",
+  "nav.registry": "Rejista",
+  "nav.distributions": "Usambazaji",
+  "nav.settings": "Mipangilio",
+
+  "alert.flood": "Mafuriko",
+  "alert.landslide": "Maporomoko ya ardhi",
+  "alert.mass_displacement": "Uhamisho mkubwa wa watu",
+  "alert.humanitarian_crisis": "Msiba wa kibinadamu",
+  "alert.health_epidemic": "Janga la afya / Mlipuko wa ugonjwa",
+  "alert.volcanic_eruption": "Mlipuko wa volkeno",
+  "alert.drought": "Ukame",
+  "alert.fire": "Moto",
+  "alert.conflict": "Vita",
+  "alert.earthquake": "Tetemeko la ardhi",
+  "alert.other": "Nyingine",
+
+  "severity.Minor": "Ndogo",
+  "severity.Moderate": "Wastani",
+  "severity.Severe": "Kali",
+  "severity.Extreme": "Kali sana",
+  "severity.Unknown": "Haijulikani",
+
+  "action.report": "Ripoti",
+  "action.validate": "Thibitisha",
+  "action.cancel": "Ghairi",
+  "action.submit": "Tuma",
+  "action.register": "Sajili",
+  "action.scan": "Changanua",
+
+  "report.title": "Kichwa cha tukio",
+  "report.description": "Maelezo",
+  "report.location": "Mahali",
+  "report.submit_success": "Ripoti imetumwa kwa mafanikio",
+
+  "registry.title": "Rejista ya wanufaika",
+  "registry.new": "Sajili mwanufaika",
+  "registry.search": "Tafuta",
+  "registry.status.pending": "Inasubiri",
+  "registry.status.validated": "Imethibitishwa",
+  "registry.status.rejected": "Imekataliwa",
+
+  "distribution.title": "Usambazaji wa misaada",
+  "distribution.scan_qr": "Changanua QR",
+  "distribution.confirm": "Thibitisha usambazaji",
+  "distribution.success": "Msaada umesambazwa kwa mafanikio",
+  "distribution.already_received": "Ameshapokea",
+
+  "sync.pending": "Inasubiri usawazishaji",
+  "sync.syncing": "Inasawazisha...",
+  "sync.failed": "Usawazishaji umeshindwa",
+  "sync.manual": "Sawazisha sasa",
+
+  "settings.language": "Lugha",
+  "settings.data_saver": "Hali ya kuokoa data",
+  "settings.about": "Kuhusu",
+
+  "ussd.welcome": "Karibu SINAUR-RDC",
+  "ussd.report": "Ripoti tukio",
+  "ussd.confirm": "Thibitisha?",
+  "ussd.sent": "Ripoti imetumwa",
+
+  "error.unauthorized": "Huna ruhusa",
+  "error.network": "Hitilafu ya mtandao. Angalia muunganisho wako.",
+  "error.generic": "Hitilafu imetokea. Tafadhali jaribu tena.",
+  "error.duplicate": "Nakala imepatikana",
+  "error.not_validated": "Haijathibitishwa"
+}

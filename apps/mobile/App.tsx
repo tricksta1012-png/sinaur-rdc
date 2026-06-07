@@ -9,6 +9,9 @@ import { CitizenReportScreen } from './src/screens/CitizenReportScreen.js';
 import { AlertsScreen } from './src/screens/AlertsScreen.js';
 import { BeneficiaryRegistrationScreen } from './src/screens/BeneficiaryRegistrationScreen.js';
 import { QRScanScreen } from './src/screens/QRScanScreen.js';
+import { SyncStatusScreen } from './src/screens/SyncStatusScreen.js';
+import { SettingsScreen } from './src/screens/SettingsScreen.js';
+import { AppSettingsProvider } from './src/context/AppSettingsContext.js';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -27,7 +30,6 @@ function TabIcon({ icon, focused }: { icon: string; focused: boolean }) {
   );
 }
 
-// Stack pour le module Registre (enregistrement + QR scan)
 function RegistryStack() {
   return (
     <Stack.Navigator
@@ -57,46 +59,66 @@ export default function App() {
   }, []);
 
   return (
-    <NavigationContainer>
-      <StatusBar style="light" backgroundColor="#7f1d1d" />
-      <Tab.Navigator
-        screenOptions={{
-          headerStyle: { backgroundColor: '#7f1d1d' },
-          headerTintColor: '#fff',
-          headerTitleStyle: { fontWeight: '700' },
-          tabBarActiveTintColor: '#b91c1c',
-          tabBarInactiveTintColor: '#9ca3af',
-          tabBarStyle: { borderTopColor: '#f3f4f6', elevation: 8 },
-        }}
-      >
-        <Tab.Screen
-          name="Alertes"
-          component={AlertsScreen}
-          options={{
-            title: 'SINAUR-RDC',
-            tabBarLabel: 'Alertes',
-            tabBarIcon: ({ focused }) => <TabIcon icon="⚠️" focused={focused} />,
+    <AppSettingsProvider>
+      <NavigationContainer>
+        <StatusBar style="light" backgroundColor="#7f1d1d" />
+        <Tab.Navigator
+          screenOptions={{
+            headerStyle: { backgroundColor: '#7f1d1d' },
+            headerTintColor: '#fff',
+            headerTitleStyle: { fontWeight: '700' },
+            tabBarActiveTintColor: '#b91c1c',
+            tabBarInactiveTintColor: '#9ca3af',
+            tabBarStyle: { borderTopColor: '#f3f4f6', elevation: 8 },
           }}
-        />
-        <Tab.Screen
-          name="Signaler"
-          component={CitizenReportScreen}
-          options={{
-            title: 'Signaler un événement',
-            tabBarLabel: 'Signaler',
-            tabBarIcon: ({ focused }) => <TabIcon icon="📢" focused={focused} />,
-          }}
-        />
-        <Tab.Screen
-          name="Registre"
-          component={RegistryStack}
-          options={{
-            headerShown: false,
-            tabBarLabel: 'Registre',
-            tabBarIcon: ({ focused }) => <TabIcon icon="👥" focused={focused} />,
-          }}
-        />
-      </Tab.Navigator>
-    </NavigationContainer>
+        >
+          <Tab.Screen
+            name="Alertes"
+            component={AlertsScreen}
+            options={{
+              title: 'SINAUR-RDC',
+              tabBarLabel: 'Alertes',
+              tabBarIcon: ({ focused }) => <TabIcon icon="⚠️" focused={focused} />,
+            }}
+          />
+          <Tab.Screen
+            name="Signaler"
+            component={CitizenReportScreen}
+            options={{
+              title: 'Signaler un événement',
+              tabBarLabel: 'Signaler',
+              tabBarIcon: ({ focused }) => <TabIcon icon="📢" focused={focused} />,
+            }}
+          />
+          <Tab.Screen
+            name="Registre"
+            component={RegistryStack}
+            options={{
+              headerShown: false,
+              tabBarLabel: 'Registre',
+              tabBarIcon: ({ focused }) => <TabIcon icon="👥" focused={focused} />,
+            }}
+          />
+          <Tab.Screen
+            name="Sync"
+            component={SyncStatusScreen}
+            options={{
+              title: 'Synchronisation',
+              tabBarLabel: 'Sync',
+              tabBarIcon: ({ focused }) => <TabIcon icon="🔄" focused={focused} />,
+            }}
+          />
+          <Tab.Screen
+            name="Parametres"
+            component={SettingsScreen}
+            options={{
+              title: 'Paramètres',
+              tabBarLabel: 'Paramètres',
+              tabBarIcon: ({ focused }) => <TabIcon icon="⚙️" focused={focused} />,
+            }}
+          />
+        </Tab.Navigator>
+      </NavigationContainer>
+    </AppSettingsProvider>
   );
 }

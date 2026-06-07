@@ -118,6 +118,26 @@ services:
     profiles:
       - full
 
+  ussd:
+    build:
+      context: services/ussd
+      dockerfile: Dockerfile
+    container_name: sinaur-ussd
+    environment:
+      DATABASE_URL: postgresql://sinaur:sinaur_secret@postgres:5432/sinaur_rdc
+      API_BASE_URL: http://api:3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - '3002:3002'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    restart: unless-stopped
+    profiles:
+      - full
+
 volumes:
   postgres_data:
   redis_data:

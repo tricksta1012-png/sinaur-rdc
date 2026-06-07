@@ -10,13 +10,23 @@ export const SUPPORTED_LOCALES: Record<SupportedLocale, string> = {
 
 export type TranslationKey =
   | 'nav.dashboard' | 'nav.map' | 'nav.events' | 'nav.report'
+  | 'nav.registry' | 'nav.distributions' | 'nav.settings'
   | 'alert.flood' | 'alert.landslide' | 'alert.mass_displacement'
   | 'alert.humanitarian_crisis' | 'alert.health_epidemic' | 'alert.volcanic_eruption'
   | 'alert.drought' | 'alert.fire' | 'alert.conflict' | 'alert.earthquake' | 'alert.other'
   | 'severity.Minor' | 'severity.Moderate' | 'severity.Severe' | 'severity.Extreme' | 'severity.Unknown'
   | 'action.report' | 'action.validate' | 'action.cancel' | 'action.submit'
+  | 'action.register' | 'action.scan'
   | 'report.title' | 'report.description' | 'report.location' | 'report.submit_success'
-  | 'error.unauthorized' | 'error.network' | 'error.generic';
+  | 'registry.title' | 'registry.new' | 'registry.search'
+  | 'registry.status.pending' | 'registry.status.validated' | 'registry.status.rejected'
+  | 'distribution.title' | 'distribution.scan_qr' | 'distribution.confirm'
+  | 'distribution.success' | 'distribution.already_received'
+  | 'sync.pending' | 'sync.syncing' | 'sync.failed' | 'sync.manual'
+  | 'settings.language' | 'settings.data_saver' | 'settings.about'
+  | 'ussd.welcome' | 'ussd.report' | 'ussd.confirm' | 'ussd.sent'
+  | 'error.unauthorized' | 'error.network' | 'error.generic'
+  | 'error.duplicate' | 'error.not_validated';
 
 type Translations = Record<TranslationKey, string>;
 

@@ -3,6 +3,9 @@
   "nav.map": "Carte",
   "nav.events": "Makambo",
   "nav.report": "Tuna makambo",
+  "nav.registry": "Registre ya bato",
+  "nav.distributions": "Kopesa lisungi",
+  "nav.settings": "Malako",
 
   "alert.flood": "Mayi etomboki",
   "alert.landslide": "Mabele ekweaki",
@@ -26,13 +29,44 @@
   "action.validate": "Bimisa",
   "action.cancel": "Suka",
   "action.submit": "Tinda",
+  "action.register": "Kokoma",
+  "action.scan": "Scaner",
 
   "report.title": "Nkombo ya likama",
   "report.description": "Kolimbola",
   "report.location": "Esika",
   "report.submit_success": "Botuni esalemi malamu",
 
+  "registry.title": "Registre ya bato oyo balandaka",
+  "registry.new": "Kokoma moto ya sika",
+  "registry.search": "Koluka",
+  "registry.status.pending": "Kozela",
+  "registry.status.validated": "Ebimisami",
+  "registry.status.rejected": "Elongwami",
+
+  "distribution.title": "Kopesa lisungi",
+  "distribution.scan_qr": "Scaner QR",
+  "distribution.confirm": "Kakisa kopesa lisungi",
+  "distribution.success": "Lisungi epesami malamu",
+  "distribution.already_received": "Agikolaka kaka",
+
+  "sync.pending": "Kozela kolinganisa",
+  "sync.syncing": "Kolinganisa ezali",
+  "sync.failed": "Kolinganisa ekweaki",
+  "sync.manual": "Kolinganisa sikoyo",
+
+  "settings.language": "Lokota",
+  "settings.data_saver": "Mobeko ya kobomba data",
+  "settings.about": "Likambo ya app",
+
+  "ussd.welcome": "Boyei malamu SINAUR-RDC",
+  "ussd.report": "Tuna likambo",
+  "ussd.confirm": "Kakisa?",
+  "ussd.sent": "Botuni efestami",
+
   "error.unauthorized": "Ozali na nzela te",
   "error.network": "Problème ya réseau. Tala connexion na yo.",
-  "error.generic": "Likambo moko esalemi. Sala lisusu."
+  "error.generic": "Likambo moko esalemi. Sala lisusu.",
+  "error.duplicate": "Moto oyo akomamaki kaka",
+  "error.not_validated": "Ebimisami te"
 }

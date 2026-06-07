@@ -3,6 +3,9 @@
   "nav.map": "Carte",
   "nav.events": "Événements",
   "nav.report": "Signaler",
+  "nav.registry": "Registre",
+  "nav.distributions": "Distributions",
+  "nav.settings": "Paramètres",
 
   "alert.flood": "Inondation",
   "alert.landslide": "Glissement de terrain",
@@ -26,13 +29,44 @@
   "action.validate": "Valider",
   "action.cancel": "Annuler",
   "action.submit": "Envoyer",
+  "action.register": "Enregistrer",
+  "action.scan": "Scanner",
 
   "report.title": "Titre de l'événement",
   "report.description": "Description",
   "report.location": "Localisation",
   "report.submit_success": "Signalement envoyé avec succès",
 
+  "registry.title": "Registre des bénéficiaires",
+  "registry.new": "Enregistrer un bénéficiaire",
+  "registry.search": "Rechercher",
+  "registry.status.pending": "En attente",
+  "registry.status.validated": "Validé",
+  "registry.status.rejected": "Rejeté",
+
+  "distribution.title": "Distributions d'aide",
+  "distribution.scan_qr": "Scanner QR",
+  "distribution.confirm": "Confirmer la distribution",
+  "distribution.success": "Aide distribuée avec succès",
+  "distribution.already_received": "Déjà reçu",
+
+  "sync.pending": "En attente de synchronisation",
+  "sync.syncing": "Synchronisation en cours",
+  "sync.failed": "Échec de synchronisation",
+  "sync.manual": "Synchroniser maintenant",
+
+  "settings.language": "Langue",
+  "settings.data_saver": "Mode économie de données",
+  "settings.about": "À propos",
+
+  "ussd.welcome": "Bienvenu SINAUR-RDC",
+  "ussd.report": "Signaler un événement",
+  "ussd.confirm": "Confirmer?",
+  "ussd.sent": "Signalement envoyé",
+
   "error.unauthorized": "Accès non autorisé",
   "error.network": "Erreur réseau. Vérifiez votre connexion.",
-  "error.generic": "Une erreur s'est produite. Veuillez réessayer."
+  "error.generic": "Une erreur s'est produite. Veuillez réessayer.",
+  "error.duplicate": "Doublon détecté",
+  "error.not_validated": "Non validé"
 }

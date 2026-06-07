@@ -1,0 +1,72 @@
+{
+  "nav.dashboard": "Tableau ya ntalu",
+  "nav.map": "Karti",
+  "nav.events": "Mambu",
+  "nav.report": "Samba mambu",
+  "nav.registry": "Rejisitu",
+  "nav.distributions": "Kupesa lisungi",
+  "nav.settings": "Malawu",
+
+  "alert.flood": "Mbu etombuka",
+  "alert.landslide": "Ntoto ewela",
+  "alert.mass_displacement": "Batu babakidi mingi",
+  "alert.humanitarian_crisis": "Kimpwanza kia binadamu",
+  "alert.health_epidemic": "Ndwelo ya nkembo / Mbevo ya mpeve",
+  "alert.volcanic_eruption": "Vulukanu etombuka",
+  "alert.drought": "Kala ya mvula",
+  "alert.fire": "Mwinda",
+  "alert.conflict": "Bitumba",
+  "alert.earthquake": "Ntoto ezenguka",
+  "alert.other": "Mosusu",
+
+  "severity.Minor": "Fioti",
+  "severity.Moderate": "Na kati",
+  "severity.Severe": "Makasi",
+  "severity.Extreme": "Makasi mingi",
+  "severity.Unknown": "Tuyeyi ko",
+
+  "action.report": "Samba",
+  "action.validate": "Kwikisa",
+  "action.cancel": "Vutula",
+  "action.submit": "Tuma",
+  "action.register": "Sonika",
+  "action.scan": "Scaner",
+
+  "report.title": "Nkombo ya mambu",
+  "report.description": "Kolimbolola",
+  "report.location": "Esika",
+  "report.submit_success": "Samba esalemi malamu",
+
+  "registry.title": "Rejisitu ya batu oyo batosaka",
+  "registry.new": "Sonika muntu ya sika",
+  "registry.search": "Nzola",
+  "registry.status.pending": "Ye bela",
+  "registry.status.validated": "Kwikisama",
+  "registry.status.rejected": "Longwama",
+
+  "distribution.title": "Kupesa lisungi",
+  "distribution.scan_qr": "Scaner QR",
+  "distribution.confirm": "Kwikisa kupesa lisungi",
+  "distribution.success": "Lisungi epesami malamu",
+  "distribution.already_received": "Ye mpe yandi kolaka",
+
+  "sync.pending": "Ye bela kolingana",
+  "sync.syncing": "Kolingana ezali kele",
+  "sync.failed": "Kolingana ekweaki",
+  "sync.manual": "Kolingana sikoyo",
+
+  "settings.language": "Ndinga",
+  "settings.data_saver": "Nzila ya kobomba data",
+  "settings.about": "Ntalu ya app",
+
+  "ussd.welcome": "Boyei malamu SINAUR-RDC",
+  "ussd.report": "Samba mambu",
+  "ussd.confirm": "Kwikisa?",
+  "ussd.sent": "Samba enetama",
+
+  "error.unauthorized": "Ko nzela ko",
+  "error.network": "Mbevo ya réseau. Tala connexion na yo.",
+  "error.generic": "Mambu moko esalemi. Sala lisusu.",
+  "error.duplicate": "Muntu oyo ye sonikama kaka",
+  "error.not_validated": "Kwikisama ko"
+}
