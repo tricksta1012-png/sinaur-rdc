@@ -18,6 +18,8 @@ import { registryRoutes } from './routes/registry.js';
 import { aidRoutes } from './routes/aids.js';
 import { ussdRoutes } from './routes/ussd.js';
 import { publicRoutes } from './routes/public.js';
+import { crisisRoutes } from './routes/crises.js';
+import { taskRoutes } from './routes/tasks.js';
 import { logSecurityEvent } from './auth/security.js';
 import { registerClient } from './websocket/broadcast.js';
 
@@ -63,6 +65,8 @@ await fastify.register(registryRoutes);
 await fastify.register(aidRoutes);
 await fastify.register(ussdRoutes);
 await fastify.register(publicRoutes);
+await fastify.register(crisisRoutes);
+await fastify.register(taskRoutes);
 
 // WebSocket : flux temps réel des événements et alertes
 fastify.get('/ws', { websocket: true }, (socket, request) => {
@@ -83,7 +87,7 @@ fastify.get('/ws', { websocket: true }, (socket, request) => {
 // Health check
 fastify.get('/health', async () => {
   await checkDatabaseConnection();
-  return { status: 'ok', timestamp: new Date().toISOString(), version: '0.5.0-phase5' };
+  return { status: 'ok', timestamp: new Date().toISOString(), version: '0.6.0-phase6' };
 });
 
 fastify.setErrorHandler((error, request, reply) => {
@@ -119,7 +123,7 @@ fastify.setErrorHandler((error, request, reply) => {
 
 try {
   await fastify.listen({ port: config.API_PORT, host: config.API_HOST });
-  fastify.log.info(`SINAUR-RDC API v0.5.0-phase5 — http://${config.API_HOST}:${config.API_PORT}`);
+  fastify.log.info(`SINAUR-RDC API v0.6.0-phase6 — http://${config.API_HOST}:${config.API_PORT}`);
 } catch (err) {
   fastify.log.error(err);
   process.exit(1);

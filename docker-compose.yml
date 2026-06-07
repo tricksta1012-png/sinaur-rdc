@@ -138,6 +138,20 @@ services:
     profiles:
       - full
 
+  command-center:
+    build:
+      context: apps/command-center
+      dockerfile: Dockerfile
+    container_name: sinaur-command-center
+    ports:
+      - '8081:80'
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+    profiles:
+      - full
+
   public:
     build:
       context: apps/public

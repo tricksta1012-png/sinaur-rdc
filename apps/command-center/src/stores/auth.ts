@@ -1,0 +1,41 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import type { AuthTokens } from '@sinaur/shared-types';
+import { apiClient } from '../lib/api.js';
+
+interface AuthState {
+  tokens: AuthTokens | null;
+  isAuthenticated: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => void;
+}
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      tokens: null,
+      isAuthenticated: false,
+
+      login: async (email, password) => {
+        const { data } = await apiClient.post<{ success: boolean; data: AuthTokens }>('/auth/login', { email, password });
+        const tokens = data.data!;
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${tokens.accessToken}`;
+        set({ tokens, isAuthenticated: true });
+      },
+
+      logout: () => {
+        delete apiClient.defaults.headers.common['Authorization'];
+        set({ tokens: null, isAuthenticated: false });
+      },
+    }),
+    {
+      name: 'sinaur-cc-auth',
+      partialize: (s) => ({ tokens: s.tokens, isAuthenticated: s.isAuthenticated }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.tokens?.accessToken) {
+          apiClient.defaults.headers.common['Authorization'] = `Bearer ${state.tokens.accessToken}`;
+        }
+      },
+    },
+  ),
+);

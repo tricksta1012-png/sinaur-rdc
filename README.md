@@ -101,6 +101,7 @@ pnpm dev
 
 - API : http://localhost:3000
 - Web (backoffice) : http://localhost:5173
+- Centre de commandement : http://localhost:5175
 - Portail public : http://localhost:5174
 - Health check : http://localhost:3000/health
 - Flux Atom alertes : http://localhost:3000/public/feed.atom

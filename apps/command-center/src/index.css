@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { font-family: Inter, system-ui, sans-serif; }
+  body { @apply bg-cc-950 text-gray-100; }
+  ::-webkit-scrollbar { @apply w-1.5 h-1.5; }
+  ::-webkit-scrollbar-track { @apply bg-cc-900; }
+  ::-webkit-scrollbar-thumb { @apply bg-cc-600 rounded-full; }
+}
+
+@layer components {
+  .cc-card { @apply bg-cc-800 border border-cc-700 rounded-xl; }
+  .cc-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .cc-btn {
+    @apply px-3 py-1.5 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-sinaur-600;
+  }
+  .cc-btn-primary { @apply cc-btn bg-sinaur-600 hover:bg-sinaur-700 text-white; }
+  .cc-btn-ghost   { @apply cc-btn bg-transparent hover:bg-cc-700 text-gray-300 hover:text-white; }
+  .cc-btn-danger  { @apply cc-btn bg-red-800 hover:bg-red-700 text-white; }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { @apply bg-white text-gray-900; }
+  .print-container { max-width: 800px; margin: 0 auto; padding: 2rem; }
+}
