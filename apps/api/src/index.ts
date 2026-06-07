@@ -12,6 +12,8 @@ import { geoRoutes } from './routes/geo.js';
 import { eventRoutes } from './routes/events.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { mediaRoutes } from './routes/media.js';
+import { alertRoutes } from './routes/alerts.js';
+import { predictionRoutes } from './routes/predictions.js';
 import { registerClient } from './websocket/broadcast.js';
 
 const fastify = Fastify({
@@ -50,6 +52,8 @@ await fastify.register(geoRoutes);
 await fastify.register(eventRoutes);
 await fastify.register(dashboardRoutes);
 await fastify.register(mediaRoutes);
+await fastify.register(alertRoutes);
+await fastify.register(predictionRoutes);
 
 // WebSocket : flux temps réel des événements et alertes
 fastify.get('/ws', { websocket: true }, (socket, request) => {
@@ -70,7 +74,7 @@ fastify.get('/ws', { websocket: true }, (socket, request) => {
 // Health check
 fastify.get('/health', async () => {
   await checkDatabaseConnection();
-  return { status: 'ok', timestamp: new Date().toISOString(), version: '0.1.0-phase1' };
+  return { status: 'ok', timestamp: new Date().toISOString(), version: '0.2.0-phase2' };
 });
 
 fastify.setErrorHandler((error, _request, reply) => {
@@ -98,7 +102,7 @@ fastify.setErrorHandler((error, _request, reply) => {
 
 try {
   await fastify.listen({ port: config.API_PORT, host: config.API_HOST });
-  fastify.log.info(`SINAUR-RDC API v0.1.0-phase1 — http://${config.API_HOST}:${config.API_PORT}`);
+  fastify.log.info(`SINAUR-RDC API v0.2.0-phase2 — http://${config.API_HOST}:${config.API_PORT}`);
 } catch (err) {
   fastify.log.error(err);
   process.exit(1);

@@ -1,0 +1,28 @@
+{
+  "name": "@sinaur/ingestion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "run:once": "tsx src/scheduler.ts --once"
+  },
+  "dependencies": {
+    "@sinaur/shared-types": "workspace:*",
+    "postgres": "^3.4.4",
+    "ioredis": "^5.3.2",
+    "node-cron": "^3.0.3",
+    "zod": "^3.23.8",
+    "pino": "^9.3.2",
+    "pino-pretty": "^11.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.0"
+  }
+}

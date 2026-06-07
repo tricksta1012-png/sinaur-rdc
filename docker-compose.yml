@@ -65,8 +65,11 @@ services:
     environment:
       DATABASE_URL: postgresql://sinaur:sinaur_secret@postgres:5432/sinaur_rdc
       REDIS_URL: redis://redis:6379
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - '8000:8000'
+    volumes:
+      - ai_models:/app/model_store
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,6 +77,48 @@ services:
     profiles:
       - full
 
+  ingestion:
+    build:
+      context: services/ingestion
+      dockerfile: Dockerfile
+    container_name: sinaur-ingestion
+    environment:
+      DATABASE_URL: postgresql://sinaur:sinaur_secret@postgres:5432/sinaur_rdc
+      RELIEFWEB_APP_NAME: sinaur-rdc
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - full
+
+  alerting:
+    build:
+      context: services/alerting
+      dockerfile: Dockerfile
+    container_name: sinaur-alerting
+    environment:
+      DATABASE_URL: postgresql://sinaur:sinaur_secret@postgres:5432/sinaur_rdc
+      API_BASE_URL: http://api:3000
+      AI_BASE_URL: http://ai-prediction:8000
+      ALERTING_SERVICE_URL: http://alerting:3001
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-sinaur-rdc}
+      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-}
+      SMS_GATEWAY_URL: ${SMS_GATEWAY_URL:-}
+      SMS_GATEWAY_API_KEY: ${SMS_GATEWAY_API_KEY:-}
+      AUTO_ALERT_SCORE_THRESHOLD: ${AUTO_ALERT_SCORE_THRESHOLD:-75}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai-prediction:
+        condition: service_started
+    restart: unless-stopped
+    profiles:
+      - full
+
 volumes:
   postgres_data:
   redis_data:
+  ai_models:
