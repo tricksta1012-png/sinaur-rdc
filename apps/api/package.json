@@ -17,6 +17,7 @@
     "db:import-cod-ab": "tsx src/db/import-cod-ab.ts"
   },
   "dependencies": {
+    "@sinaur/metrics": "workspace:*",
     "@sinaur/shared-types": "workspace:*",
     "fastify": "^4.28.0",
     "@fastify/jwt": "^8.0.0",

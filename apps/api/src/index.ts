@@ -22,6 +22,7 @@ import { crisisRoutes } from './routes/crises.js';
 import { taskRoutes } from './routes/tasks.js';
 import { logSecurityEvent } from './auth/security.js';
 import { registerClient } from './websocket/broadcast.js';
+import { registerMetrics } from '@sinaur/metrics';
 
 const fastify = Fastify({
   logger: {
@@ -52,6 +53,7 @@ await fastify.register(fastifyRateLimit, {
 await fastify.register(fastifyJwt, { secret: config.JWT_SECRET });
 await fastify.register(fastifyWebsocket);
 await fastify.register(fastifyMultipart);
+await registerMetrics(fastify, { service: 'api' });
 
 // Routes HTTP
 await fastify.register(authRoutes);
@@ -87,7 +89,7 @@ fastify.get('/ws', { websocket: true }, (socket, request) => {
 // Health check
 fastify.get('/health', async () => {
   await checkDatabaseConnection();
-  return { status: 'ok', timestamp: new Date().toISOString(), version: '0.6.0-phase6' };
+  return { status: 'ok', timestamp: new Date().toISOString(), version: '0.8.0-phase8' };
 });
 
 fastify.setErrorHandler((error, request, reply) => {
@@ -123,7 +125,7 @@ fastify.setErrorHandler((error, request, reply) => {
 
 try {
   await fastify.listen({ port: config.API_PORT, host: config.API_HOST });
-  fastify.log.info(`SINAUR-RDC API v0.6.0-phase6 — http://${config.API_HOST}:${config.API_PORT}`);
+  fastify.log.info(`SINAUR-RDC API v0.8.0-phase8 — http://${config.API_HOST}:${config.API_PORT}`);
 } catch (err) {
   fastify.log.error(err);
   process.exit(1);

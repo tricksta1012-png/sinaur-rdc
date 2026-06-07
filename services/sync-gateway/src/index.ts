@@ -22,6 +22,7 @@ import axios from 'axios'
 import { z } from 'zod'
 import { buildDelta } from './delta.js'
 import { logConflict, classifyAxiosError, type SyncItem, type SyncResult } from './conflicts.js'
+import { registerMetrics, makeSyncCounters } from '@sinaur/metrics'
 
 const logger = pino({
   level: process.env.LOG_LEVEL ?? 'info',
@@ -43,6 +44,8 @@ const fastify = Fastify({ logger: false })
 await fastify.register(fastifyCors, { origin: true })
 await fastify.register(fastifyRateLimit, { max: 120, timeWindow: '1 minute' })
 await fastify.register(fastifyJwt, { secret: JWT_SECRET })
+const metricsRegistry = await registerMetrics(fastify, { service: 'sync-gateway' })
+const syncCounters = makeSyncCounters(metricsRegistry)
 
 // ── Auth middleware ──────────────────────────────────────────────────────────
 
@@ -183,6 +186,7 @@ fastify.post('/sync/push', {
 
       if (result.status === 'conflict') {
         conflicts++
+        syncCounters.syncConflicts.inc({ type: 'version_mismatch' })
         await logConflict(sql, body.deviceId, 'version_mismatch', item.type, item.payload)
       }
     }
@@ -190,6 +194,7 @@ fastify.post('/sync/push', {
 
   // Log session
   const synced = results.filter(r => r.status === 'synced').length
+  results.forEach(r => syncCounters.syncItemsPushed.inc({ status: r.status }))
   await sql`
     INSERT INTO sync_sessions (device_id, sync_type, items_pushed, conflicts, duration_ms)
     VALUES (${body.deviceId}, 'push', ${body.items.length}, ${conflicts}, ${Date.now() - syncStart})

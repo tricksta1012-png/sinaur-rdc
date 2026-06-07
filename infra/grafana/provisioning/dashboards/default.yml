@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: SINAUR-RDC
+    orgId: 1
+    folder: SINAUR-RDC
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

@@ -104,6 +104,8 @@ pnpm dev
 - Centre de commandement : http://localhost:5175
 - Portail public : http://localhost:5174
 - Sync Gateway : http://localhost:3003
+- Prometheus : http://localhost:9090 (prod uniquement)
+- Grafana : http://localhost:3500 (prod uniquement)
 - Health check : http://localhost:3000/health
 - Flux Atom alertes : http://localhost:3000/public/feed.atom
 
@@ -128,6 +130,7 @@ pnpm dev
 | **Phase 5** — Ouverture | Portail public HXL, audit sécurité | ✅ Terminé |
 | **Phase 6** — Commandement | Centre ops GLIDE, kanban coordination, SitReps OCHA | ✅ Terminé |
 | **Phase 7** — Sync & UI | Sync Gateway offline (port 3003), `@sinaur/ui`, CI/CD GitHub Actions | ✅ Terminé |
+| **Phase 8** — Observabilité | `@sinaur/metrics` Prometheus, Grafana dashboards, `docker-compose.prod.yml` | ✅ Terminé |
 
 ## Sécurité
 

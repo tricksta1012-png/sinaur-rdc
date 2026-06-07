@@ -16,6 +16,7 @@ import postgres from 'postgres'
 import axios from 'axios'
 import { v4 as uuidv4 } from 'uuid'
 import { handleUSSD, LOCALE_MAP, type Locale } from './menus.js'
+import { registerMetrics, makeUssdCounters } from '@sinaur/metrics'
 
 const logger = pino({
   level: process.env.LOG_LEVEL ?? 'info',
@@ -31,6 +32,8 @@ const API_URL = process.env.API_BASE_URL ?? 'http://api:3000'
 
 const fastify = Fastify({ logger: false })
 await fastify.register(fastifyFormbody)
+const metricsRegistry = await registerMetrics(fastify, { service: 'ussd' })
+const ussdCounters = makeUssdCounters(metricsRegistry)
 
 // ── Santé ────────────────────────────────────────────────────────────────────
 
@@ -45,6 +48,7 @@ fastify.post('/ussd', async (request, reply) => {
   const text        = body.text        ?? ''
 
   logger.info({ sessionId, phoneNumber, text: text.slice(0, 100) }, 'USSD request')
+  ussdCounters.ussdSessions.inc({ action: text ? 'continue' : 'new' })
 
   try {
     // Récupérer / créer la session

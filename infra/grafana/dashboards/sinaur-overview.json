@@ -1,0 +1,255 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+  ],
+  "annotations": { "list": [] },
+  "description": "Vue d'ensemble SINAUR-RDC — latence API, alertes, synchronisation, USSD",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "API",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "sinaur-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "uid": "sinaur-prometheus" },
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"api\"}[5m])) by (le, route))",
+          "legendFormat": "p95 {{ route }}",
+          "refId": "A"
+        },
+        {
+          "datasource": { "uid": "sinaur-prometheus" },
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{service=\"api\"}[5m])) by (le, route))",
+          "legendFormat": "p50 {{ route }}",
+          "refId": "B"
+        }
+      ],
+      "title": "Latence API — p50/p95 par route",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "sinaur-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "id": 2,
+      "targets": [
+        {
+          "datasource": { "uid": "sinaur-prometheus" },
+          "expr": "sum(rate(http_requests_total{service=\"api\"}[5m])) by (status_code)",
+          "legendFormat": "HTTP {{ status_code }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Requêtes API par code HTTP",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 101,
+      "title": "Alertes",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "sinaur-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 5 },
+            { "color": "red", "value": 20 }
+          ]}
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 10 },
+      "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background" },
+      "targets": [
+        {
+          "datasource": { "uid": "sinaur-prometheus" },
+          "expr": "sinaur_alert_queue_depth",
+          "legendFormat": "File d'attente",
+          "refId": "A"
+        }
+      ],
+      "title": "Alertes en file d'attente",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "sinaur-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 18, "x": 6, "y": 10 },
+      "id": 4,
+      "targets": [
+        {
+          "datasource": { "uid": "sinaur-prometheus" },
+          "expr": "sum(increase(sinaur_alerts_dispatched_total[1h])) by (channel, severity)",
+          "legendFormat": "{{ channel }} — {{ severity }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Alertes dispatchées par heure (canal × sévérité)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 102,
+      "title": "Synchronisation Mobile",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "sinaur-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 50 },
+            { "color": "red", "value": 200 }
+          ]}
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 19 },
+      "id": 5,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [
+        {
+          "datasource": { "uid": "sinaur-prometheus" },
+          "expr": "sinaur_sync_active_devices",
+          "refId": "A"
+        }
+      ],
+      "title": "Appareils actifs (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "sinaur-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 18, "x": 6, "y": 19 },
+      "id": 6,
+      "targets": [
+        {
+          "datasource": { "uid": "sinaur-prometheus" },
+          "expr": "sum(rate(sinaur_sync_items_pushed_total[5m])) by (status)",
+          "legendFormat": "{{ status }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Items synchronisés/s par statut",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 103,
+      "title": "USSD",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "sinaur-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "id": 7,
+      "targets": [
+        {
+          "datasource": { "uid": "sinaur-prometheus" },
+          "expr": "sum(rate(sinaur_ussd_sessions_total[5m])) by (action)",
+          "legendFormat": "{{ action }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Sessions USSD par action",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+      "id": 104,
+      "title": "Ressources système",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "sinaur-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "bytes" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
+      "id": 8,
+      "targets": [
+        {
+          "datasource": { "uid": "sinaur-prometheus" },
+          "expr": "process_resident_memory_bytes",
+          "legendFormat": "{{ service }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Mémoire RSS par service",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "sinaur-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "percentunit" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 },
+      "id": 9,
+      "targets": [
+        {
+          "datasource": { "uid": "sinaur-prometheus" },
+          "expr": "rate(process_cpu_seconds_total[1m])",
+          "legendFormat": "{{ service }}",
+          "refId": "A"
+        }
+      ],
+      "title": "CPU par service",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["sinaur-rdc", "production"],
+  "time": { "from": "now-3h", "to": "now" },
+  "timepicker": {},
+  "timezone": "Africa/Kinshasa",
+  "title": "SINAUR-RDC — Vue d'ensemble",
+  "uid": "sinaur-overview",
+  "version": 1
+}

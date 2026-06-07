@@ -9,6 +9,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@sinaur/metrics": "workspace:*",
     "fastify": "^4.28.0",
     "@fastify/jwt": "^9.0.0",
     "@fastify/cors": "^9.0.0",

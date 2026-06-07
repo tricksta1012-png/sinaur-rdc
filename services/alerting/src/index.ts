@@ -4,11 +4,28 @@
  */
 import cron from 'node-cron'
 import http from 'http'
+import { Registry, collectDefaultMetrics, Counter, Gauge } from 'prom-client'
 import { logger } from './logger.js'
 import { runAlertingCycle } from './engine.js'
 import { dispatchValidatedAlert } from './engine.js'
 import { processSmsQueue } from './channels/sms.js'
 import { sql } from './db.js'
+
+const metricsRegistry = new Registry()
+metricsRegistry.setDefaultLabels({ service: 'alerting' })
+collectDefaultMetrics({ register: metricsRegistry, labels: { service: 'alerting' } })
+
+export const alertsDispatched = new Counter({
+  name: 'sinaur_alerts_dispatched_total',
+  help: 'Alertes CAP dispatchées',
+  labelNames: ['channel', 'severity'],
+  registers: [metricsRegistry],
+})
+export const alertQueueDepth = new Gauge({
+  name: 'sinaur_alert_queue_depth',
+  help: 'Alertes en file d\'attente de dispatch',
+  registers: [metricsRegistry],
+})
 
 const ALERT_CYCLE_CRON = '0 * * * *'    // Toutes les heures
 const SMS_QUEUE_CRON   = '*/5 * * * *'  // Toutes les 5 minutes
@@ -58,6 +75,10 @@ async function main() {
     } else if (req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ status: 'ok', service: 'alerting' }))
+    } else if (req.url === '/metrics') {
+      const body = await metricsRegistry.metrics()
+      res.writeHead(200, { 'Content-Type': metricsRegistry.contentType })
+      res.end(body)
     } else {
       res.writeHead(404)
       res.end()

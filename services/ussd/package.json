@@ -10,6 +10,7 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
+    "@sinaur/metrics": "workspace:*",
     "fastify": "^4.28.0",
     "@fastify/formbody": "^7.4.0",
     "postgres": "^3.4.4",
