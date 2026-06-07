@@ -138,6 +138,30 @@ services:
     profiles:
       - full
 
+  sync-gateway:
+    build:
+      context: .
+      dockerfile: services/sync-gateway/Dockerfile
+    container_name: sinaur-sync-gateway
+    environment:
+      DATABASE_URL: postgresql://sinaur:sinaur_secret@postgres:5432/sinaur_rdc
+      REDIS_URL: redis://redis:6379
+      API_BASE_URL: http://api:3000
+      JWT_SECRET: ${JWT_SECRET:-dev_secret_change_in_production_min_32_chars}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - '3003:3003'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    restart: unless-stopped
+    profiles:
+      - full
+
   command-center:
     build:
       context: apps/command-center

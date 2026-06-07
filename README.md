@@ -103,6 +103,7 @@ pnpm dev
 - Web (backoffice) : http://localhost:5173
 - Centre de commandement : http://localhost:5175
 - Portail public : http://localhost:5174
+- Sync Gateway : http://localhost:3003
 - Health check : http://localhost:3000/health
 - Flux Atom alertes : http://localhost:3000/public/feed.atom
 
@@ -125,6 +126,8 @@ pnpm dev
 | **Phase 3** — Registre | Registre sinistrés, validation, QR aides | ✅ Terminé |
 | **Phase 4** — Terrain | Sync avancée, offline, USSD, Android bas de gamme | ✅ Terminé |
 | **Phase 5** — Ouverture | Portail public HXL, audit sécurité | ✅ Terminé |
+| **Phase 6** — Commandement | Centre ops GLIDE, kanban coordination, SitReps OCHA | ✅ Terminé |
+| **Phase 7** — Sync & UI | Sync Gateway offline (port 3003), `@sinaur/ui`, CI/CD GitHub Actions | ✅ Terminé |
 
 ## Sécurité
 
