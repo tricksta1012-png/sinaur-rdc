@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: '/report',        label: 'Signaler',           icon: '📢' },
   { to: '/registry',      label: 'Registre',           icon: '👥' },
   { to: '/distributions', label: 'Distributions',      icon: '📦' },
+  { to: '/resources',    label: 'Stocks & Ressources', icon: '🏭' },
 ] as const;
 
 function NavItem({ to, label, icon }: { to: string; label: string; icon: string }) {

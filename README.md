@@ -141,6 +141,7 @@ pnpm dev
 | **Phase 16** — Webhooks sortants | CRUD /admin/webhooks, HMAC-SHA256, broadcast alert.published, 10 failures → auto-disable | ✅ Terminé |
 | **Phase 17** — Connecteur GDACS | GeoRSS GDACS filtre RDC, fast-xml-parser, déduplication source_url, cron 3h | ✅ Terminé |
 | **Phase 18** — Release v1.0.0 | Version bump, tag git v1.0.0, déploiement souverain | ✅ Terminé |
+| **Phase 19** — Stocks humanitaires | Dépôts, stocks (9 types), mouvements entrée/sortie, alertes seuil minimum, UI web | ✅ Terminé |
 
 ## Déploiement souverain
 

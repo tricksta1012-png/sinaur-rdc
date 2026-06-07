@@ -11,7 +11,8 @@ import { BeneficiaryFormPage } from './pages/BeneficiaryFormPage.js';
 import { DistributionsPage } from './pages/DistributionsPage.js';
 import { UsersPage } from './pages/UsersPage.js';
 import { AuditLogPage } from './pages/AuditLogPage.js';
-import { ForgotPasswordPage } from './pages/ForgotPasswordPage.js';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage.js'
+import { ResourcesPage } from './pages/ResourcesPage.js';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="registry" element={<RegistryPage />} />
         <Route path="registry/new" element={<BeneficiaryFormPage />} />
         <Route path="distributions" element={<DistributionsPage />} />
+        <Route path="resources" element={<ResourcesPage />} />
         <Route path="admin/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
         <Route path="admin/audit-log" element={<AdminRoute><AuditLogPage /></AdminRoute>} />
       </Route>
