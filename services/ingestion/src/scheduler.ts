@@ -3,6 +3,7 @@ import { logger } from './logger.js';
 import { ReliefWebConnector } from './connectors/reliefweb.js';
 import { OpenMeteoConnector } from './connectors/open-meteo.js';
 import { FewsNetConnector } from './connectors/fews-net.js';
+import { fetchGdacsAlerts } from './connectors/gdacs.js';
 import { storeEvent, closeSql } from './processors/store.js';
 import type { Connector, ConnectorResult, NormalizedEvent } from './types.js';
 
@@ -97,6 +98,13 @@ export function startScheduler(): void {
     }
   });
 
+  // GDACS : toutes les 3h (flux public, pas d'API key requise)
+  cron.schedule('0 */3 * * *', async () => {
+    logger.info('Running GDACS ingestion (3h)');
+    await fetchGdacsAlerts().catch(e => logger.error({ err: e }, 'GDACS ingestion error'));
+  });
+
   // Première exécution immédiate
   void runIngestion();
+  void fetchGdacsAlerts().catch(() => {});
 }

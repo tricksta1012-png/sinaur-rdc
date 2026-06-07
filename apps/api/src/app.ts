@@ -27,6 +27,7 @@ import { crisisRoutes } from './routes/crises.js'
 import { taskRoutes } from './routes/tasks.js'
 import { usersRoutes } from './routes/users.js'
 import { profileRoutes } from './routes/profile.js'
+import { webhookRoutes } from './routes/webhooks.js'
 import { logSecurityEvent } from './auth/security.js'
 import { registerClient } from './websocket/broadcast.js'
 import { registerMetrics } from '@sinaur/metrics'
@@ -71,7 +72,7 @@ export async function createApp(): Promise<FastifyInstance> {
         info: {
           title: 'SINAUR-RDC API',
           description: 'Système National Intelligent d\'Alerte, d\'Urgence et de Réponse aux Sinistres — RDC',
-          version: '0.8.0',
+          version: '1.0.0',
           contact: { name: 'SINAUR-RDC', email: 'api@sinaur-rdc.cd' },
           license: { name: 'Usage gouvernemental et humanitaire — RDC' },
         },
@@ -125,6 +126,7 @@ export async function createApp(): Promise<FastifyInstance> {
   await fastify.register(taskRoutes)
   await fastify.register(usersRoutes)
   await fastify.register(profileRoutes)
+  await fastify.register(webhookRoutes)
 
   fastify.get('/ws', { websocket: true }, (socket, request) => {
     let scope: string[] = []
@@ -141,7 +143,7 @@ export async function createApp(): Promise<FastifyInstance> {
 
   fastify.get('/health', async () => {
     await checkDatabaseConnection()
-    return { status: 'ok', timestamp: new Date().toISOString(), version: '0.8.0-phase8' }
+    return { status: 'ok', timestamp: new Date().toISOString(), version: '1.0.0' }
   })
 
   fastify.setErrorHandler((error, request, reply) => {

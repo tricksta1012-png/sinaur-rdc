@@ -138,6 +138,9 @@ pnpm dev
 | **Phase 13** — Push FCM & profil | Pipeline push FCM corrige (sync_devices), GET/PATCH /users/me, ProfileScreen mobile | ✅ Terminé |
 | **Phase 14** — Reset mot de passe | POST /auth/forgot-password + reset-password (OTP), ForgotPasswordPage web, lien mobile | ✅ Terminé |
 | **Phase 15** — Tests phases 12-14 | Vitest : admin/users (CRUD+RBAC), auth-reset (OTP+enumeration), profile (GET+PATCH) | ✅ Terminé |
+| **Phase 16** — Webhooks sortants | CRUD /admin/webhooks, HMAC-SHA256, broadcast alert.published, 10 failures → auto-disable | ✅ Terminé |
+| **Phase 17** — Connecteur GDACS | GeoRSS GDACS filtre RDC, fast-xml-parser, déduplication source_url, cron 3h | ✅ Terminé |
+| **Phase 18** — Release v1.0.0 | Version bump, tag git v1.0.0, déploiement souverain | ✅ Terminé |
 
 ## Déploiement souverain
 

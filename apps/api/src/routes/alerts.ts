@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { sql } from '../db.js'
 import { requireAuth, requireRole, writeAuditLog } from '../auth/jwt.js'
 import { broadcastAlert } from '../websocket/broadcast.js'
+import { broadcastWebhookEvent } from './webhooks.js'
 
 const CreateAlertSchema = z.object({
   hazardType: z.string(),
@@ -171,6 +172,14 @@ export async function alertRoutes(fastify: FastifyInstance) {
 
     if (body.action === 'approve') {
       broadcastAlert(updated)
+      // Notifier les partenaires humanitaires via webhooks
+      void broadcastWebhookEvent('alert.published', {
+        alertId:   id,
+        severity:  updated.info?.severity ?? 'Unknown',
+        headline:  updated.info?.headline ?? '',
+        pcode:     updated.info?.pcode    ?? '',
+        validatedAt: updated.validatedAt,
+      })
       try {
         const { default: axios } = await import('axios')
         await axios.post(

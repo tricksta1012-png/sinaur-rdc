@@ -1,6 +1,6 @@
 {
   "name": "sinaur-rdc",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Système National Intelligent d'Alerte, d'Urgence et de Réponse aux Sinistres de la République Démocratique du Congo",
   "packageManager": "pnpm@9.0.0",
