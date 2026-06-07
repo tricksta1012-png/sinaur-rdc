@@ -40,7 +40,9 @@
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
+    "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20.0.0",
+    "jsonwebtoken": "^9.0.2",
     "tsx": "^4.16.2",
     "typescript": "^5.5.0",
     "vitest": "^2.0.4"

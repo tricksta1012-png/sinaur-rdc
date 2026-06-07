@@ -131,6 +131,7 @@ pnpm dev
 | **Phase 6** — Commandement | Centre ops GLIDE, kanban coordination, SitReps OCHA | ✅ Terminé |
 | **Phase 7** — Sync & UI | Sync Gateway offline (port 3003), `@sinaur/ui`, CI/CD GitHub Actions | ✅ Terminé |
 | **Phase 8** — Observabilité | `@sinaur/metrics` Prometheus, Grafana dashboards, `docker-compose.prod.yml` | ✅ Terminé |
+| **Phase 9** — Tests & qualité | Suite Vitest : sécurité, RBAC, public routes (PII check), sync conflicts, delta | ✅ Terminé |
 
 ## Sécurité
 
