@@ -13,8 +13,14 @@ const loginSchema = z.object({
   otpCode: z.string().length(6).optional(),
 }).refine((d) => d.email || d.phone, { message: 'email ou phone requis' });
 
-const requestOtpSchema = z.object({ phone: z.string().min(9) });
-const refreshSchema = z.object({ refreshToken: z.string() });
+const requestOtpSchema      = z.object({ phone: z.string().min(9) });
+const refreshSchema         = z.object({ refreshToken: z.string() });
+const forgotPasswordSchema  = z.object({ identifier: z.string().min(4) }); // email ou phone
+const resetPasswordSchema   = z.object({
+  identifier:  z.string().min(4),
+  otpCode:     z.string().length(6),
+  newPassword: z.string().min(10, 'Au moins 10 caractères'),
+});
 
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /auth/request-otp — demande un OTP par SMS
@@ -87,6 +93,62 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     await writeAuditLog(user.id, 'LOGIN', 'users', user.id, request);
 
     return reply.send({ success: true, data: { accessToken, refreshToken, expiresIn: 900 } });
+  });
+
+  // POST /auth/forgot-password — génère un OTP de réinitialisation
+  fastify.post('/auth/forgot-password', async (request, reply) => {
+    const { identifier } = forgotPasswordSchema.parse(request.body);
+
+    const [user] = await sql`
+      SELECT id FROM users
+      WHERE (email = ${identifier} OR phone = ${identifier})
+        AND deleted_at IS NULL AND is_active = true
+      LIMIT 1
+    `;
+
+    if (user) {
+      const code = await createOtp(identifier);
+
+      if (fastify.config.NODE_ENV === 'development') {
+        return reply.send({ success: true, data: { debug_code: code } });
+      }
+      // Production : envoyer via service SMS/email
+    }
+
+    // Réponse identique qu'il y ait un compte ou non (prévenir l'énumération)
+    return reply.send({ success: true, data: { message: 'Si un compte existe, un code a été envoyé' } });
+  });
+
+  // POST /auth/reset-password — valide l'OTP et change le mot de passe
+  fastify.post('/auth/reset-password', async (request, reply) => {
+    const body = resetPasswordSchema.parse(request.body);
+
+    const valid = await verifyOtp(body.identifier, body.otpCode);
+    if (!valid) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'INVALID_OTP', message: 'Code invalide ou expiré' },
+      });
+    }
+
+    const hash = await bcrypt.hash(body.newPassword, 12);
+
+    const [updated] = await sql`
+      UPDATE users SET password_hash = ${hash}, updated_at = NOW()
+      WHERE (email = ${body.identifier} OR phone = ${body.identifier})
+        AND deleted_at IS NULL
+      RETURNING id, email
+    `;
+
+    if (!updated) {
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND' } });
+    }
+
+    await writeAuditLog(updated.id, 'PASSWORD_RESET', 'users', updated.id, request, {
+      via: body.identifier.includes('@') ? 'email' : 'phone',
+    });
+
+    return reply.send({ success: true, data: { message: 'Mot de passe réinitialisé avec succès' } });
   });
 
   // POST /auth/refresh

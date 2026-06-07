@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -81,7 +81,13 @@ export function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-4 text-center">
+          <div className="mt-4 text-center space-y-2">
+            <Link
+              to="/forgot-password"
+              className="block text-xs text-red-600 hover:text-red-800 transition-colors"
+            >
+              Mot de passe oublié ?
+            </Link>
             <p className="text-xs text-gray-500">
               Accès citoyen via l'application mobile (OTP SMS)
             </p>

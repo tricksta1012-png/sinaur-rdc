@@ -127,6 +127,17 @@ export function LoginScreen() {
               </Text>
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity
+            style={styles.btnForgot}
+            onPress={() => Alert.alert(
+              'Mot de passe oublié',
+              'Rendez-vous sur le portail web SINAUR-RDC pour réinitialiser votre mot de passe via le lien "Mot de passe oublié ?".',
+              [{ text: 'OK' }],
+            )}
+          >
+            <Text style={styles.btnForgotText}>Mot de passe oublié ?</Text>
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.footer}>
@@ -159,5 +170,7 @@ const styles = StyleSheet.create({
   btnLoginText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   btnBiometric: { borderWidth: 1.5, borderColor: '#b91c1c', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 10 },
   btnBiometricText: { color: '#b91c1c', fontSize: 15, fontWeight: '600' },
+  btnForgot: { alignItems: 'center', marginTop: 14, paddingVertical: 6 },
+  btnForgotText: { color: '#6b7280', fontSize: 13 },
   footer: { textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 32, paddingHorizontal: 24 },
 });
