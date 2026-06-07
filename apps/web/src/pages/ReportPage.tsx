@@ -1,39 +1,47 @@
-import { useState } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiClient } from '../lib/api.js';
+import { useOfflineQueue } from '../hooks/useOfflineQueue.js';
 import type { ApiResponse, AdminDivision } from '@sinaur/shared-types';
 
 const reportSchema = z.object({
-  title: z.string().min(5, 'Titre trop court').max(200),
+  title: z.string().min(5, 'Titre trop court (min 5 caractères)').max(200),
   description: z.string().default(''),
   hazardType: z.enum(['flood','landslide','mass_displacement','humanitarian_crisis',
-    'health_epidemic','volcanic_eruption','drought','fire','conflict','earthquake','other']),
+    'health_epidemic','volcanic_eruption','drought','fire','conflict','earthquake','other'],
+    { required_error: 'Sélectionnez un type d\'événement' }),
   severity: z.enum(['Minor','Moderate','Severe','Extreme','Unknown']).default('Unknown'),
   locationPcode: z.string().min(2, 'Sélectionnez une province'),
-  locationName: z.string().min(2, 'Précisez la localisation'),
-  estimatedAffected: z.coerce.number().positive().optional().or(z.literal('')),
+  locationName: z.string().min(2, 'Précisez la localisation').max(200),
+  estimatedAffected: z.coerce.number().int().positive().optional().or(z.literal('')),
+  locationLat: z.number().optional(),
+  locationLng: z.number().optional(),
 });
 type ReportForm = z.infer<typeof reportSchema>;
 
 const HAZARD_OPTIONS = [
-  { value: 'flood', label: '🌊 Inondation' },
-  { value: 'landslide', label: '⛰️ Glissement de terrain' },
-  { value: 'mass_displacement', label: '🏃 Déplacement de populations' },
-  { value: 'humanitarian_crisis', label: '🆘 Crise humanitaire' },
-  { value: 'health_epidemic', label: '🦠 Épidémie / Risque sanitaire' },
-  { value: 'volcanic_eruption', label: '🌋 Éruption volcanique' },
-  { value: 'drought', label: '☀️ Sécheresse' },
-  { value: 'fire', label: '🔥 Incendie' },
-  { value: 'conflict', label: '⚔️ Conflit armé' },
-  { value: 'earthquake', label: '📳 Tremblement de terre' },
-  { value: 'other', label: '⚠️ Autre' },
+  { value: 'flood',              label: '🌊', name: 'Inondation' },
+  { value: 'landslide',          label: '⛰️',  name: 'Glissement de terrain' },
+  { value: 'mass_displacement',  label: '🏃', name: 'Déplacement de populations' },
+  { value: 'humanitarian_crisis',label: '🆘', name: 'Crise humanitaire' },
+  { value: 'health_epidemic',    label: '🦠', name: 'Épidémie / Risque sanitaire' },
+  { value: 'volcanic_eruption',  label: '🌋', name: 'Éruption volcanique' },
+  { value: 'drought',            label: '☀️',  name: 'Sécheresse' },
+  { value: 'fire',               label: '🔥', name: 'Incendie' },
+  { value: 'conflict',           label: '⚔️',  name: 'Conflit armé' },
+  { value: 'earthquake',         label: '📳', name: 'Tremblement de terre' },
+  { value: 'other',              label: '⚠️',  name: 'Autre' },
 ] as const;
 
+type SubmitResult = 'online_success' | 'offline_queued' | 'duplicate';
+
 export function ReportPage() {
-  const [submitted, setSubmitted] = useState(false);
+  const [result, setResult] = useState<SubmitResult | null>(null);
+  const [locating, setLocating] = useState(false);
+  const { enqueue, isOnline, pendingCount } = useOfflineQueue();
 
   const { data: provinces } = useQuery({
     queryKey: ['geo', 'provinces'],
@@ -43,37 +51,88 @@ export function ReportPage() {
     },
   });
 
-  const mutation = useMutation({
-    mutationFn: async (form: ReportForm) => {
-      const { data } = await apiClient.post('/events', {
-        ...form,
-        locationLevel: 1,
-        locationAccuracy: 'province',
-        source: 'citizen',
-        estimatedAffected: form.estimatedAffected || undefined,
-      });
-      return data;
-    },
-    onSuccess: () => setSubmitted(true),
-  });
-
-  const { register, handleSubmit, formState: { errors } } = useForm<ReportForm>({
+  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<ReportForm>({
     resolver: zodResolver(reportSchema),
     defaultValues: { severity: 'Unknown', description: '' },
   });
 
-  if (submitted) {
+  const selectedHazard = watch('hazardType');
+
+  // Géolocalisation GPS
+  const locateMe = () => {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setValue('locationLat', pos.coords.latitude);
+        setValue('locationLng', pos.coords.longitude);
+        setLocating(false);
+      },
+      () => setLocating(false),
+      { timeout: 10_000, maximumAge: 60_000 },
+    );
+  };
+
+  const mutation = useMutation({
+    mutationFn: async (form: ReportForm) => {
+      const payload = {
+        ...form,
+        locationLevel: 1,
+        locationAccuracy: form.locationLat ? 'gps' : 'province',
+        source: 'citizen',
+        estimatedAffected: form.estimatedAffected || undefined,
+      };
+      const { data } = await apiClient.post('/events', payload);
+      return data;
+    },
+    onSuccess: () => setResult('online_success'),
+    onError: (err: any) => {
+      if (err?.response?.status === 409) {
+        setResult('duplicate');
+        return;
+      }
+      // Pas de connexion ou erreur réseau → mettre en file hors-ligne
+      if (!isOnline || err?.code === 'ERR_NETWORK') {
+        const form = watch() as unknown as Record<string, unknown>;
+        enqueue({ ...form, locationLevel: 1, locationAccuracy: form.locationLat ? 'gps' : 'province', source: 'citizen' });
+        setResult('offline_queued');
+      }
+    },
+  });
+
+  const onSubmit = (data: ReportForm) => {
+    if (!isOnline) {
+      enqueue({ ...data, locationLevel: 1, locationAccuracy: data.locationLat ? 'gps' : 'province', source: 'citizen' });
+      setResult('offline_queued');
+      return;
+    }
+    mutation.mutate(data);
+  };
+
+  if (result) {
     return (
-      <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
-        <span className="text-6xl">✅</span>
-        <h2 className="text-2xl font-bold text-gray-900 mt-4">Signalement envoyé</h2>
-        <p className="text-gray-600 mt-2 max-w-md">
-          Votre signalement a été reçu et sera examiné par l'équipe de modération.
-          Un accusé de réception vous sera transmis.
+      <div className="p-6 flex flex-col items-center justify-center min-h-[70vh] text-center">
+        <span className="text-6xl">
+          {result === 'online_success' ? '✅' : result === 'duplicate' ? '⚠️' : '📥'}
+        </span>
+        <h2 className="text-2xl font-bold text-gray-900 mt-4">
+          {result === 'online_success' && 'Signalement envoyé'}
+          {result === 'offline_queued' && 'Signalement sauvegardé'}
+          {result === 'duplicate' && 'Signalement similaire déjà enregistré'}
+        </h2>
+        <p className="text-gray-600 mt-2 max-w-md text-sm leading-relaxed">
+          {result === 'online_success' && 'Votre signalement a été reçu et sera examiné. Un accusé de réception vous sera transmis par SMS si votre numéro est enregistré.'}
+          {result === 'offline_queued' && 'Vous êtes hors ligne. Votre signalement est sauvegardé localement et sera envoyé automatiquement dès que la connexion sera rétablie.'}
+          {result === 'duplicate' && 'Un événement similaire dans cette zone a déjà été signalé aujourd\'hui. Votre observation a tout de même été enregistrée pour renforcer la confiance du signal.'}
         </p>
+        {result === 'offline_queued' && (
+          <p className="mt-2 text-xs text-orange-600 font-medium">
+            {pendingCount} signalement{pendingCount > 1 ? 's' : ''} en attente de synchronisation
+          </p>
+        )}
         <button
-          onClick={() => setSubmitted(false)}
-          className="mt-6 px-6 py-2.5 bg-red-700 text-white rounded-lg hover:bg-red-800 transition-colors"
+          onClick={() => setResult(null)}
+          className="mt-6 px-6 py-2.5 bg-red-700 text-white rounded-lg hover:bg-red-800 transition-colors font-medium"
         >
           Nouveau signalement
         </button>
@@ -83,29 +142,47 @@ export function ReportPage() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900">Signaler un événement</h1>
-      <p className="text-gray-500 text-sm mt-1">
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-2xl font-bold text-gray-900">Signaler un événement</h1>
+        {!isOnline && (
+          <span className="text-xs bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
+            <span className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse" />
+            Hors ligne — enregistrement local
+          </span>
+        )}
+      </div>
+      <p className="text-gray-500 text-sm mb-6">
         Signalez une catastrophe, urgence sanitaire ou besoin humanitaire.
+        Le signalement fonctionne même sans connexion.
       </p>
 
-      {mutation.isError && (
-        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-          Erreur lors de l'envoi. Veuillez réessayer.
+      {mutation.isError && !(mutation.error as any)?.response && (
+        <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg text-orange-700 text-sm">
+          Connexion indisponible. Le signalement sera envoyé automatiquement dès la reconnexion.
         </div>
       )}
 
-      <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="mt-6 space-y-5">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        {/* Sélection type d'événement (icônes) */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Type d'événement *</label>
-          <select
-            {...register('hazardType')}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
-          >
-            <option value="">Sélectionner...</option>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Type d'événement *</label>
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
             {HAZARD_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => setValue('hazardType', o.value as any, { shouldValidate: true })}
+                className={`flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all text-center ${
+                  selectedHazard === o.value
+                    ? 'border-red-500 bg-red-50 shadow-sm'
+                    : 'border-gray-200 hover:border-gray-300 bg-white'
+                }`}
+              >
+                <span className="text-2xl">{o.label}</span>
+                <span className="text-xs text-gray-600 leading-tight">{o.name}</span>
+              </button>
             ))}
-          </select>
+          </div>
           {errors.hazardType && <p className="mt-1 text-xs text-red-600">{errors.hazardType.message}</p>}
         </div>
 
@@ -113,8 +190,8 @@ export function ReportPage() {
           <label className="block text-sm font-medium text-gray-700 mb-1">Titre *</label>
           <input
             {...register('title')}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-            placeholder="Ex: Inondation grave — Quartier Limete"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+            placeholder="Ex: Inondation grave — Quartier Limete, Kinshasa"
           />
           {errors.title && <p className="mt-1 text-xs text-red-600">{errors.title.message}</p>}
         </div>
@@ -124,35 +201,48 @@ export function ReportPage() {
           <textarea
             {...register('description')}
             rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
             placeholder="Décrivez la situation, les personnes affectées, les besoins urgents..."
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Province *</label>
-            <select
-              {...register('locationPcode')}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
-            >
-              <option value="">Sélectionner...</option>
-              {(provinces ?? []).map((p) => (
-                <option key={p.pcode} value={p.pcode}>{p.name}</option>
-              ))}
-            </select>
-            {errors.locationPcode && <p className="mt-1 text-xs text-red-600">{errors.locationPcode.message}</p>}
+        {/* Localisation */}
+        <div className="space-y-3">
+          <label className="block text-sm font-medium text-gray-700">Localisation *</label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <select
+                {...register('locationPcode')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 bg-white text-sm"
+              >
+                <option value="">Province...</option>
+                {(provinces ?? []).map((p) => (
+                  <option key={p.pcode} value={p.pcode}>{p.name}</option>
+                ))}
+              </select>
+              {errors.locationPcode && <p className="mt-1 text-xs text-red-600">{errors.locationPcode.message}</p>}
+            </div>
+            <div>
+              <input
+                {...register('locationName')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                placeholder="Ville, quartier, village..."
+              />
+              {errors.locationName && <p className="mt-1 text-xs text-red-600">{errors.locationName.message}</p>}
+            </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Localité précise</label>
-            <input
-              {...register('locationName')}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-              placeholder="Ville, quartier, village..."
-            />
-            {errors.locationName && <p className="mt-1 text-xs text-red-600">{errors.locationName.message}</p>}
-          </div>
+          <button
+            type="button"
+            onClick={locateMe}
+            disabled={locating}
+            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 disabled:text-gray-400 transition-colors"
+          >
+            <span>{locating ? '⏳' : '📍'}</span>
+            {locating ? 'Localisation en cours...' : 'Utiliser ma position GPS'}
+            {watch('locationLat') && <span className="text-green-600 text-xs">✓ GPS obtenu</span>}
+          </button>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -160,24 +250,23 @@ export function ReportPage() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Gravité estimée</label>
             <select
               {...register('severity')}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 bg-white text-sm"
             >
-              <option value="Unknown">Inconnue</option>
-              <option value="Minor">Mineure</option>
-              <option value="Moderate">Modérée</option>
-              <option value="Severe">Sévère</option>
-              <option value="Extreme">Extrême</option>
+              <option value="Unknown">Je ne sais pas</option>
+              <option value="Minor">Mineure — quelques personnes</option>
+              <option value="Moderate">Modérée — dizaines de personnes</option>
+              <option value="Severe">Sévère — centaines de personnes</option>
+              <option value="Extreme">Extrême — milliers de personnes</option>
             </select>
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Personnes affectées (estimé)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Personnes affectées</label>
             <input
               {...register('estimatedAffected')}
               type="number"
               min="1"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-              placeholder="Nombre"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+              placeholder="Estimation..."
             />
           </div>
         </div>
@@ -185,9 +274,15 @@ export function ReportPage() {
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="w-full bg-red-700 hover:bg-red-800 disabled:bg-red-400 text-white font-semibold py-3 rounded-lg transition-colors text-lg"
+          className="w-full bg-red-700 hover:bg-red-800 disabled:bg-red-400 text-white font-semibold py-3 rounded-xl transition-colors text-base flex items-center justify-center gap-2"
         >
-          {mutation.isPending ? 'Envoi en cours...' : '📢 Envoyer le signalement'}
+          {mutation.isPending ? (
+            <><span className="animate-spin">⏳</span> Envoi en cours...</>
+          ) : !isOnline ? (
+            <><span>📥</span> Enregistrer (hors ligne)</>
+          ) : (
+            <><span>📢</span> Envoyer le signalement</>
+          )}
         </button>
       </form>
     </div>

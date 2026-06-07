@@ -1,5 +1,6 @@
 import { Outlet, NavLink } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth.js';
+import { OfflineIndicator } from './OfflineIndicator.js';
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Tableau de bord', icon: '📊' },
@@ -54,6 +55,8 @@ export function Layout() {
       <main className="flex-1 overflow-y-auto">
         <Outlet />
       </main>
+
+      <OfflineIndicator />
     </div>
   );
 }

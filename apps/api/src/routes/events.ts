@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { ulid } from 'ulid';
 import { sql } from '../db.js';
 import { requireAuth, requireRole, writeAuditLog } from '../auth/jwt.js';
+import { buildDedupHash, isDuplicate, registerHash, enqueueModeration } from '../services/dedup.js';
+import { sendAcknowledgment } from '../services/sms.js';
+import { broadcastNewEvent } from '../websocket/broadcast.js';
 
 const createEventSchema = z.object({
   title: z.string().min(5).max(200),
@@ -108,6 +110,16 @@ export async function eventRoutes(fastify: FastifyInstance): Promise<void> {
     const body = createEventSchema.parse(request.body);
     const userId = request.jwtUser.sub;
 
+    // Déduplication : détection de doublons sur la fenêtre 24h
+    const dedupHash = buildDedupHash({ hazardType: body.hazardType, locationPcode: body.locationPcode });
+    const existingId = await isDuplicate(dedupHash);
+    if (existingId) {
+      return reply.status(409).send({
+        success: false,
+        error: { code: 'DUPLICATE_EVENT', message: 'Un événement similaire a déjà été signalé dans cette zone aujourd\'hui', details: { existingId } },
+      });
+    }
+
     const pointSql = body.locationLat !== undefined && body.locationLng !== undefined
       ? sql`ST_SetSRID(ST_MakePoint(${body.locationLng}, ${body.locationLat}), 4326)`
       : sql`NULL`;
@@ -128,8 +140,23 @@ export async function eventRoutes(fastify: FastifyInstance): Promise<void> {
         ${body.tags}, ${body.isFlaggedSensitive}, ${userId},
         ${body.clientCreatedAt ?? null}, 'synced'
       )
-      RETURNING id, title, hazard_type, status, created_at
+      RETURNING id, title, hazard_type, status, location_pcode, created_at
     `;
+
+    // Enregistrer l'empreinte et mettre en file de modération
+    await Promise.all([
+      registerHash(dedupHash, event.id),
+      enqueueModeration(event.id, body.source === 'citizen' ? 3 : 5, `Source: ${body.source}`),
+    ]);
+
+    // Diffusion WebSocket aux décideurs en périmètre
+    broadcastNewEvent(event, [body.locationPcode]);
+
+    // Accusé de réception SMS si numéro de téléphone connu
+    const [reporter] = await sql`SELECT phone FROM users WHERE id = ${userId} AND phone IS NOT NULL`;
+    if (reporter?.phone) {
+      await sendAcknowledgment(reporter.phone, body.title).catch(() => {});
+    }
 
     await writeAuditLog(userId, 'CREATE_EVENT', 'disaster_events', event.id, request, { hazardType: body.hazardType });
     return reply.status(201).send({ success: true, data: event });

@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "SINAUR-RDC",
+    "slug": "sinaur-rdc",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#7f1d1d"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#7f1d1d"
+      },
+      "package": "cd.gouv.sinaur",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ],
+      "minSdkVersion": 26
+    },
+    "plugins": [
+      ["expo-location", { "locationAlwaysAndWhenInUsePermission": "SINAUR-RDC utilise votre position pour géolocaliser vos signalements." }],
+      ["expo-notifications", { "icon": "./assets/notification-icon.png", "color": "#7f1d1d" }],
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": { "projectId": "sinaur-rdc" }
+    }
+  }
+}

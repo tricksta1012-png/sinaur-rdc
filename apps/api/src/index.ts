@@ -4,11 +4,15 @@ import fastifyCors from '@fastify/cors';
 import fastifyHelmet from '@fastify/helmet';
 import fastifyRateLimit from '@fastify/rate-limit';
 import fastifyWebsocket from '@fastify/websocket';
+import fastifyMultipart from '@fastify/multipart';
 import { config } from './config.js';
 import { checkDatabaseConnection } from './db.js';
 import { authRoutes } from './routes/auth.js';
 import { geoRoutes } from './routes/geo.js';
 import { eventRoutes } from './routes/events.js';
+import { dashboardRoutes } from './routes/dashboard.js';
+import { mediaRoutes } from './routes/media.js';
+import { registerClient } from './websocket/broadcast.js';
 
 const fastify = Fastify({
   logger: {
@@ -19,10 +23,8 @@ const fastify = Fastify({
   },
 });
 
-// Décorer l'instance avec la config (accessible dans les routes)
 fastify.decorate('config', config);
 
-// Sécurité
 await fastify.register(fastifyHelmet, {
   contentSecurityPolicy: config.NODE_ENV === 'production',
 });
@@ -33,29 +35,44 @@ await fastify.register(fastifyCors, {
 });
 
 await fastify.register(fastifyRateLimit, {
-  max: 100,
+  max: 200,
   timeWindow: '1 minute',
   keyGenerator: (req) => req.ip,
 });
 
-// JWT
 await fastify.register(fastifyJwt, { secret: config.JWT_SECRET });
-
-// WebSocket (pour les alertes temps réel)
 await fastify.register(fastifyWebsocket);
+await fastify.register(fastifyMultipart);
 
-// Routes
+// Routes HTTP
 await fastify.register(authRoutes);
 await fastify.register(geoRoutes);
 await fastify.register(eventRoutes);
+await fastify.register(dashboardRoutes);
+await fastify.register(mediaRoutes);
+
+// WebSocket : flux temps réel des événements et alertes
+fastify.get('/ws', { websocket: true }, (socket, request) => {
+  // Extraire le périmètre géographique depuis le token si présent
+  let scope: string[] = [];
+  try {
+    const token = (request.query as Record<string, string>)['token'];
+    if (token) {
+      const payload = fastify.jwt.verify(token) as { scope: string[] };
+      scope = payload.scope ?? [];
+    }
+  } catch {}
+
+  registerClient(socket, scope);
+  socket.send(JSON.stringify({ type: 'CONNECTED', payload: { message: 'SINAUR-RDC flux temps réel actif' } }));
+});
 
 // Health check
 fastify.get('/health', async () => {
   await checkDatabaseConnection();
-  return { status: 'ok', timestamp: new Date().toISOString(), version: '0.1.0' };
+  return { status: 'ok', timestamp: new Date().toISOString(), version: '0.1.0-phase1' };
 });
 
-// Gestionnaire d'erreurs global
 fastify.setErrorHandler((error, _request, reply) => {
   fastify.log.error(error);
 
@@ -81,7 +98,7 @@ fastify.setErrorHandler((error, _request, reply) => {
 
 try {
   await fastify.listen({ port: config.API_PORT, host: config.API_HOST });
-  fastify.log.info(`SINAUR-RDC API démarrée — http://${config.API_HOST}:${config.API_PORT}`);
+  fastify.log.info(`SINAUR-RDC API v0.1.0-phase1 — http://${config.API_HOST}:${config.API_PORT}`);
 } catch (err) {
   fastify.log.error(err);
   process.exit(1);
