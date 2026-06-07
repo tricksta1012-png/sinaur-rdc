@@ -9,10 +9,21 @@ import { EventsPage } from './pages/EventsPage.js';
 import { RegistryPage } from './pages/RegistryPage.js';
 import { BeneficiaryFormPage } from './pages/BeneficiaryFormPage.js';
 import { DistributionsPage } from './pages/DistributionsPage.js';
+import { UsersPage } from './pages/UsersPage.js';
+import { AuditLogPage } from './pages/AuditLogPage.js';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((s) => s.user);
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== 'system_admin' && user.role !== 'national_decision_maker') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
 }
 
 export default function App() {
@@ -35,6 +46,8 @@ export default function App() {
         <Route path="registry" element={<RegistryPage />} />
         <Route path="registry/new" element={<BeneficiaryFormPage />} />
         <Route path="distributions" element={<DistributionsPage />} />
+        <Route path="admin/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
+        <Route path="admin/audit-log" element={<AdminRoute><AuditLogPage /></AdminRoute>} />
       </Route>
     </Routes>
   );
