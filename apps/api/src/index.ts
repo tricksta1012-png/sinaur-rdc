@@ -17,6 +17,8 @@ import { predictionRoutes } from './routes/predictions.js';
 import { registryRoutes } from './routes/registry.js';
 import { aidRoutes } from './routes/aids.js';
 import { ussdRoutes } from './routes/ussd.js';
+import { publicRoutes } from './routes/public.js';
+import { logSecurityEvent } from './auth/security.js';
 import { registerClient } from './websocket/broadcast.js';
 
 const fastify = Fastify({
@@ -60,6 +62,7 @@ await fastify.register(predictionRoutes);
 await fastify.register(registryRoutes);
 await fastify.register(aidRoutes);
 await fastify.register(ussdRoutes);
+await fastify.register(publicRoutes);
 
 // WebSocket : flux temps réel des événements et alertes
 fastify.get('/ws', { websocket: true }, (socket, request) => {
@@ -80,11 +83,19 @@ fastify.get('/ws', { websocket: true }, (socket, request) => {
 // Health check
 fastify.get('/health', async () => {
   await checkDatabaseConnection();
-  return { status: 'ok', timestamp: new Date().toISOString(), version: '0.4.0-phase4' };
+  return { status: 'ok', timestamp: new Date().toISOString(), version: '0.5.0-phase5' };
 });
 
-fastify.setErrorHandler((error, _request, reply) => {
+fastify.setErrorHandler((error, request, reply) => {
   fastify.log.error(error);
+
+  if (error.statusCode === 401) {
+    logSecurityEvent('auth_failed', request, { message: error.message })
+  } else if (error.statusCode === 403) {
+    logSecurityEvent('forbidden', request, { message: error.message, url: request.url })
+  } else if (error.statusCode === 429) {
+    logSecurityEvent('rate_limited', request, { url: request.url })
+  }
 
   if (error.name === 'ZodError') {
     return reply.status(400).send({
@@ -108,7 +119,7 @@ fastify.setErrorHandler((error, _request, reply) => {
 
 try {
   await fastify.listen({ port: config.API_PORT, host: config.API_HOST });
-  fastify.log.info(`SINAUR-RDC API v0.4.0-phase4 — http://${config.API_HOST}:${config.API_PORT}`);
+  fastify.log.info(`SINAUR-RDC API v0.5.0-phase5 — http://${config.API_HOST}:${config.API_PORT}`);
 } catch (err) {
   fastify.log.error(err);
   process.exit(1);

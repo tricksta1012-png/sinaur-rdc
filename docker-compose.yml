@@ -138,6 +138,20 @@ services:
     profiles:
       - full
 
+  public:
+    build:
+      context: apps/public
+      dockerfile: Dockerfile
+    container_name: sinaur-public
+    ports:
+      - '8080:80'
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+    profiles:
+      - full
+
 volumes:
   postgres_data:
   redis_data:

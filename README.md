@@ -100,8 +100,10 @@ pnpm dev
 ```
 
 - API : http://localhost:3000
-- Web : http://localhost:5173
+- Web (backoffice) : http://localhost:5173
+- Portail public : http://localhost:5174
 - Health check : http://localhost:3000/health
+- Flux Atom alertes : http://localhost:3000/public/feed.atom
 
 ### Comptes de démonstration
 
@@ -116,12 +118,12 @@ pnpm dev
 
 | Phase | Contenu | État |
 |---|---|---|
-| **Phase 0** — Fondations | Monorepo, types, BD, auth RBAC, P-codes, seeds | ✅ **En cours** |
-| **Phase 1** — MVP | Signalement web+mobile offline, carte, dashboard | 🔜 |
-| **Phase 2** — Alerte | Ingestion (ReliefWeb+météo), IA, CAP+push+SMS | 🔜 |
-| **Phase 3** — Registre | Registre sinistrés, validation, QR aides | 🔜 |
-| **Phase 4** — Terrain | Sync avancée, offline, USSD, Android bas de gamme | 🔜 |
-| **Phase 5** — Ouverture | Portail public HXL, audit sécurité | 🔜 |
+| **Phase 0** — Fondations | Monorepo, types, BD, auth RBAC, P-codes, seeds | ✅ Terminé |
+| **Phase 1** — MVP | Signalement web+mobile offline, carte, dashboard | ✅ Terminé |
+| **Phase 2** — Alerte | Ingestion (ReliefWeb+météo), IA, CAP+push+SMS | ✅ Terminé |
+| **Phase 3** — Registre | Registre sinistrés, validation, QR aides | ✅ Terminé |
+| **Phase 4** — Terrain | Sync avancée, offline, USSD, Android bas de gamme | ✅ Terminé |
+| **Phase 5** — Ouverture | Portail public HXL, audit sécurité | ✅ Terminé |
 
 ## Sécurité
 
