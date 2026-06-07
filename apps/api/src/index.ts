@@ -14,6 +14,8 @@ import { dashboardRoutes } from './routes/dashboard.js';
 import { mediaRoutes } from './routes/media.js';
 import { alertRoutes } from './routes/alerts.js';
 import { predictionRoutes } from './routes/predictions.js';
+import { registryRoutes } from './routes/registry.js';
+import { aidRoutes } from './routes/aids.js';
 import { registerClient } from './websocket/broadcast.js';
 
 const fastify = Fastify({
@@ -54,6 +56,8 @@ await fastify.register(dashboardRoutes);
 await fastify.register(mediaRoutes);
 await fastify.register(alertRoutes);
 await fastify.register(predictionRoutes);
+await fastify.register(registryRoutes);
+await fastify.register(aidRoutes);
 
 // WebSocket : flux temps réel des événements et alertes
 fastify.get('/ws', { websocket: true }, (socket, request) => {
@@ -74,7 +78,7 @@ fastify.get('/ws', { websocket: true }, (socket, request) => {
 // Health check
 fastify.get('/health', async () => {
   await checkDatabaseConnection();
-  return { status: 'ok', timestamp: new Date().toISOString(), version: '0.2.0-phase2' };
+  return { status: 'ok', timestamp: new Date().toISOString(), version: '0.3.0-phase3' };
 });
 
 fastify.setErrorHandler((error, _request, reply) => {

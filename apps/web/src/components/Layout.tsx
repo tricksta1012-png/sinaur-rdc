@@ -3,10 +3,12 @@ import { useAuthStore } from '../stores/auth.js';
 import { OfflineIndicator } from './OfflineIndicator.js';
 
 const NAV_ITEMS = [
-  { to: '/dashboard', label: 'Tableau de bord', icon: '📊' },
-  { to: '/map',       label: 'Carte',            icon: '🗺️' },
-  { to: '/events',    label: 'Événements',        icon: '⚠️' },
-  { to: '/report',    label: 'Signaler',          icon: '📢' },
+  { to: '/dashboard',     label: 'Tableau de bord',   icon: '📊' },
+  { to: '/map',           label: 'Carte',              icon: '🗺️' },
+  { to: '/events',        label: 'Événements',         icon: '⚠️' },
+  { to: '/report',        label: 'Signaler',           icon: '📢' },
+  { to: '/registry',      label: 'Registre',           icon: '👥' },
+  { to: '/distributions', label: 'Distributions',      icon: '📦' },
 ] as const;
 
 export function Layout() {

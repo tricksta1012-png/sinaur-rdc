@@ -6,6 +6,9 @@ import { DashboardPage } from './pages/DashboardPage.js';
 import { MapPage } from './pages/MapPage.js';
 import { ReportPage } from './pages/ReportPage.js';
 import { EventsPage } from './pages/EventsPage.js';
+import { RegistryPage } from './pages/RegistryPage.js';
+import { BeneficiaryFormPage } from './pages/BeneficiaryFormPage.js';
+import { DistributionsPage } from './pages/DistributionsPage.js';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -29,6 +32,9 @@ export default function App() {
         <Route path="map" element={<MapPage />} />
         <Route path="report" element={<ReportPage />} />
         <Route path="events" element={<EventsPage />} />
+        <Route path="registry" element={<RegistryPage />} />
+        <Route path="registry/new" element={<BeneficiaryFormPage />} />
+        <Route path="distributions" element={<DistributionsPage />} />
       </Route>
     </Routes>
   );

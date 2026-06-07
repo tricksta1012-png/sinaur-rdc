@@ -1,8 +1,6 @@
 /**
  * Routes de gestion des alertes CAP 1.2 — SINAUR-RDC.
- *
- * Sécurité §9 : validation humaine obligatoire pour alertes critiques.
- * Toutes les actions sont auditées via writeAuditLog.
+ * Validation humaine obligatoire pour alertes critiques (spec §5).
  */
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
@@ -18,7 +16,7 @@ const CreateAlertSchema = z.object({
   instruction: z.string().min(10).max(1000),
   pcode: z.string().regex(/^(CD\d{2}|COD)$/),
   expiresAt: z.string().datetime().optional(),
-  aiAlertId: z.string().uuid().optional(), // Lien vers la prédiction IA source
+  aiAlertId: z.string().uuid().optional(),
 })
 
 const UpdateAlertSchema = z.object({
@@ -28,31 +26,24 @@ const UpdateAlertSchema = z.object({
 
 export async function alertRoutes(fastify: FastifyInstance) {
   // Lister les alertes actives (filtrées par scope)
-  fastify.get('/alerts', {
-    preHandler: requireAuth(fastify),
-  }, async (request, reply) => {
-    const user = (request as any).user
+  fastify.get('/alerts', { preHandler: [requireAuth] }, async (request, reply) => {
+    const user = request.jwtUser
     const query = request.query as Record<string, string>
     const page = Math.max(1, parseInt(query.page ?? '1'))
     const limit = Math.min(100, parseInt(query.limit ?? '20'))
     const offset = (page - 1) * limit
     const status = query.status ?? 'actual'
-    const pcode = query.pcode
+
+    const isAdmin = user.role === 'system_admin' || user.role === 'national_decision_maker'
 
     const rows = await sql`
       SELECT
         id, identifier, sender, status, msg_type, scope,
-        info, sent_at, validated_at, validated_by,
-        (SELECT COUNT(*) FROM alert_deliveries WHERE alert_id = cap_alerts.id) AS delivery_count
+        info, sent_at, validated_at, validated_by
       FROM cap_alerts
       WHERE status = ${status}
-        AND (
-          ${user.role === 'system_admin' || user.role === 'national_decision_maker'
-            ? sql`TRUE`
-            : sql`info->>'pcode' = ANY(${user.scope}::text[]) OR ${user.scope}::text[] = '{}'`
-          }
-        )
-        ${pcode ? sql`AND info->>'pcode' = ${pcode}` : sql``}
+        ${isAdmin ? sql`` : sql`AND (info->>'pcode' = ANY(${user.scope}::text[]) OR ${user.scope}::text[] = '{}')`}
+        ${query.pcode ? sql`AND info->>'pcode' = ${query.pcode}` : sql``}
       ORDER BY sent_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `
@@ -68,15 +59,13 @@ export async function alertRoutes(fastify: FastifyInstance) {
     })
   })
 
-  // Détail d'une alerte avec son XML CAP
-  fastify.get('/alerts/:id', {
-    preHandler: requireAuth(fastify),
-  }, async (request, reply) => {
+  // Détail d'une alerte avec deliveries
+  fastify.get('/alerts/:id', { preHandler: [requireAuth] }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const rows = await sql`
       SELECT
         ca.*,
-        u.name AS validated_by_name,
+        u.display_name AS validated_by_name,
         COALESCE(
           JSON_AGG(
             JSON_BUILD_OBJECT(
@@ -92,23 +81,20 @@ export async function alertRoutes(fastify: FastifyInstance) {
       LEFT JOIN users u ON ca.validated_by = u.id
       LEFT JOIN alert_deliveries ad ON ad.alert_id = ca.id
       WHERE ca.id = ${id}::uuid
-      GROUP BY ca.id, u.name
+      GROUP BY ca.id, u.display_name
     `
-
     if (rows.length === 0) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Alerte introuvable' } })
     }
-
     return reply.send({ success: true, data: rows[0] })
   })
 
-  // Créer une alerte manuelle (coordinateurs et au-dessus)
+  // Créer une alerte manuelle
   fastify.post('/alerts', {
-    preHandler: requireRole(fastify, ['system_admin', 'national_decision_maker', 'provincial_coordinator']),
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator')],
   }, async (request, reply) => {
-    const user = (request as any).user
+    const user = request.jwtUser
     const body = CreateAlertSchema.parse(request.body)
-
     const isCritical = body.level === 'critical'
     const alertStatus = isCritical ? 'pending_validation' : 'actual'
     const expiresAt = body.expiresAt ?? new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
@@ -138,11 +124,9 @@ export async function alertRoutes(fastify: FastifyInstance) {
       RETURNING id, identifier, status, info, sent_at
     `
 
-    await writeAuditLog(sql, user.sub, 'create_alert', 'cap_alerts', row.id, null, { level: body.level, pcode: body.pcode })
+    await writeAuditLog(user.sub, 'create_alert', 'cap_alerts', row.id, request, { level: body.level, pcode: body.pcode })
 
-    if (!isCritical) {
-      broadcastAlert(row)
-    }
+    if (!isCritical) broadcastAlert(row)
 
     return reply.status(201).send({
       success: true,
@@ -155,18 +139,16 @@ export async function alertRoutes(fastify: FastifyInstance) {
 
   // Valider une alerte critique (decision_maker uniquement)
   fastify.patch('/alerts/:id/validate', {
-    preHandler: requireRole(fastify, ['system_admin', 'national_decision_maker']),
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker')],
   }, async (request, reply) => {
-    const user = (request as any).user
+    const user = request.jwtUser
     const { id } = request.params as { id: string }
     const body = z.object({
       action: z.enum(['approve', 'reject']),
       comment: z.string().max(500).optional(),
     }).parse(request.body)
 
-    const rows = await sql`
-      SELECT id, info, status FROM cap_alerts WHERE id = ${id}::uuid LIMIT 1
-    `
+    const rows = await sql`SELECT id, info, status FROM cap_alerts WHERE id = ${id}::uuid LIMIT 1`
     if (rows.length === 0) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Alerte introuvable' } })
     }
@@ -185,16 +167,19 @@ export async function alertRoutes(fastify: FastifyInstance) {
       RETURNING id, status, info, validated_at
     `
 
-    await writeAuditLog(sql, user.sub, `alert_${body.action}`, 'cap_alerts', id, rows[0], { comment: body.comment })
+    await writeAuditLog(user.sub, `alert_${body.action}`, 'cap_alerts', id, request, { comment: body.comment })
 
     if (body.action === 'approve') {
       broadcastAlert(updated)
-      // Déclencher la diffusion push+SMS via le service alerting
       try {
         const { default: axios } = await import('axios')
-        await axios.post(`${process.env.ALERTING_SERVICE_URL ?? 'http://alerting:3001'}/dispatch/${id}`, {}, { timeout: 5000 })
+        await axios.post(
+          `${process.env.ALERTING_SERVICE_URL ?? 'http://alerting:3001'}/dispatch/${id}`,
+          {},
+          { timeout: 5000 },
+        )
       } catch (e) {
-        fastify.log.warn({ alertId: id, err: e }, 'Could not trigger alerting service dispatch')
+        fastify.log.warn({ alertId: id, err: e }, 'Could not trigger alerting dispatch')
       }
     }
 
@@ -207,25 +192,15 @@ export async function alertRoutes(fastify: FastifyInstance) {
 
   // Annuler / mettre à jour une alerte
   fastify.patch('/alerts/:id', {
-    preHandler: requireRole(fastify, ['system_admin', 'national_decision_maker', 'provincial_coordinator']),
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator')],
   }, async (request, reply) => {
-    const user = (request as any).user
+    const user = request.jwtUser
     const { id } = request.params as { id: string }
     const body = UpdateAlertSchema.parse(request.body)
 
     const rows = await sql`SELECT id, status FROM cap_alerts WHERE id = ${id}::uuid LIMIT 1`
     if (rows.length === 0) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Alerte introuvable' } })
-    }
-
-    const updates: Record<string, any> = {}
-    if (body.status) updates.status = body.status
-    if (body.instruction) {
-      updates.info = sql`info || ${JSON.stringify({ instruction: body.instruction })}::jsonb`
-    }
-
-    if (Object.keys(updates).length === 0) {
-      return reply.status(400).send({ success: false, error: { code: 'NO_CHANGES', message: 'Aucune modification' } })
     }
 
     const [updated] = await sql`
@@ -239,14 +214,14 @@ export async function alertRoutes(fastify: FastifyInstance) {
       RETURNING id, status, info, sent_at
     `
 
-    await writeAuditLog(sql, user.sub, 'update_alert', 'cap_alerts', id, rows[0], body)
+    await writeAuditLog(user.sub, 'update_alert', 'cap_alerts', id, request, body)
 
     return reply.send({ success: true, data: updated })
   })
 
-  // Alertes en attente de validation (pour le tableau de bord décisionnel)
+  // Alertes en attente de validation
   fastify.get('/alerts/pending-validation', {
-    preHandler: requireRole(fastify, ['system_admin', 'national_decision_maker']),
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker')],
   }, async (_request, reply) => {
     const rows = await sql`
       SELECT id, identifier, info, sent_at
