@@ -137,6 +137,7 @@ pnpm dev
 | **Phase 12** — Backoffice admin | Gestion utilisateurs (CRUD), journal d'audit filtrable + export CSV, RBAC sidebar | ✅ Terminé |
 | **Phase 13** — Push FCM & profil | Pipeline push FCM corrige (sync_devices), GET/PATCH /users/me, ProfileScreen mobile | ✅ Terminé |
 | **Phase 14** — Reset mot de passe | POST /auth/forgot-password + reset-password (OTP), ForgotPasswordPage web, lien mobile | ✅ Terminé |
+| **Phase 15** — Tests phases 12-14 | Vitest : admin/users (CRUD+RBAC), auth-reset (OTP+enumeration), profile (GET+PATCH) | ✅ Terminé |
 
 ## Déploiement souverain
 
