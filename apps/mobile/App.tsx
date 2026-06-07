@@ -14,6 +14,7 @@ import { SyncStatusScreen } from './src/screens/SyncStatusScreen.js';
 import { SettingsScreen } from './src/screens/SettingsScreen.js';
 import { LoginScreen } from './src/screens/LoginScreen.js';
 import { MapScreen } from './src/screens/MapScreen.js';
+import { ProfileScreen } from './src/screens/ProfileScreen.js';
 import { AppSettingsProvider } from './src/context/AppSettingsContext.js';
 import { AuthProvider, useAuth } from './src/context/AuthContext.js';
 import { setupNotificationListeners, registerPushToken, type RootTabParamList } from './src/notifications/index.js';
@@ -124,6 +125,15 @@ function MainTabs() {
           title: 'Paramètres',
           tabBarLabel: 'Réglages',
           tabBarIcon: ({ focused }) => <TabIcon icon="⚙️" focused={focused} />,
+        }}
+      />
+      <Tab.Screen
+        name="Profil"
+        component={ProfileScreen}
+        options={{
+          title: 'Mon profil',
+          tabBarLabel: 'Profil',
+          tabBarIcon: ({ focused }) => <TabIcon icon="👤" focused={focused} />,
         }}
       />
     </Tab.Navigator>

@@ -14,6 +14,7 @@ export type RootTabParamList = {
   Carte: undefined;
   Sync: undefined;
   Parametres: undefined;
+  Profil: undefined;
 };
 
 type NotificationData = {

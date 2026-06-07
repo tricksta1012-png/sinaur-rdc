@@ -62,30 +62,33 @@ export async function sendPushAlert(payload: PushPayload): Promise<void> {
     return
   }
 
-  // Récupérer les tokens FCM des utilisateurs concernés par la zone
-  const tokens: { fcmToken: string }[] = await sql`
-    SELECT fcm_token
-    FROM users
-    WHERE fcm_token IS NOT NULL
-      AND is_active = true
+  // Tokens depuis sync_devices (appareils mobiles enregistrés)
+  // Ciblage géographique : devices dont location_scope couvre le pcode de l'alerte
+  const deviceTokenRows: { pushToken: string }[] = await sql`
+    SELECT DISTINCT sd.push_token
+    FROM sync_devices sd
+    JOIN users u ON u.id = sd.user_id
+    WHERE sd.push_token IS NOT NULL
+      AND u.is_active = true
+      AND u.deleted_at IS NULL
       AND (
-        geographic_scope_pcodes IS NULL
-        OR geographic_scope_pcodes = '{}'
+        sd.location_scope IS NULL
+        OR sd.location_scope = '{}'
         OR EXISTS (
-          SELECT 1 FROM unnest(geographic_scope_pcodes) AS scope
+          SELECT 1 FROM unnest(sd.location_scope) AS scope
           WHERE ${payload.pcode} LIKE scope || '%'
-          OR scope LIKE ${payload.pcode} || '%'
+             OR scope LIKE ${payload.pcode} || '%'
         )
       )
     LIMIT 500
   `
 
-  if (tokens.length === 0) {
+  if (deviceTokenRows.length === 0) {
     logger.info({ pcode: payload.pcode }, 'No FCM tokens for zone — push skipped')
     return
   }
 
-  const fcmTokens = tokens.map(t => t.fcmToken)
+  const fcmTokens = deviceTokenRows.map(t => t.pushToken)
 
   const message = {
     notification: {
@@ -132,7 +135,7 @@ export async function sendPushAlert(payload: PushPayload): Promise<void> {
       VALUES (${payload.alertId}::uuid, 'push', ${response.successCount}, 'delivered', NOW())
     `
 
-    // Nettoyer les tokens invalides (404 → token révoqué)
+    // Nettoyer les tokens invalides (404 → token révoqué sur sync_devices)
     const invalidTokens = response.responses
       .map((r, i) => ({ r, token: fcmTokens[i] }))
       .filter(({ r }) => !r.success && r.error?.code === 'messaging/registration-token-not-registered')
@@ -140,10 +143,10 @@ export async function sendPushAlert(payload: PushPayload): Promise<void> {
 
     if (invalidTokens.length > 0) {
       await sql`
-        UPDATE users SET fcm_token = NULL
-        WHERE fcm_token = ANY(${invalidTokens})
+        UPDATE sync_devices SET push_token = NULL
+        WHERE push_token = ANY(${invalidTokens})
       `
-      logger.info({ count: invalidTokens.length }, 'Cleaned up invalid FCM tokens')
+      logger.info({ count: invalidTokens.length }, 'Cleaned up invalid FCM tokens from sync_devices')
     }
   } catch (e) {
     logger.error({ err: e, alertId: payload.alertId }, 'FCM send failed')

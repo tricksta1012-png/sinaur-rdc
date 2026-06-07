@@ -135,6 +135,7 @@ pnpm dev
 | **Phase 10** — Déploiement souverain | Nginx reverse proxy SSL, scripts backup/restore/deploy/healthcheck, OpenAPI | ✅ Terminé |
 | **Phase 11** — Mobile complet | Auth+biométrie, carte OSM+marqueurs, deep-link notifications, cache offline | ✅ Terminé |
 | **Phase 12** — Backoffice admin | Gestion utilisateurs (CRUD), journal d'audit filtrable + export CSV, RBAC sidebar | ✅ Terminé |
+| **Phase 13** — Push FCM & profil | Pipeline push FCM corrige (sync_devices), GET/PATCH /users/me, ProfileScreen mobile | ✅ Terminé |
 
 ## Déploiement souverain
 
