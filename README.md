@@ -133,6 +133,7 @@ pnpm dev
 | **Phase 8** — Observabilité | `@sinaur/metrics` Prometheus, Grafana dashboards, `docker-compose.prod.yml` | ✅ Terminé |
 | **Phase 9** — Tests & qualité | Suite Vitest : sécurité, RBAC, public routes (PII check), sync conflicts, delta | ✅ Terminé |
 | **Phase 10** — Déploiement souverain | Nginx reverse proxy SSL, scripts backup/restore/deploy/healthcheck, OpenAPI | ✅ Terminé |
+| **Phase 11** — Mobile complet | Auth+biométrie, carte OSM+marqueurs, deep-link notifications, cache offline | ✅ Terminé |
 
 ## Déploiement souverain
 

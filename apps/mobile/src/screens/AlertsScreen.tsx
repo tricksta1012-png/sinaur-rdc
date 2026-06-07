@@ -1,8 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../lib/api.js';
 import { useOfflineSync } from '../hooks/useOfflineSync.js';
 import type { DisasterEvent } from '@sinaur/shared-types';
+
+const CACHE_KEY = 'sinaur_cached_events';
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 heures
 
 const HAZARD_ICONS: Record<string, string> = {
   flood: '🌊', landslide: '⛰️', mass_displacement: '🏃',
@@ -43,17 +47,43 @@ function EventCard({ item }: { item: DisasterEvent }) {
 }
 
 export function AlertsScreen() {
-  const [events, setEvents] = useState<DisasterEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [events, setEvents]       = useState<DisasterEvent[]>([]);
+  const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [fromCache, setFromCache] = useState(false);
   const { isOnline, pendingCount } = useOfflineSync();
+
+  const loadFromCache = async (): Promise<DisasterEvent[] | null> => {
+    try {
+      const raw = await AsyncStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      const { data, timestamp } = JSON.parse(raw) as { data: DisasterEvent[]; timestamp: number };
+      if (Date.now() - timestamp > CACHE_TTL_MS) return null;
+      return data;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveToCache = async (data: DisasterEvent[]) => {
+    try {
+      await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
+    } catch {}
+  };
 
   const fetchEvents = async () => {
     try {
       const { data } = await api.get<{ data: DisasterEvent[] }>('/events?limit=30&page=1');
-      setEvents(data.data ?? []);
+      const fetched = data.data ?? [];
+      setEvents(fetched);
+      setFromCache(false);
+      await saveToCache(fetched);
     } catch {
-      // Données en cache (lecture offline non implémentée ici — Phase 4)
+      const cached = await loadFromCache();
+      if (cached) {
+        setEvents(cached);
+        setFromCache(true);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -68,6 +98,11 @@ export function AlertsScreen() {
       <View style={styles.statusBar}>
         <View style={[styles.statusDot, { backgroundColor: isOnline ? '#22c55e' : '#f97316' }]} />
         <Text style={styles.statusText}>{isOnline ? 'Connecté' : 'Hors ligne'}</Text>
+        {fromCache && (
+          <View style={[styles.pendingBadge, { backgroundColor: '#eff6ff' }]}>
+            <Text style={[styles.pendingText, { color: '#1d4ed8' }]}>données en cache</Text>
+          </View>
+        )}
         {pendingCount > 0 && (
           <View style={styles.pendingBadge}>
             <Text style={styles.pendingText}>{pendingCount} en attente</Text>
