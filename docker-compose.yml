@@ -1,0 +1,79 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: sinaur-postgres
+    environment:
+      POSTGRES_USER: sinaur
+      POSTGRES_PASSWORD: sinaur_secret
+      POSTGRES_DB: sinaur_rdc
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U sinaur -d sinaur_rdc']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: sinaur-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: sinaur-api
+    environment:
+      DATABASE_URL: postgresql://sinaur:sinaur_secret@postgres:5432/sinaur_rdc
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-dev_secret_change_in_production_min_32_chars}
+      NODE_ENV: ${NODE_ENV:-development}
+      API_PORT: 3000
+      RELIEFWEB_APP_NAME: sinaur-rdc
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - full
+
+  ai-prediction:
+    build:
+      context: services/ai-prediction
+      dockerfile: Dockerfile
+    container_name: sinaur-ai
+    environment:
+      DATABASE_URL: postgresql://sinaur:sinaur_secret@postgres:5432/sinaur_rdc
+      REDIS_URL: redis://redis:6379
+    ports:
+      - '8000:8000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - full
+
+volumes:
+  postgres_data:
+  redis_data:

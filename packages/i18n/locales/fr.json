@@ -1,0 +1,38 @@
+{
+  "nav.dashboard": "Tableau de bord",
+  "nav.map": "Carte",
+  "nav.events": "Événements",
+  "nav.report": "Signaler",
+
+  "alert.flood": "Inondation",
+  "alert.landslide": "Glissement de terrain",
+  "alert.mass_displacement": "Déplacement massif de populations",
+  "alert.humanitarian_crisis": "Crise humanitaire",
+  "alert.health_epidemic": "Épidémie / Risque sanitaire",
+  "alert.volcanic_eruption": "Éruption volcanique",
+  "alert.drought": "Sécheresse",
+  "alert.fire": "Incendie",
+  "alert.conflict": "Conflit armé",
+  "alert.earthquake": "Tremblement de terre",
+  "alert.other": "Autre",
+
+  "severity.Minor": "Mineure",
+  "severity.Moderate": "Modérée",
+  "severity.Severe": "Sévère",
+  "severity.Extreme": "Extrême",
+  "severity.Unknown": "Inconnue",
+
+  "action.report": "Signaler",
+  "action.validate": "Valider",
+  "action.cancel": "Annuler",
+  "action.submit": "Envoyer",
+
+  "report.title": "Titre de l'événement",
+  "report.description": "Description",
+  "report.location": "Localisation",
+  "report.submit_success": "Signalement envoyé avec succès",
+
+  "error.unauthorized": "Accès non autorisé",
+  "error.network": "Erreur réseau. Vérifiez votre connexion.",
+  "error.generic": "Une erreur s'est produite. Veuillez réessayer."
+}
