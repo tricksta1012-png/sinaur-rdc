@@ -29,7 +29,7 @@ CREATE TABLE resource_stocks (
   quantity_available   NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK (quantity_available >= 0),
   quantity_reserved    NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK (quantity_reserved >= 0),
   minimum_threshold    NUMERIC(14,2) NOT NULL DEFAULT 0,
-  crisis_id            UUID REFERENCES crises(id),
+  crisis_id            UUID REFERENCES crisis_events(id),
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (depot_id, resource_name)

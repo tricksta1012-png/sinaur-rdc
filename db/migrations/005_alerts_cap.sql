@@ -18,7 +18,7 @@ CREATE TABLE cap_alerts (
   addresses         TEXT,
   code              TEXT[],
   note              TEXT,
-  references        TEXT,
+  "references"      TEXT,
   incidents         TEXT,
   -- Bloc <info> principal (FR), stocké en JSON pour flexibilité CAP
   info              JSONB         NOT NULL DEFAULT '[]',

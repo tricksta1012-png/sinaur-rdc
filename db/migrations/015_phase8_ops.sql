@@ -23,9 +23,9 @@ $$;
 -- Vue pour compter la file courante
 CREATE OR REPLACE VIEW v_alert_queue_depth AS
 SELECT
-  COUNT(*) FILTER (WHERE status = 'pending')                          AS total,
-  COUNT(*) FILTER (WHERE status = 'pending' AND severity = 'Extreme') AS extreme,
-  COUNT(*) FILTER (WHERE status = 'pending' AND severity = 'Severe')  AS severe,
-  COUNT(*) FILTER (WHERE status = 'pending' AND severity = 'Moderate')AS moderate
+  COUNT(*) FILTER (WHERE status = 'Draft')                                                       AS total,
+  COUNT(*) FILTER (WHERE status = 'Draft' AND info->0->>'severity' = 'Extreme')                  AS extreme,
+  COUNT(*) FILTER (WHERE status = 'Draft' AND info->0->>'severity' = 'Severe')                   AS severe,
+  COUNT(*) FILTER (WHERE status = 'Draft' AND info->0->>'severity' = 'Moderate')                 AS moderate
 FROM cap_alerts
-WHERE sent_at > NOW() - INTERVAL '48 hours';
+WHERE sent > NOW() - INTERVAL '48 hours';

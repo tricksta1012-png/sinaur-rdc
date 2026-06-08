@@ -17,7 +17,7 @@ SELECT
   COALESCE(COUNT(DISTINCT e.id) FILTER (
     WHERE e.created_at >= NOW() - INTERVAL '7 days' AND e.is_public = TRUE
   ), 0)::int AS events_7d,
-  COALESCE(COUNT(DISTINCT a.id) FILTER (WHERE a.status = 'actual'), 0)::int AS active_alerts,
+  COALESCE(COUNT(DISTINCT a.id) FILTER (WHERE a.status = 'Actual'), 0)::int AS active_alerts,
   MAX(e.created_at) AS last_event_at
 FROM admin_divisions d
 LEFT JOIN disaster_events e ON e.location_pcode LIKE d.pcode || '%'

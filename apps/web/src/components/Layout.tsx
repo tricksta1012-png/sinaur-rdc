@@ -2,7 +2,7 @@ import { Outlet, NavLink } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth.js';
 import { OfflineIndicator } from './OfflineIndicator.js';
 import { LanguageSelector } from './LanguageSelector.js';
-import { I18nProvider } from '@sinaur-rdc/i18n/react';
+import { I18nProvider } from '@sinaur/i18n/react';
 
 const NAV_ITEMS = [
   { to: '/dashboard',     label: 'Tableau de bord',   icon: '📊' },

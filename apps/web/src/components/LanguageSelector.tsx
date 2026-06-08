@@ -1,5 +1,5 @@
-import { useTranslation } from '@sinaur-rdc/i18n/react'
-import type { SupportedLocale } from '@sinaur-rdc/i18n'
+import { useTranslation } from '@sinaur/i18n/react'
+import type { SupportedLocale } from '@sinaur/i18n'
 
 const LOCALES: { code: SupportedLocale; label: string; flag: string }[] = [
   { code: 'fr',  label: 'Français',   flag: '🇫🇷' },

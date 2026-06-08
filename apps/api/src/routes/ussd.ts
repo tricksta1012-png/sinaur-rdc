@@ -6,8 +6,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { sql } from '../db.js'
-import { requireAuth, requireRole } from '../middleware/auth.js'
-import { writeAuditLog } from '../middleware/audit.js'
+import { requireAuth, requireRole, writeAuditLog } from '../auth/jwt.js'
 
 export async function ussdRoutes(fastify: FastifyInstance) {
 

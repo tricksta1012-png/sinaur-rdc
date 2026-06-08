@@ -78,7 +78,7 @@ export async function resourceRoutes(fastify: FastifyInstance) {
     const stocks = await sql`
       SELECT s.*, c.glide_number AS crisis_glide
       FROM resource_stocks s
-      LEFT JOIN crises c ON c.id = s.crisis_id
+      LEFT JOIN crisis_events c ON c.id = s.crisis_id
       WHERE s.depot_id = ${id}::uuid
       ORDER BY s.resource_type, s.resource_name
     `
