@@ -8,6 +8,7 @@ const NAV = [
   { to: '/crises',       icon: '🚨',  label: 'Gestion des crises'   },
   { to: '/coordination', icon: '🤝',  label: 'Coordination'         },
   { to: '/rapports',     icon: '📄',  label: 'Rapports SitRep'      },
+  { to: '/stocks',       icon: '📦',  label: 'Stocks humanitaires'  },
 ];
 
 export function CCLayout() {

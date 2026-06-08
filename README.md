@@ -143,6 +143,7 @@ pnpm dev
 | **Phase 18** — Release v1.0.0 | Version bump, tag git v1.0.0, déploiement souverain | ✅ Terminé |
 | **Phase 19** — Stocks humanitaires | Dépôts, stocks (9 types), mouvements entrée/sortie, alertes seuil minimum, UI web | ✅ Terminé |
 | **Phase 20** — Tests stocks humanitaires | Vitest : dépôts (CRUD+RBAC), stocks (upsert+validation), mouvements (in/out/transfer/adjustment+409), historique paginé, alertes seuil | ✅ Terminé |
+| **Phase 21** — Dashboard stocks command center | KPIs, carte MapLibre dépôts colorés par statut, alertes seuil, détail dépôt (inventaire+barres+mouvements), nav sidebar | ✅ Terminé |
 
 ## Déploiement souverain
 
