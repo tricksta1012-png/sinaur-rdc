@@ -18,6 +18,7 @@ export function signToken(payload: Partial<JwtPayload> & { role: UserRole }): st
 export const adminToken   = () => signToken({ role: 'system_admin' })
 export const agentToken   = () => signToken({ role: 'field_agent', scope: ['CD-NK'] })
 export const deciderToken = () => signToken({ role: 'national_decision_maker' })
+export const partnerToken = () => signToken({ role: 'humanitarian_partner' })
 export const govToken     = (scope: string[] = ['CD-KN']) =>
   signToken({ role: 'territory_admin', scope })
 
