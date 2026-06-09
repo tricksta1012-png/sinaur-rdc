@@ -30,7 +30,10 @@ import { profileRoutes } from './routes/profile.js'
 import { webhookRoutes } from './routes/webhooks.js'
 import { resourceRoutes } from './routes/resources.js'
 import { demandsRoutes } from './routes/demands.js'
+import { veilleRoutes } from './routes/veille.js'
+import { antifraudRoutes } from './routes/antifraud.js'
 import { logSecurityEvent } from './auth/security.js'
+import { aiHealthCheck } from './services/aiClient.js'
 import { registerClient } from './websocket/broadcast.js'
 import { registerMetrics } from '@sinaur/metrics'
 
@@ -131,6 +134,8 @@ export async function createApp(): Promise<FastifyInstance> {
   await fastify.register(webhookRoutes)
   await fastify.register(resourceRoutes)
   await fastify.register(demandsRoutes)
+  await fastify.register(veilleRoutes)
+  await fastify.register(antifraudRoutes)
 
   fastify.get('/ws', { websocket: true }, (socket, request) => {
     let scope: string[] = []
@@ -146,8 +151,17 @@ export async function createApp(): Promise<FastifyInstance> {
   })
 
   fastify.get('/health', async () => {
-    await checkDatabaseConnection()
-    return { status: 'ok', timestamp: new Date().toISOString(), version: '1.0.0' }
+    const [, aiOk] = await Promise.allSettled([
+      checkDatabaseConnection(),
+      aiHealthCheck(),
+    ])
+    const aiStatus = aiOk.status === 'fulfilled' && aiOk.value ? 'ok' : 'unreachable'
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      version: '1.0.0',
+      services: { database: 'ok', ai_prediction: aiStatus },
+    }
   })
 
   fastify.setErrorHandler((error, request, reply) => {

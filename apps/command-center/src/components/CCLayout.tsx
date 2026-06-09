@@ -9,6 +9,7 @@ const NAV = [
   { to: '/coordination', icon: '🤝',  label: 'Coordination'         },
   { to: '/rapports',     icon: '📄',  label: 'Rapports SitRep'      },
   { to: '/stocks',       icon: '📦',  label: 'Stocks humanitaires'  },
+  { to: '/ai',           icon: '🤖',  label: 'Intelligence Artif.'  },
 ];
 
 export function CCLayout() {

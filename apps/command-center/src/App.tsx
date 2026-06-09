@@ -6,7 +6,8 @@ import { OpsRoomPage } from './pages/OpsRoomPage.js';
 import { CrisesPage } from './pages/CrisesPage.js';
 import { CoordinationPage } from './pages/CoordinationPage.js';
 import { RapportsPage } from './pages/RapportsPage.js';
-import { StocksPage } from './pages/StocksPage.js';
+import { StocksPage } from './pages/StocksPage.js'
+import { AiPage } from './pages/AiPage.js';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="coordination" element={<CoordinationPage />} />
         <Route path="rapports"     element={<RapportsPage />} />
         <Route path="stocks"       element={<StocksPage />} />
+        <Route path="ai"           element={<AiPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/ops" replace />} />
     </Routes>

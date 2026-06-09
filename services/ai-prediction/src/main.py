@@ -13,6 +13,9 @@ from fastapi.responses import JSONResponse
 
 from .config import settings
 from .api.predictions import router as predictions_router
+from .api.internal import router as internal_router
+from .api.veille import router as veille_router
+from .api.antifraud import router as antifraud_router
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -72,3 +75,6 @@ def health():
 
 
 app.include_router(predictions_router)
+app.include_router(internal_router)
+app.include_router(veille_router)
+app.include_router(antifraud_router)

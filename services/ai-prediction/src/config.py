@@ -7,7 +7,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
     model_store_path: str = str(Path(__file__).parent.parent / "model_store")
     log_level: str = "INFO"
-    api_key: str = ""  # Optionnel — pour sécuriser le service interne
+    api_key: str = ""
+    internal_api_key: str = "dev-internal-key"
 
     class Config:
         env_file = "../../.env"
