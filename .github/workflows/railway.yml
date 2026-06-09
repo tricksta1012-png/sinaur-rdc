@@ -1,0 +1,45 @@
+name: Deploy to Railway
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy ${{ matrix.service.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        service:
+          - name: api
+            service_id_secret: RAILWAY_SERVICE_API_ID
+          - name: ai-prediction
+            service_id_secret: RAILWAY_SERVICE_AI_ID
+          - name: command-center
+            service_id_secret: RAILWAY_SERVICE_CC_ID
+          - name: public
+            service_id_secret: RAILWAY_SERVICE_PUBLIC_ID
+          - name: alerting
+            service_id_secret: RAILWAY_SERVICE_ALERTING_ID
+          - name: ingestion
+            service_id_secret: RAILWAY_SERVICE_INGESTION_ID
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy ${{ matrix.service.name }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SERVICE_ID: ${{ secrets[matrix.service.service_id_secret] }}
+        run: |
+          if [ -n "$SERVICE_ID" ]; then
+            railway redeploy --service "$SERVICE_ID" --yes
+          else
+            echo "⚠️  ${{ matrix.service.name }}: RAILWAY_SERVICE_${{ matrix.service.name }}_ID not set, skipping."
+          fi
