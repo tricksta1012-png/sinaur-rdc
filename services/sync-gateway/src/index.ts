@@ -181,7 +181,7 @@ fastify.post('/sync/push', {
       const serverId = response.data?.data?.id ?? undefined
       results.push({ id: item.id, status: 'synced', serverId })
     } catch (err: unknown) {
-      const result = classifyAxiosError(err, item)
+      const result = classifyAxiosError(err, item as import('./conflicts.js').SyncItem)
       results.push(result)
 
       if (result.status === 'conflict') {
@@ -237,7 +237,7 @@ fastify.get('/sync/status', { preHandler: [requireAuth] }, async (request) => {
     WHERE device_id = ${deviceId} AND resolution = 'pending'
   `
 
-  return { success: true, data: { ...device, pendingConflicts: conflicts.count } }
+  return { success: true, data: { ...device, pendingConflicts: conflicts?.count ?? 0 } }
 })
 
 // ── Conflits en attente ───────────────────────────────────────────────────────
@@ -255,7 +255,8 @@ fastify.get('/sync/conflicts', { preHandler: [requireAuth] }, async (request) =>
     ORDER BY created_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `
-  const [{ total }] = await sql`SELECT COUNT(*)::int AS total FROM sync_conflicts WHERE resolution = 'pending'`
+  const countRows = await sql`SELECT COUNT(*)::int AS total FROM sync_conflicts WHERE resolution = 'pending'`
+  const total = countRows[0]?.total ?? 0
 
   return { success: true, data: rows, meta: { total, page, limit } }
 })

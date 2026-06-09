@@ -27,10 +27,10 @@ jobs:
             context: .
             dockerfile: services/sync-gateway/Dockerfile
           - service: alerting
-            context: services/alerting
+            context: .
             dockerfile: services/alerting/Dockerfile
           - service: ussd
-            context: services/ussd
+            context: .
             dockerfile: services/ussd/Dockerfile
           - service: ai-prediction
             context: services/ai-prediction

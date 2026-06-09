@@ -21,7 +21,7 @@ export async function buildDelta(
 
   // Alertes CAP publiques
   if (types.includes('alerts') || types.includes('all')) {
-    result.alerts = await sql`
+    result.alerts = [...await sql`
       SELECT
         identifier, sent_at, status, msg_type, scope,
         info->>'urgency'   AS urgency,
@@ -35,13 +35,13 @@ export async function buildDelta(
         AND scope = 'Public'
       ORDER BY sent_at DESC
       LIMIT ${DELTA_LIMIT}
-    `
+    `]
   }
 
   // Événements catastrophes (filtrés par scope si disponible)
   if (types.includes('events') || types.includes('all')) {
     if (inScope) {
-      result.events = await sql`
+      result.events = [...await sql`
         SELECT id, title, hazard_type, severity, status, source,
                location_pcode, created_at, updated_at
         FROM disaster_events
@@ -51,33 +51,33 @@ export async function buildDelta(
                AND location_pcode LIKE ANY(${sql.array(scopePcodes.map(p => `${p}%`))}))
         ORDER BY updated_at DESC
         LIMIT ${DELTA_LIMIT}
-      `
+      `]
     } else {
-      result.events = await sql`
+      result.events = [...await sql`
         SELECT id, title, hazard_type, severity, status, source,
                location_pcode, created_at, updated_at
         FROM disaster_events
         WHERE updated_at > ${since} AND is_public = TRUE
         ORDER BY updated_at DESC
         LIMIT ${DELTA_LIMIT}
-      `
+      `]
     }
   }
 
   // Divisions administratives (seulement si sync initial ou très ancien)
   const daysSince = (Date.now() - since.getTime()) / 864e5
   if ((types.includes('divisions') || types.includes('all')) && daysSince > 30) {
-    result.divisions = await sql`
+    result.divisions = [...await sql`
       SELECT pcode, name_fr, name_local, level, parent_pcode
       FROM admin_divisions
       ORDER BY level, pcode
       LIMIT 2000
-    `
+    `]
   }
 
   // Prédictions IA récentes (publiques uniquement)
   if (types.includes('predictions') || types.includes('all')) {
-    result.predictions = await sql`
+    result.predictions = [...await sql`
       SELECT id, hazard_type, location_pcode, risk_score, risk_level,
              prediction_date, generated_at
       FROM risk_predictions
@@ -85,7 +85,7 @@ export async function buildDelta(
         AND prediction_date >= CURRENT_DATE
       ORDER BY generated_at DESC
       LIMIT 50
-    `
+    `]
   }
 
   return result
