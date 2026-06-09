@@ -24,9 +24,9 @@ const ALERT_LEVEL_MAP: Record<string, string> = {
 const HAZARD_TYPE_MAP: Record<string, string> = {
   EQ:  'earthquake',
   FL:  'flood',
-  TC:  'tropical_cyclone',
-  VO:  'volcano',
-  WF:  'wildfire',
+  TC:  'other',             // tropical_cyclone absent de l'enum
+  VO:  'volcanic_eruption',
+  WF:  'fire',              // wildfire → fire
   DR:  'drought',
   LS:  'landslide',
 }
@@ -103,17 +103,33 @@ export async function fetchGdacsAlerts(): Promise<number> {
       `
       if (existing) continue
 
+      const locationPoint = lat !== null && lng !== null
+        ? sql`ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)`
+        : sql`NULL`
+
       await sql`
         INSERT INTO disaster_events (
           hazard_type, severity, title, description,
-          latitude, longitude, source, source_url,
-          is_public, reported_at, metadata
+          location_point, source, source_url, source_ref,
+          location_pcode, location_name, location_level,
+          glide_number, start_date, status,
+          tags
         ) VALUES (
-          ${hazardType}, ${severity}, ${item.title.slice(0, 255)},
-          ${item.description?.slice(0, 1000) ?? null},
-          ${lat}, ${lng}, 'GDACS', ${item.link},
-          true, ${reportedAt},
-          ${JSON.stringify({ glide: glideRef, alertLevel: item['gdacs:alertlevel'] ?? null })}::jsonb
+          ${hazardType}::hazard_type,
+          ${severity}::alert_severity,
+          ${item.title.slice(0, 255)},
+          ${item.description?.slice(0, 1000) ?? ''},
+          ${locationPoint},
+          'other'::event_source,
+          ${item.link},
+          ${'GDACS'},
+          'COD',
+          'République Démocratique du Congo',
+          0,
+          ${glideRef},
+          ${reportedAt},
+          'under_review',
+          ARRAY['GDACS', ${hazardType}, ${item['gdacs:alertlevel'] ?? 'unknown'}]
         )
       `
       inserted++

@@ -43,12 +43,12 @@ async function sendViaSmsGateway(phone: string, message: string): Promise<boolea
  * Appelé périodiquement par le scheduler.
  */
 export async function processSmsQueue(): Promise<void> {
-  const pending = await sql<{ id: string; phoneNumber: string; message: string; retryCount: number }[]>`
-    SELECT id, phone_number, message, retry_count
+  const pending = await sql<{ id: string; toPhone: string; message: string; attempts: number }[]>`
+    SELECT id, to_phone, message, attempts
     FROM sms_queue
     WHERE status = 'pending'
-      AND retry_count < 3
-      AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+      AND attempts < 3
+      AND scheduled_at <= NOW()
     ORDER BY created_at ASC
     LIMIT 50
   `
@@ -58,7 +58,7 @@ export async function processSmsQueue(): Promise<void> {
   logger.info({ count: pending.length }, 'Processing SMS queue')
 
   for (const sms of pending) {
-    const ok = await sendViaSmsGateway(sms.phoneNumber, sms.message)
+    const ok = await sendViaSmsGateway(sms.toPhone, sms.message)
 
     if (ok) {
       await sql`
@@ -67,12 +67,11 @@ export async function processSmsQueue(): Promise<void> {
         WHERE id = ${sms.id}
       `
     } else {
-      const nextRetry = new Date(Date.now() + Math.pow(2, sms.retryCount + 1) * 60_000)
       await sql`
         UPDATE sms_queue
-        SET retry_count = retry_count + 1,
-            next_retry_at = ${nextRetry},
-            status = CASE WHEN retry_count + 1 >= 3 THEN 'failed' ELSE 'pending' END
+        SET attempts = attempts + 1,
+            last_error = 'SMS gateway failed',
+            status = CASE WHEN attempts + 1 >= 3 THEN 'failed' ELSE 'pending' END
         WHERE id = ${sms.id}
       `
     }
@@ -114,8 +113,8 @@ export async function enqueueSmsAlert(
 
   for (const { phone } of recipients) {
     await sql`
-      INSERT INTO sms_queue (phone_number, message, status, alert_id)
-      VALUES (${phone}, ${truncated}, 'pending', ${alertId}::uuid)
+      INSERT INTO sms_queue (to_phone, message, status)
+      VALUES (${phone}, ${truncated}, 'pending')
     `
   }
 
