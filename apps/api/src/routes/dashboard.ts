@@ -51,6 +51,46 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
         SELECT COUNT(*) AS pending FROM moderation_queue WHERE resolved_at IS NULL
       `;
 
+      const [[crisisStats], [demandStats], [stockStats], recentActivity] = await Promise.all([
+        sql`
+          SELECT
+            COUNT(*) FILTER (WHERE status = 'active')    AS active_crises,
+            COUNT(*) FILTER (WHERE status = 'contained') AS contained_crises,
+            COALESCE(SUM(affected_count)  FILTER (WHERE status = 'active'), 0) AS crisis_affected,
+            COALESCE(SUM(displaced_count) FILTER (WHERE status = 'active'), 0) AS crisis_displaced,
+            COALESCE(SUM(deaths_count)    FILTER (WHERE status = 'active'), 0) AS crisis_deaths
+          FROM crisis_events
+        `,
+        sql`
+          SELECT
+            COUNT(*) FILTER (WHERE status = 'pending')   AS pending_demands,
+            COUNT(*) FILTER (WHERE status = 'approved')  AS approved_demands,
+            COUNT(*) FILTER (WHERE status = 'fulfilled') AS fulfilled_demands
+          FROM resource_demands
+        `,
+        sql`
+          SELECT
+            COUNT(*) FILTER (WHERE s.quantity_available <= s.minimum_threshold AND s.minimum_threshold > 0) AS critical_stocks,
+            COUNT(DISTINCT s.depot_id) AS total_depots,
+            COUNT(*)::int AS total_stock_lines
+          FROM resource_stocks s
+          JOIN resource_depots d ON d.id = s.depot_id
+          WHERE d.is_active = true
+        `,
+        sql`
+          SELECT activity_type, label, status, urgency, created_at
+          FROM (
+            SELECT 'crisis'::text AS activity_type, title AS label, status::text, NULL::text AS urgency, created_at
+            FROM crisis_events
+            UNION ALL
+            SELECT 'demand'::text, resource_name, status::text, urgency, created_at
+            FROM resource_demands
+          ) recent
+          ORDER BY created_at DESC
+          LIMIT 8
+        `,
+      ]);
+
       return reply.send({
         success: true,
         data: {
@@ -64,6 +104,24 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
             moderationQueue: Number(modQueue.pending),
             wsConnected: getConnectedCount(),
           },
+          crisisStats: {
+            activeCrises:    Number(crisisStats.activeCrises),
+            containedCrises: Number(crisisStats.containedCrises),
+            crisisAffected:  Number(crisisStats.crisisAffected),
+            crisisDisplaced: Number(crisisStats.crisisDisplaced),
+            crisisDeaths:    Number(crisisStats.crisisDeaths),
+          },
+          demandStats: {
+            pendingDemands:   Number(demandStats.pendingDemands),
+            approvedDemands:  Number(demandStats.approvedDemands),
+            fulfilledDemands: Number(demandStats.fulfilledDemands),
+          },
+          stockStats: {
+            criticalStocks:  Number(stockStats.criticalStocks),
+            totalDepots:     Number(stockStats.totalDepots),
+            totalStockLines: Number(stockStats.totalStockLines),
+          },
+          recentActivity,
           hazardBreakdown,
           trend,
           topProvinces,
@@ -72,23 +130,30 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  // GET /dashboard/map-data — données légères pour la carte (sans géométrie complète)
-  fastify.get('/dashboard/map-data', async (_request, reply) => {
+  // GET /dashboard/map-data — données légères pour la carte
+  // ?history=true  → inclut les événements résolus (mode historique, jusqu'à 2000 résultats)
+  fastify.get('/dashboard/map-data', async (request, reply) => {
+    const { history } = (request.query as Record<string, string>);
+    const isHistory = history === 'true';
+
     const events = await sql`
       SELECT
         id, title, hazard_type, status, severity,
         location_pcode, location_name,
         estimated_affected,
+        glide_number,
         start_date,
+        end_date,
         ST_X(location_point) AS lng,
         ST_Y(location_point) AS lat,
         ARRAY_LENGTH(affected_pcodes, 1) AS province_count
       FROM disaster_events
       WHERE deleted_at IS NULL
-        AND status NOT IN ('rejected', 'resolved')
+        AND status NOT IN ('rejected')
+        AND ${isHistory ? sql`TRUE` : sql`status NOT IN ('resolved')`}
         AND location_point IS NOT NULL
       ORDER BY start_date DESC
-      LIMIT 500
+      LIMIT ${isHistory ? 2000 : 500}
     `;
 
     return reply.send({ success: true, data: events });

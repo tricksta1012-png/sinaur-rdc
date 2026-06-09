@@ -30,28 +30,28 @@ const STATUS_LABELS: Record<BeneficiaryStatus, string> = {
   duplicate: 'Doublon',
 }
 
-const STATUS_COLORS: Record<BeneficiaryStatus, string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  under_validation: 'bg-blue-100 text-blue-800',
-  validated: 'bg-green-100 text-green-800',
-  rejected: 'bg-red-100 text-red-800',
-  duplicate: 'bg-gray-100 text-gray-600',
+const STATUS_BADGE: Record<BeneficiaryStatus, string> = {
+  pending:          'sn-badge-yellow',
+  under_validation: 'sn-badge-blue',
+  validated:        'sn-badge-green',
+  rejected:         'sn-badge-red',
+  duplicate:        'sn-badge-gray',
 }
 
-const VULN_COLORS: Record<VulnerabilityLevel, string> = {
-  low: 'text-green-600',
-  medium: 'text-yellow-600',
-  high: 'text-orange-600',
+const VULN_CLASSES: Record<VulnerabilityLevel, string> = {
+  low:      'text-green-600',
+  medium:   'text-yellow-600',
+  high:     'text-orange-600',
   critical: 'text-red-700 font-bold',
 }
 
 const STEP_LABELS: Record<string, string> = {
   neighborhood_chief: 'Chef quartier',
-  village_chief: 'Chef village',
-  mayor: 'Maire',
-  territory_admin: 'Admin territoire',
+  village_chief:      'Chef village',
+  mayor:              'Maire',
+  territory_admin:    'Admin territoire',
   humanitarian_partner: 'Partenaire humanitaire',
-  complete: 'Complet',
+  complete:           'Complet',
 }
 
 export function RegistryPage() {
@@ -89,33 +89,30 @@ export function RegistryPage() {
   const pagination = data?.pagination
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="sn-page">
+      <div className="sn-page-header">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Registre des bénéficiaires</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Données protégées — accès restreint selon rôle et périmètre géographique</p>
+          <h1 className="sn-page-title">Registre des bénéficiaires</h1>
+          <p className="sn-page-subtitle">Données protégées — accès restreint selon rôle et périmètre géographique</p>
         </div>
-        <button
-          onClick={() => navigate('/registry/new')}
-          className="px-4 py-2 bg-red-700 text-white rounded-lg text-sm font-medium hover:bg-red-800 transition-colors"
-        >
-          + Enregistrer un bénéficiaire
+        <button onClick={() => navigate('/registry/new')} className="sn-btn-primary">
+          + Enregistrer
         </button>
       </div>
 
       {/* Filtres */}
-      <div className="flex flex-wrap gap-3">
+      <div className="sn-filter-bar">
         <input
           type="text"
-          placeholder="Rechercher (nom, numéro)..."
+          placeholder="Rechercher (nom, numéro)…"
           value={search}
           onChange={e => { setSearch(e.target.value); setPage(1) }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-72 focus:ring-2 focus:ring-red-500 focus:border-transparent"
+          className="sn-input w-72"
         />
         <select
           value={status}
           onChange={e => { setStatus(e.target.value); setPage(1) }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500"
+          className="sn-select w-auto"
         >
           <option value="">Tous les statuts</option>
           {Object.entries(STATUS_LABELS).map(([v, l]) => (
@@ -125,7 +122,7 @@ export function RegistryPage() {
         <select
           value={vulnerability}
           onChange={e => { setVulnerability(e.target.value); setPage(1) }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500"
+          className="sn-select w-auto"
         >
           <option value="">Toutes vulnérabilités</option>
           <option value="critical">Critique</option>
@@ -136,67 +133,71 @@ export function RegistryPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
+      <div className="sn-table-wrap">
+        <table className="sn-table">
+          <thead>
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">N° Enreg.</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Chef ménage</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Statut</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Vulnérabilité</th>
-              <th className="text-right px-4 py-3 font-medium text-gray-600">Pers.</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Zone</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Étape validation</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Enregistré le</th>
-              <th className="px-4 py-3"></th>
+              <th>N° Enreg.</th>
+              <th>Chef ménage</th>
+              <th>Statut</th>
+              <th>Vulnérabilité</th>
+              <th className="text-right">Pers.</th>
+              <th>Zone</th>
+              <th>Étape validation</th>
+              <th>Enregistré le</th>
+              <th></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody>
             {isLoading && (
-              <tr><td colSpan={9} className="text-center py-12 text-gray-400">Chargement...</td></tr>
+              <tr><td colSpan={9} className="sn-empty">Chargement…</td></tr>
             )}
             {!isLoading && beneficiaries.length === 0 && (
-              <tr><td colSpan={9} className="text-center py-12 text-gray-400">Aucun bénéficiaire trouvé</td></tr>
+              <tr><td colSpan={9} className="sn-empty">Aucun bénéficiaire trouvé</td></tr>
             )}
             {beneficiaries.map(b => (
-              <tr key={b.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3 font-mono text-xs text-gray-700">{b.registrationNumber}</td>
-                <td className="px-4 py-3 font-medium text-gray-900">
+              <tr key={b.id}>
+                <td className="font-mono text-xs text-gray-500">{b.registrationNumber}</td>
+                <td className="font-medium text-gray-900">
                   {b.headFirstName && b.headLastName
                     ? `${b.headFirstName} ${b.headLastName}`
-                    : <span className="text-gray-400 italic">Masqué</span>
+                    : <span className="text-gray-400 italic text-xs">Masqué</span>
                   }
                 </td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[b.status]}`}>
+                <td>
+                  <span className={STATUS_BADGE[b.status]}>
                     {STATUS_LABELS[b.status]}
                   </span>
                 </td>
-                <td className="px-4 py-3">
-                  <span className={`text-xs font-medium ${VULN_COLORS[b.vulnerabilityLevel]}`}>
+                <td>
+                  <span className={`text-xs font-medium ${VULN_CLASSES[b.vulnerabilityLevel]}`}>
                     {b.vulnerabilityLevel === 'critical' ? 'CRITIQUE' : b.vulnerabilityLevel}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums text-gray-700">{b.householdSize}</td>
-                <td className="px-4 py-3 text-gray-700">{b.locationPcode}</td>
-                <td className="px-4 py-3 text-gray-500 text-xs">
-                  {b.status === 'validated' ? '✓ Validé' : STEP_LABELS[b.currentValidationStep] ?? b.currentValidationStep}
+                <td className="text-right tabular-nums">{b.householdSize}</td>
+                <td className="text-xs text-gray-500">{b.locationPcode}</td>
+                <td className="text-xs text-gray-500">
+                  {b.status === 'validated' ? (
+                    <span className="text-green-600 font-medium">✓ Validé</span>
+                  ) : (
+                    STEP_LABELS[b.currentValidationStep] ?? b.currentValidationStep
+                  )}
                 </td>
-                <td className="px-4 py-3 text-gray-500 text-xs">
+                <td className="text-xs text-gray-500 whitespace-nowrap">
                   {new Date(b.registeredAt).toLocaleDateString('fr-FR')}
                 </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
+                <td>
+                  <div className="flex items-center gap-3">
                     <button
                       onClick={() => navigate(`/registry/${b.id}`)}
-                      className="text-xs text-blue-600 hover:text-blue-800"
+                      className="sn-btn-link-blue"
                     >
                       Voir
                     </button>
                     {(b.status === 'pending' || b.status === 'under_validation') && (
                       <button
                         onClick={() => { setSelectedId(b.id); setShowValidateModal(true) }}
-                        className="text-xs text-green-600 hover:text-green-800 font-medium"
+                        className="sn-btn-link-green"
                       >
                         Valider
                       </button>
@@ -209,16 +210,14 @@ export function RegistryPage() {
         </table>
 
         {pagination && pagination.pages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 text-sm">
-            <span className="text-gray-500">{pagination.total} bénéficiaires</span>
-            <div className="flex gap-2">
-              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                className="px-3 py-1.5 border rounded-lg disabled:opacity-40 hover:bg-gray-50">
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+            <span className="text-sm text-gray-500">{pagination.total} bénéficiaires</span>
+            <div className="sn-pagination">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="sn-page-btn">
                 Précédent
               </button>
-              <span className="px-3 py-1.5 text-gray-600">{page} / {pagination.pages}</span>
-              <button onClick={() => setPage(p => Math.min(pagination.pages, p + 1))} disabled={page === pagination.pages}
-                className="px-3 py-1.5 border rounded-lg disabled:opacity-40 hover:bg-gray-50">
+              <span className="text-sm text-gray-600 px-2">{page} / {pagination.pages}</span>
+              <button onClick={() => setPage(p => Math.min(pagination.pages, p + 1))} disabled={page === pagination.pages} className="sn-page-btn">
                 Suivant
               </button>
             </div>
@@ -228,34 +227,37 @@ export function RegistryPage() {
 
       {/* Modal validation */}
       {showValidateModal && selectedId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowValidateModal(false)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Validation du bénéficiaire</h3>
+        <div className="sn-modal-backdrop" onClick={() => setShowValidateModal(false)}>
+          <div className="sn-modal" onClick={e => e.stopPropagation()}>
+            <div className="sn-modal-header">
+              <h3 className="sn-modal-title">Validation du bénéficiaire</h3>
+              <button className="sn-modal-close" onClick={() => setShowValidateModal(false)}>✕</button>
+            </div>
             <textarea
               value={validationNote}
               onChange={e => setValidationNote(e.target.value)}
-              placeholder="Note de validation (optionnel)..."
+              placeholder="Note de validation (optionnel)…"
               rows={3}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 focus:ring-2 focus:ring-red-500"
+              className="sn-textarea"
             />
             <div className="flex gap-3">
               <button
                 onClick={() => validateMutation.mutate({ id: selectedId, approved: true })}
                 disabled={validateMutation.isPending}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50"
+                className="sn-btn-success flex-1"
               >
                 Approuver
               </button>
               <button
                 onClick={() => validateMutation.mutate({ id: selectedId, approved: false })}
                 disabled={validateMutation.isPending}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 disabled:opacity-50"
+                className="sn-btn-danger flex-1"
               >
                 Rejeter
               </button>
               <button
                 onClick={() => setShowValidateModal(false)}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                className="sn-btn-secondary"
               >
                 Annuler
               </button>

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import axios from 'axios'
 import { sql } from '../db.js'
 import { requireAuth, requireRole, writeAuditLog } from '../auth/jwt.js'
 
@@ -168,8 +169,12 @@ export async function resourceRoutes(fastify: FastifyInstance) {
     const body = MovementSchema.parse(request.body)
 
     const [stock] = await sql`
-      SELECT id, quantity_available, quantity_reserved, resource_name
-      FROM resource_stocks WHERE id = ${body.stockId}::uuid AND depot_id = ${depotId}::uuid
+      SELECT s.id, s.quantity_available, s.quantity_reserved, s.resource_name,
+             s.unit, s.minimum_threshold,
+             d.name AS depot_name, d.pcode
+      FROM resource_stocks s
+      JOIN resource_depots d ON d.id = s.depot_id
+      WHERE s.id = ${body.stockId}::uuid AND s.depot_id = ${depotId}::uuid
     `
     if (!stock) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Article introuvable dans ce dépôt' } })
 
@@ -201,6 +206,27 @@ export async function resourceRoutes(fastify: FastifyInstance) {
 
     await writeAuditLog(user.sub, 'stock_movement', 'resource_movements', movement.id, request,
       { depotId, stockId: body.stockId, type: body.movementType, quantity: body.quantity })
+
+    const minThreshold = Number(stock.minimumThreshold)
+    const prevQty = Number(stock.quantityAvailable)
+    if (minThreshold > 0 && prevQty > minThreshold && newQty <= minThreshold) {
+      void axios.post(
+        `${process.env.ALERTING_SERVICE_URL ?? 'http://alerting:3001'}/notify/stock-low`,
+        {
+          stockId: body.stockId,
+          resourceName: stock.resourceName,
+          unit: stock.unit,
+          quantityAvailable: newQty,
+          minimumThreshold: minThreshold,
+          depotId,
+          depotName: stock.depotName,
+          pcode: stock.pcode,
+        },
+        { timeout: 3000 },
+      ).catch((e: unknown) => {
+        fastify.log.warn({ err: e, stockId: body.stockId }, 'Stock push notification failed (non-fatal)')
+      })
+    }
 
     return reply.status(201).send({ success: true, data: { ...movement, newQuantityAvailable: newQty } })
   })

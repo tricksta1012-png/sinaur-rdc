@@ -144,6 +144,13 @@ pnpm dev
 | **Phase 19** — Stocks humanitaires | Dépôts, stocks (9 types), mouvements entrée/sortie, alertes seuil minimum, UI web | ✅ Terminé |
 | **Phase 20** — Tests stocks humanitaires | Vitest : dépôts (CRUD+RBAC), stocks (upsert+validation), mouvements (in/out/transfer/adjustment+409), historique paginé, alertes seuil | ✅ Terminé |
 | **Phase 21** — Dashboard stocks command center | KPIs, carte MapLibre dépôts colorés par statut, alertes seuil, détail dépôt (inventaire+barres+mouvements), nav sidebar | ✅ Terminé |
+| **Phase 22** — Design backoffice web | Système de design `sn-*` (CSS components), sidebar redesign (role badge, RDC flag), refactoring complet des 8 pages | ✅ Terminé |
+| **Phase 23** — Push FCM stocks critiques | Franchissement seuil minimum → `axios.post /notify/stock-low` → `sendPushStockAlert` (RESOURCE_ROLES + scope géo) | ✅ Terminé |
+| **Phase 24** — Affectation ressources ↔ sinistres | `resource_demands` (pending→approved→fulfilled/rejected), RBAC approbation admin/décideur, UI onglet Demandes + modaux | ✅ Terminé |
+| **Phase 25** — Page Crises backoffice | Liste/détail crises (filtres statut, GLIDE, champs complets), onglet Demandes liées, actions Maîtriser/Clôturer, modale création, RBAC rôles | ✅ Terminé |
+| **Phase 26** — Tests phases 23-25 | Vitest crises.test.ts (40 tests) : GET/POST /crises, GET/PATCH /crises/:id, POST/GET/PATCH sitreps, RBAC complet, GLIDE auto-généré, 404/400/403/401 | ✅ Terminé |
+| **Phase 27** — Dashboard enrichi | KPIs dynamiques crises/demandes/stocks, flux activité récente (crises+demandes), cards cliquables → /crises & /resources, barre statut opérationnel | ✅ Terminé |
+| **Phase 28** — Carte historique | Seed 70 catastrophes RDC 2000-2025, mode historique carte (`?history=true`), filtre période, popup GLIDE+dates, marqueurs résolus translucides, `docs/CARTE_HISTORIQUE.md` | ✅ Terminé |
 
 ## Déploiement souverain
 

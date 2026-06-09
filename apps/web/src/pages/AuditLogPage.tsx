@@ -22,18 +22,18 @@ interface AuditResponse {
   filters: { actions: string[]; resources: string[] }
 }
 
-const ACTION_COLORS: Record<string, string> = {
-  USER_CREATED:        'bg-green-100 text-green-700',
-  USER_UPDATED:        'bg-blue-100 text-blue-700',
-  USER_DELETED:        'bg-red-100 text-red-700',
-  LOGIN:               'bg-gray-100 text-gray-600',
-  LOGIN_FAILED:        'bg-orange-100 text-orange-700',
-  LOGOUT:              'bg-gray-100 text-gray-500',
-  EVENT_CREATED:       'bg-purple-100 text-purple-700',
-  EVENT_UPDATED:       'bg-purple-50 text-purple-600',
-  ALERT_DISPATCHED:    'bg-yellow-100 text-yellow-700',
-  REGISTRY_CREATED:    'bg-teal-100 text-teal-700',
-  AID_VALIDATED:       'bg-teal-100 text-teal-600',
+const ACTION_BADGE: Record<string, string> = {
+  USER_CREATED:     'sn-badge-green',
+  USER_UPDATED:     'sn-badge-blue',
+  USER_DELETED:     'sn-badge-red',
+  LOGIN:            'sn-badge-gray',
+  LOGIN_FAILED:     'sn-badge-orange',
+  LOGOUT:           'sn-badge-gray',
+  EVENT_CREATED:    'sn-badge-purple',
+  EVENT_UPDATED:    'sn-badge-purple',
+  ALERT_DISPATCHED: 'sn-badge-yellow',
+  REGISTRY_CREATED: 'sn-badge-teal',
+  AID_VALIDATED:    'sn-badge-teal',
 }
 
 function formatDate(iso: string) {
@@ -41,16 +41,16 @@ function formatDate(iso: string) {
 }
 
 export function AuditLogPage() {
-  const today = new Date().toISOString().split('T')[0]
-  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
+  const today = new Date().toISOString().split('T')[0] ?? ''
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0] ?? ''
 
-  const [page, setPage]           = useState(1)
-  const [from, setFrom]           = useState(sevenDaysAgo)
-  const [to, setTo]               = useState(today)
-  const [userId, setUserId]       = useState('')
-  const [action, setAction]       = useState('')
-  const [resource, setResource]   = useState('')
-  const [expanded, setExpanded]   = useState<string | null>(null)
+  const [page, setPage]         = useState(1)
+  const [from, setFrom]         = useState(sevenDaysAgo)
+  const [to, setTo]             = useState(today)
+  const [userId, setUserId]     = useState('')
+  const [action, setAction]     = useState('')
+  const [resource, setResource] = useState('')
+  const [expanded, setExpanded] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery<AuditResponse>({
     queryKey: ['audit-log', page, from, to, userId, action, resource],
@@ -64,12 +64,10 @@ export function AuditLogPage() {
     },
   })
 
-  const entries     = data?.data ?? []
-  const meta        = data?.meta
-  const filters     = data?.filters
-  const totalPages  = meta ? Math.ceil(meta.total / meta.limit) : 1
-
-  const applyFilter = () => setPage(1)
+  const entries    = data?.data ?? []
+  const meta       = data?.meta
+  const filters    = data?.filters
+  const totalPages = meta ? Math.ceil(meta.total / meta.limit) : 1
 
   const exportCsv = () => {
     const header = ['Date', 'Utilisateur', 'Rôle', 'Action', 'Ressource', 'ID ressource', 'IP', 'Détails']
@@ -94,136 +92,116 @@ export function AuditLogPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="sn-page">
+      <div className="sn-page-header">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Journal d'audit</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {meta?.total ?? '—'} entrée{(meta?.total ?? 0) !== 1 ? 's' : ''}
-          </p>
+          <h1 className="sn-page-title">Journal d'audit</h1>
+          <p className="sn-page-subtitle">{meta?.total ?? '—'} entrée{(meta?.total ?? 0) !== 1 ? 's' : ''}</p>
         </div>
         <button
           onClick={exportCsv}
           disabled={entries.length === 0}
-          className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40"
+          className="sn-btn-dark"
         >
-          Exporter CSV
+          ↓ Exporter CSV
         </button>
       </div>
 
       {/* Filtres */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-        <div className="flex flex-wrap gap-3 items-end">
+      <div className="sn-card sn-card-body">
+        <div className="sn-filter-bar">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Du</label>
-            <input
-              type="date"
-              value={from}
-              onChange={e => setFrom(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500"
-            />
+            <label className="sn-label">Du</label>
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="sn-input w-40" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Au</label>
-            <input
-              type="date"
-              value={to}
-              onChange={e => setTo(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500"
-            />
+            <label className="sn-label">Au</label>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)} className="sn-input w-40" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Action</label>
-            <select
-              value={action}
-              onChange={e => setAction(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500"
-            >
+            <label className="sn-label">Action</label>
+            <select value={action} onChange={e => setAction(e.target.value)} className="sn-select w-44">
               <option value="">Toutes</option>
               {filters?.actions.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Ressource</label>
-            <select
-              value={resource}
-              onChange={e => setResource(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500"
-            >
+            <label className="sn-label">Ressource</label>
+            <select value={resource} onChange={e => setResource(e.target.value)} className="sn-select w-44">
               <option value="">Toutes</option>
               {filters?.resources.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Utilisateur (email ou ID)</label>
+            <label className="sn-label">Utilisateur (email ou ID)</label>
             <input
               type="text"
               value={userId}
               onChange={e => setUserId(e.target.value)}
               placeholder="Filtrer par utilisateur…"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500"
+              className="sn-input"
             />
           </div>
-          <button
-            onClick={applyFilter}
-            className="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-          >
+          <button onClick={() => setPage(1)} className="sn-btn-primary">
             Appliquer
           </button>
         </div>
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="sn-table-wrap">
         {isLoading ? (
-          <div className="py-20 text-center text-gray-400">Chargement…</div>
+          <div className="sn-empty">Chargement…</div>
         ) : entries.length === 0 ? (
-          <div className="py-20 text-center text-gray-400">Aucune entrée trouvée</div>
+          <div className="sn-empty">Aucune entrée trouvée</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+          <table className="sn-table">
+            <thead>
               <tr>
-                {['Date', 'Utilisateur', 'Action', 'Ressource', 'IP', 'Détails'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
-                ))}
+                <th>Date</th>
+                <th>Utilisateur</th>
+                <th>Action</th>
+                <th>Ressource</th>
+                <th>IP</th>
+                <th>Détails</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody>
               {entries.map(e => (
                 <>
                   <tr
                     key={e.id}
-                    className="hover:bg-gray-50 transition-colors cursor-pointer"
+                    className="cursor-pointer"
                     onClick={() => setExpanded(expanded === e.id ? null : e.id)}
                   >
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                    <td className="text-xs text-gray-500 whitespace-nowrap">
                       {formatDate(e.created_at)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       <div className="font-medium text-gray-900 text-xs">{e.user_name ?? '—'}</div>
                       <div className="text-gray-400 text-xs">{e.user_email ?? 'Système'}</div>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ACTION_COLORS[e.action] ?? 'bg-gray-100 text-gray-600'}`}>
+                    <td>
+                      <span className={ACTION_BADGE[e.action] ?? 'sn-badge-gray'}>
                         {e.action}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
+                    <td className="text-xs">
                       <span className="font-medium text-gray-700">{e.resource}</span>
                       {e.resource_id && (
-                        <span className="block text-gray-400 font-mono text-xs">{e.resource_id.slice(0, 8)}…</span>
+                        <span className="block text-gray-400 font-mono">{e.resource_id.slice(0, 8)}…</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-400 font-mono">{e.ip_address ?? '—'}</td>
-                    <td className="px-4 py-3 text-xs text-gray-400">
+                    <td className="text-xs text-gray-400 font-mono">{e.ip_address ?? '—'}</td>
+                    <td className="text-xs">
                       {e.details
-                        ? <span className="text-blue-600 hover:text-blue-800">{expanded === e.id ? 'Masquer ▲' : 'Voir ▼'}</span>
-                        : '—'
+                        ? <span className="sn-btn-link-blue">{expanded === e.id ? 'Masquer ▲' : 'Voir ▼'}</span>
+                        : <span className="text-gray-300">—</span>
                       }
                     </td>
                   </tr>
                   {expanded === e.id && e.details && (
-                    <tr key={`${e.id}-detail`} className="bg-gray-50">
+                    <tr key={`${e.id}-detail`} className="!bg-gray-50">
                       <td colSpan={6} className="px-6 py-3">
                         <pre className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg p-3 overflow-x-auto">
                           {JSON.stringify(e.details, null, 2)}
@@ -238,14 +216,11 @@ export function AuditLogPage() {
         )}
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex justify-center gap-2">
-          <button disabled={page === 1} onClick={() => setPage(p => p - 1)}
-            className="px-3 py-1 text-sm border rounded-lg disabled:opacity-40 hover:bg-gray-50">←</button>
-          <span className="px-3 py-1 text-sm text-gray-600">{page} / {totalPages}</span>
-          <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)}
-            className="px-3 py-1 text-sm border rounded-lg disabled:opacity-40 hover:bg-gray-50">→</button>
+        <div className="sn-pagination">
+          <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="sn-page-btn">←</button>
+          <span className="text-sm text-gray-600 px-2">{page} / {totalPages}</span>
+          <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)} className="sn-page-btn">→</button>
         </div>
       )}
     </div>

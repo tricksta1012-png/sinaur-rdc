@@ -60,3 +60,29 @@ export interface StockAlert {
   depotName: string
   pcode: string
 }
+
+export type DemandStatus = 'pending' | 'approved' | 'rejected' | 'fulfilled'
+export type DemandUrgency = 'low' | 'normal' | 'high' | 'critical'
+
+export interface ResourceDemand {
+  id: string
+  crisisId: string
+  crisisGlide: string
+  crisisTitle: string
+  depotId: string | null
+  depotName: string | null
+  stockId: string | null
+  resourceType: ResourceType
+  resourceName: string
+  unit: string
+  quantityNeeded: string
+  quantityAllocated: string | null
+  urgency: DemandUrgency
+  status: DemandStatus
+  notes: string | null
+  requestedByName: string | null
+  reviewedByName: string | null
+  reviewedAt: string | null
+  createdAt: string
+  updatedAt: string
+}

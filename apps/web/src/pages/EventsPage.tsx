@@ -9,12 +9,12 @@ const HAZARD_ICONS: Record<string, string> = {
   drought: '☀️', fire: '🔥', conflict: '⚔️', earthquake: '📳', other: '⚠️',
 };
 
-const SEVERITY_CLASSES: Record<string, string> = {
-  Minor: 'bg-yellow-100 text-yellow-800',
-  Moderate: 'bg-orange-100 text-orange-800',
-  Severe: 'bg-red-100 text-red-800',
-  Extreme: 'bg-red-900 text-white',
-  Unknown: 'bg-gray-100 text-gray-700',
+const SEVERITY_BADGE: Record<string, string> = {
+  Minor:   'sn-badge-yellow',
+  Moderate:'sn-badge-orange',
+  Severe:  'sn-badge-red',
+  Extreme: 'sn-badge-dark',
+  Unknown: 'sn-badge-gray',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -40,57 +40,57 @@ export function EventsPage() {
   const pagination = data?.pagination;
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">Événements</h1>
-        <a href="/report" className="px-4 py-2 bg-red-700 text-white rounded-lg text-sm font-medium hover:bg-red-800 transition-colors">
-          + Signaler
-        </a>
+    <div className="sn-page">
+      <div className="sn-page-header">
+        <div>
+          <h1 className="sn-page-title">Événements</h1>
+          <p className="sn-page-subtitle">Liste des catastrophes et urgences signalées</p>
+        </div>
+        <a href="/report" className="sn-btn-primary">+ Signaler</a>
       </div>
 
-      <div className="mb-4">
-        <input
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          placeholder="Rechercher un événement..."
-          className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
-        />
-      </div>
+      {/* Barre de recherche */}
+      <input
+        value={search}
+        onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+        placeholder="Rechercher un événement…"
+        className="sn-input max-w-md"
+      />
 
       {isLoading ? (
-        <div className="text-center py-12 text-gray-500">Chargement...</div>
+        <div className="sn-empty">Chargement…</div>
       ) : events.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">Aucun événement trouvé</div>
+        <div className="sn-empty">Aucun événement trouvé</div>
       ) : (
         <>
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="sn-table-wrap">
+            <table className="sn-table">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Événement</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Localisation</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Gravité</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Statut</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Date</th>
+                <tr>
+                  <th>Événement</th>
+                  <th>Localisation</th>
+                  <th>Gravité</th>
+                  <th>Statut</th>
+                  <th>Date</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody>
                 {events.map((event) => (
-                  <tr key={event.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3">
+                  <tr key={event.id}>
+                    <td>
                       <div className="flex items-center gap-2">
-                        <span className="text-base">{HAZARD_ICONS[event.hazardType] ?? '⚠️'}</span>
+                        <span className="text-base shrink-0">{HAZARD_ICONS[event.hazardType] ?? '⚠️'}</span>
                         <span className="font-medium text-gray-900 max-w-xs truncate">{event.title}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-600 max-w-[180px] truncate">{event.locationName}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${SEVERITY_CLASSES[event.severity] ?? SEVERITY_CLASSES.Unknown}`}>
+                    <td className="max-w-[180px] truncate text-gray-500">{event.location?.name}</td>
+                    <td>
+                      <span className={SEVERITY_BADGE[event.severity] ?? 'sn-badge-gray'}>
                         {event.severity}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{STATUS_LABELS[event.status] ?? event.status}</td>
-                    <td className="px-4 py-3 text-gray-500">
+                    <td className="text-gray-500">{STATUS_LABELS[event.status] ?? event.status}</td>
+                    <td className="text-gray-500 whitespace-nowrap">
                       {new Date(event.startDate).toLocaleDateString('fr-FR')}
                     </td>
                   </tr>
@@ -100,21 +100,21 @@ export function EventsPage() {
           </div>
 
           {pagination && pagination.totalPages > 1 && (
-            <div className="flex justify-center items-center gap-3 mt-4">
+            <div className="sn-pagination">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 hover:bg-gray-50"
+                className="sn-page-btn"
               >
                 ← Précédent
               </button>
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-gray-600 px-2">
                 Page {pagination.page} / {pagination.totalPages}
               </span>
               <button
                 onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
                 disabled={page === pagination.totalPages}
-                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 hover:bg-gray-50"
+                className="sn-page-btn"
               >
                 Suivant →
               </button>

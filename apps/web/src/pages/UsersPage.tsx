@@ -20,14 +20,14 @@ const ROLE_LABELS: Record<Role, string> = {
   system_admin:             'Administrateur système',
 }
 
-const ROLE_COLORS: Record<Role, string> = {
-  citizen:                 'bg-gray-100 text-gray-700',
-  field_agent:             'bg-blue-100 text-blue-700',
-  local_validator:         'bg-teal-100 text-teal-700',
-  territory_admin:         'bg-purple-100 text-purple-700',
-  humanitarian_partner:    'bg-orange-100 text-orange-700',
-  national_decision_maker: 'bg-red-100 text-red-700',
-  system_admin:            'bg-red-200 text-red-900 font-bold',
+const ROLE_BADGE: Record<Role, string> = {
+  citizen:                 'sn-badge-gray',
+  field_agent:             'sn-badge-blue',
+  local_validator:         'sn-badge-teal',
+  territory_admin:         'sn-badge-purple',
+  humanitarian_partner:    'sn-badge-orange',
+  national_decision_maker: 'sn-badge-red',
+  system_admin:            'sn-badge-dark',
 }
 
 interface User {
@@ -63,11 +63,11 @@ type EditForm   = z.input<typeof EditSchema>
 export function UsersPage() {
   const { user: me } = useAuthStore()
   const qc = useQueryClient()
-  const [search, setSearch]       = useState('')
+  const [search, setSearch]         = useState('')
   const [roleFilter, setRoleFilter] = useState('')
-  const [page, setPage]           = useState(1)
+  const [page, setPage]             = useState(1)
   const [showCreate, setShowCreate] = useState(false)
-  const [editing, setEditing]     = useState<User | null>(null)
+  const [editing, setEditing]       = useState<User | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-users', page, roleFilter, search],
@@ -109,37 +109,32 @@ export function UsersPage() {
     })
   }
 
-  const users = data?.data ?? []
-  const meta  = data?.meta
+  const users      = data?.data ?? []
+  const meta       = data?.meta
   const totalPages = meta ? Math.ceil(meta.total / meta.limit) : 1
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="sn-page">
+      <div className="sn-page-header">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Gestion des utilisateurs</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {meta?.total ?? '—'} utilisateur{(meta?.total ?? 0) !== 1 ? 's' : ''}
-          </p>
+          <h1 className="sn-page-title">Gestion des utilisateurs</h1>
+          <p className="sn-page-subtitle">{meta?.total ?? '—'} utilisateur{(meta?.total ?? 0) !== 1 ? 's' : ''}</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-        >
+        <button onClick={() => setShowCreate(true)} className="sn-btn-primary">
           + Nouvel utilisateur
         </button>
       </div>
 
       {/* Filtres */}
-      <div className="flex gap-3 flex-wrap">
+      <div className="sn-filter-bar">
         <input
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-64 focus:ring-2 focus:ring-red-500 focus:border-transparent"
+          className="sn-input w-64"
           placeholder="Rechercher par nom ou email…"
           value={search}
           onChange={e => { setSearch(e.target.value); setPage(1) }}
         />
         <select
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500"
+          className="sn-select w-auto"
           value={roleFilter}
           onChange={e => { setRoleFilter(e.target.value); setPage(1) }}
         >
@@ -149,62 +144,62 @@ export function UsersPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="sn-table-wrap">
         {isLoading ? (
-          <div className="py-20 text-center text-gray-400">Chargement…</div>
+          <div className="sn-empty">Chargement…</div>
         ) : users.length === 0 ? (
-          <div className="py-20 text-center text-gray-400">Aucun utilisateur trouvé</div>
+          <div className="sn-empty">Aucun utilisateur trouvé</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+          <table className="sn-table">
+            <thead>
               <tr>
-                {['Utilisateur', 'Rôle', 'Périmètre', 'Dernière connexion', 'Statut', 'Actions'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
-                ))}
+                <th>Utilisateur</th>
+                <th>Rôle</th>
+                <th>Périmètre</th>
+                <th>Dernière connexion</th>
+                <th>Statut</th>
+                <th>Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody>
               {users.map(u => (
-                <tr key={u.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3">
+                <tr key={u.id}>
+                  <td>
                     <div className="font-medium text-gray-900">{u.fullName}</div>
-                    <div className="text-gray-500 text-xs">{u.email}</div>
+                    <div className="text-xs text-gray-400">{u.email}</div>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${ROLE_COLORS[u.role] ?? 'bg-gray-100 text-gray-700'}`}>
+                  <td>
+                    <span className={ROLE_BADGE[u.role] ?? 'sn-badge-gray'}>
                       {ROLE_LABELS[u.role] ?? u.role}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
+                  <td className="text-xs text-gray-500">
                     {u.geographicScopePcodes.length > 0
                       ? u.geographicScopePcodes.join(', ')
                       : <span className="text-gray-300">National</span>
                     }
                   </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
+                  <td className="text-xs text-gray-500 whitespace-nowrap">
                     {u.lastLoginAt
                       ? new Date(u.lastLoginAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
                       : '—'
                     }
                   </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${u.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                  <td>
+                    <span className={`sn-pill-${u.isActive ? 'green' : 'gray'} inline-flex items-center gap-1.5`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${u.isActive ? 'bg-green-500' : 'bg-gray-400'}`} />
                       {u.isActive ? 'Actif' : 'Inactif'}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => openEdit(u)}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                      >
+                  <td>
+                    <div className="flex gap-3">
+                      <button onClick={() => openEdit(u)} className="sn-btn-link-blue">
                         Modifier
                       </button>
                       {u.id !== me?.sub && (
                         <button
                           onClick={() => { if (confirm(`Supprimer ${u.email} ?`)) deleteMutation.mutate(u.id) }}
-                          className="text-xs text-red-500 hover:text-red-700 font-medium"
+                          className="sn-btn-link-danger"
                         >
                           Supprimer
                         </button>
@@ -218,63 +213,61 @@ export function UsersPage() {
         )}
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex justify-center gap-2">
-          <button disabled={page === 1} onClick={() => setPage(p => p - 1)}
-            className="px-3 py-1 text-sm border rounded-lg disabled:opacity-40 hover:bg-gray-50">←</button>
-          <span className="px-3 py-1 text-sm text-gray-600">{page} / {totalPages}</span>
-          <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)}
-            className="px-3 py-1 text-sm border rounded-lg disabled:opacity-40 hover:bg-gray-50">→</button>
+        <div className="sn-pagination">
+          <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="sn-page-btn">←</button>
+          <span className="text-sm text-gray-600 px-2">{page} / {totalPages}</span>
+          <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)} className="sn-page-btn">→</button>
         </div>
       )}
 
       {/* Modal — Créer */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">Nouvel utilisateur</h2>
+        <div className="sn-modal-backdrop">
+          <div className="sn-modal">
+            <div className="sn-modal-header">
+              <h2 className="sn-modal-title">Nouvel utilisateur</h2>
+              <button className="sn-modal-close" onClick={() => setShowCreate(false)}>✕</button>
+            </div>
             <form onSubmit={createForm.handleSubmit(data => createMutation.mutate(data))} className="space-y-3">
               {([
-                { name: 'email',    label: 'Email',          type: 'email' },
-                { name: 'fullName', label: 'Nom complet',    type: 'text' },
-                { name: 'password', label: 'Mot de passe',   type: 'password' },
-                { name: 'phone',    label: 'Téléphone',      type: 'tel' },
+                { name: 'email',    label: 'Email',        type: 'email' },
+                { name: 'fullName', label: 'Nom complet',  type: 'text' },
+                { name: 'password', label: 'Mot de passe', type: 'password' },
+                { name: 'phone',    label: 'Téléphone',    type: 'tel' },
               ] as const).map(f => (
                 <div key={f.name}>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">{f.label}</label>
-                  <input
-                    {...createForm.register(f.name)}
-                    type={f.type}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500"
-                  />
+                  <label className="sn-label">{f.label}</label>
+                  <input {...createForm.register(f.name)} type={f.type} className="sn-input" />
                   {createForm.formState.errors[f.name] && (
-                    <p className="text-red-500 text-xs mt-1">{createForm.formState.errors[f.name]?.message as string}</p>
+                    <p className="sn-field-error">{createForm.formState.errors[f.name]?.message as string}</p>
                   )}
                 </div>
               ))}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Rôle</label>
-                <select {...createForm.register('role')} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <label className="sn-label">Rôle</label>
+                <select {...createForm.register('role')} className="sn-select">
                   {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Périmètre (P-codes, séparés par virgule)</label>
+                <label className="sn-label">Périmètre géographique (P-codes, séparés par virgule)</label>
                 <input
                   {...createForm.register('geographicScopePcodes')}
                   placeholder="CD-NK, CD-SK"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  className="sn-input"
                 />
               </div>
               {createMutation.isError && (
-                <p className="text-red-600 text-xs">Erreur : {(createMutation.error as any)?.response?.data?.error?.message ?? 'Inconnu'}</p>
+                <p className="sn-field-error">
+                  {(createMutation.error as any)?.response?.data?.error?.message ?? 'Erreur inconnue'}
+                </p>
               )}
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowCreate(false)}
-                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
-                <button type="submit" disabled={createMutation.isPending}
-                  className="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-60">
+              <div className="sn-modal-actions">
+                <button type="button" onClick={() => setShowCreate(false)} className="sn-btn-secondary flex-1">
+                  Annuler
+                </button>
+                <button type="submit" disabled={createMutation.isPending} className="sn-btn-primary flex-1">
                   {createMutation.isPending ? 'Création…' : 'Créer'}
                 </button>
               </div>
@@ -285,34 +278,37 @@ export function UsersPage() {
 
       {/* Modal — Modifier */}
       {editing && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">Modifier — {editing.email}</h2>
+        <div className="sn-modal-backdrop">
+          <div className="sn-modal">
+            <div className="sn-modal-header">
+              <h2 className="sn-modal-title">Modifier — {editing.email}</h2>
+              <button className="sn-modal-close" onClick={() => setEditing(null)}>✕</button>
+            </div>
             <form onSubmit={editForm.handleSubmit(data => updateMutation.mutate({ id: editing.id, body: data }))} className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Rôle</label>
-                <select {...editForm.register('role')} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <label className="sn-label">Rôle</label>
+                <select {...editForm.register('role')} className="sn-select">
                   {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Périmètre (P-codes)</label>
-                <input {...editForm.register('geographicScopePcodes')}
-                  placeholder="CD-NK, CD-SK"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                <label className="sn-label">Périmètre géographique (P-codes)</label>
+                <input {...editForm.register('geographicScopePcodes')} placeholder="CD-NK, CD-SK" className="sn-input" />
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 py-1">
                 <input type="checkbox" id="isActive" {...editForm.register('isActive')} className="rounded" />
                 <label htmlFor="isActive" className="text-sm text-gray-700">Compte actif</label>
               </div>
               {updateMutation.isError && (
-                <p className="text-red-600 text-xs">{(updateMutation.error as any)?.response?.data?.error?.message ?? 'Erreur'}</p>
+                <p className="sn-field-error">
+                  {(updateMutation.error as any)?.response?.data?.error?.message ?? 'Erreur'}
+                </p>
               )}
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setEditing(null)}
-                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
-                <button type="submit" disabled={updateMutation.isPending}
-                  className="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-60">
+              <div className="sn-modal-actions">
+                <button type="button" onClick={() => setEditing(null)} className="sn-btn-secondary flex-1">
+                  Annuler
+                </button>
+                <button type="submit" disabled={updateMutation.isPending} className="sn-btn-primary flex-1">
                   {updateMutation.isPending ? 'Enregistrement…' : 'Enregistrer'}
                 </button>
               </div>

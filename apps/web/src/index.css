@@ -4,8 +4,223 @@
 
 @layer base {
   html { @apply antialiased; }
-  body { @apply bg-gray-50 text-gray-900 font-sans; }
+  body { @apply bg-gray-50 text-gray-900 font-sans text-sm; }
 }
 
-/* MapLibre GL overrides */
 .maplibregl-map { font-family: inherit; }
+
+@layer components {
+
+  /* ── CARDS ─────────────────────────────────────── */
+  .sn-card {
+    @apply bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden;
+  }
+  .sn-card-body {
+    @apply p-5;
+  }
+  .sn-card-header {
+    @apply px-5 py-4 border-b border-gray-100 flex items-center justify-between;
+  }
+
+  /* ── BUTTONS ────────────────────────────────────── */
+  .sn-btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5
+           px-4 py-2 text-sm rounded-lg font-medium
+           bg-sinaur-700 text-white hover:bg-red-800
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .sn-btn-secondary {
+    @apply inline-flex items-center justify-center gap-1.5
+           px-4 py-2 text-sm rounded-lg font-medium
+           border border-gray-300 bg-white text-gray-700 hover:bg-gray-50
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .sn-btn-danger {
+    @apply inline-flex items-center justify-center gap-1.5
+           px-4 py-2 text-sm rounded-lg font-medium
+           bg-red-600 text-white hover:bg-red-700
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .sn-btn-dark {
+    @apply inline-flex items-center justify-center gap-1.5
+           px-4 py-2 text-sm rounded-lg font-medium
+           bg-gray-700 text-white hover:bg-gray-800
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .sn-btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5
+           px-4 py-2 text-sm rounded-lg font-medium
+           text-gray-600 hover:bg-gray-100 hover:text-gray-900
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .sn-btn-success {
+    @apply inline-flex items-center justify-center gap-1.5
+           px-4 py-2 text-sm rounded-lg font-medium
+           bg-green-600 text-white hover:bg-green-700
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .sn-btn-primary-sm {
+    @apply inline-flex items-center justify-center gap-1
+           px-3 py-1.5 text-xs rounded-lg font-medium
+           bg-sinaur-700 text-white hover:bg-red-800
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .sn-btn-secondary-sm {
+    @apply inline-flex items-center justify-center gap-1
+           px-3 py-1.5 text-xs rounded-lg font-medium
+           border border-gray-300 bg-white text-gray-700 hover:bg-gray-50
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .sn-btn-link-blue {
+    @apply text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors;
+  }
+  .sn-btn-link-green {
+    @apply text-xs font-medium text-green-600 hover:text-green-800 transition-colors;
+  }
+  .sn-btn-link-danger {
+    @apply text-xs font-medium text-red-500 hover:text-red-700 transition-colors;
+  }
+  .sn-btn-link-gray {
+    @apply text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors;
+  }
+
+  /* ── FORM ELEMENTS ──────────────────────────────── */
+  .sn-input {
+    @apply w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white
+           focus:outline-none focus:ring-2 focus:ring-sinaur-500 focus:border-transparent
+           placeholder:text-gray-400;
+  }
+  .sn-select {
+    @apply w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white cursor-pointer
+           focus:outline-none focus:ring-2 focus:ring-sinaur-500 focus:border-transparent;
+  }
+  .sn-textarea {
+    @apply w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white resize-none
+           focus:outline-none focus:ring-2 focus:ring-sinaur-500 focus:border-transparent
+           placeholder:text-gray-400;
+  }
+  .sn-label {
+    @apply block text-xs font-semibold text-gray-600 mb-1;
+  }
+  .sn-field-error {
+    @apply text-xs text-red-600 mt-1;
+  }
+
+  /* ── BADGES ─────────────────────────────────────── */
+  .sn-badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium;
+  }
+  .sn-badge-red    { @apply sn-badge bg-red-100 text-red-700; }
+  .sn-badge-orange { @apply sn-badge bg-orange-100 text-orange-700; }
+  .sn-badge-yellow { @apply sn-badge bg-yellow-100 text-yellow-800; }
+  .sn-badge-green  { @apply sn-badge bg-green-100 text-green-700; }
+  .sn-badge-blue   { @apply sn-badge bg-blue-100 text-blue-700; }
+  .sn-badge-teal   { @apply sn-badge bg-teal-100 text-teal-700; }
+  .sn-badge-purple { @apply sn-badge bg-purple-100 text-purple-700; }
+  .sn-badge-gray   { @apply sn-badge bg-gray-100 text-gray-600; }
+  .sn-badge-dark   { @apply sn-badge bg-red-900 text-white; }
+
+  .sn-pill-red    { @apply sn-badge-red    rounded-full; }
+  .sn-pill-green  { @apply sn-badge-green  rounded-full; }
+  .sn-pill-yellow { @apply sn-badge-yellow rounded-full; }
+  .sn-pill-gray   { @apply sn-badge-gray   rounded-full; }
+  .sn-pill-blue   { @apply sn-badge-blue   rounded-full; }
+  .sn-pill-orange { @apply sn-badge-orange rounded-full; }
+
+  /* ── TABLES ─────────────────────────────────────── */
+  .sn-table-wrap {
+    @apply sn-card overflow-x-auto;
+  }
+  .sn-table {
+    @apply w-full text-sm;
+  }
+  .sn-table thead {
+    @apply bg-gray-50 border-b border-gray-200;
+  }
+  .sn-table th {
+    @apply px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap;
+  }
+  .sn-table td {
+    @apply px-4 py-3 text-gray-700;
+  }
+  .sn-table tbody tr {
+    @apply border-b border-gray-50 hover:bg-gray-50 transition-colors;
+  }
+
+  /* ── PAGE STRUCTURE ─────────────────────────────── */
+  .sn-page {
+    @apply p-6 space-y-6 max-w-7xl mx-auto;
+  }
+  .sn-page-header {
+    @apply flex items-start justify-between gap-4;
+  }
+  .sn-page-title {
+    @apply text-2xl font-bold text-gray-900;
+  }
+  .sn-page-subtitle {
+    @apply text-sm text-gray-500 mt-0.5;
+  }
+  .sn-section-label {
+    @apply text-xs font-semibold uppercase tracking-wider text-gray-500;
+  }
+
+  /* ── ALERTS / BANNERS ───────────────────────────── */
+  .sn-alert-danger {
+    @apply rounded-xl p-4 text-sm bg-red-50 border border-red-200 text-red-800;
+  }
+  .sn-alert-warning {
+    @apply rounded-xl p-4 text-sm bg-yellow-50 border border-yellow-200 text-yellow-800;
+  }
+  .sn-alert-success {
+    @apply rounded-xl p-4 text-sm bg-green-50 border border-green-200 text-green-800;
+  }
+  .sn-alert-info {
+    @apply rounded-xl p-4 text-sm bg-blue-50 border border-blue-200 text-blue-800;
+  }
+
+  /* ── PAGINATION ─────────────────────────────────── */
+  .sn-pagination {
+    @apply flex items-center justify-center gap-2;
+  }
+  .sn-page-btn {
+    @apply px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-700
+           disabled:opacity-40 hover:bg-gray-50 transition-colors;
+  }
+
+  /* ── MODALS ─────────────────────────────────────── */
+  .sn-modal-backdrop {
+    @apply fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4;
+  }
+  .sn-modal {
+    @apply bg-white rounded-2xl shadow-2xl w-full max-w-md p-6;
+  }
+  .sn-modal-lg {
+    @apply bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6
+           overflow-y-auto max-h-[90vh];
+  }
+  .sn-modal-header {
+    @apply flex items-center justify-between mb-5 pb-4 border-b border-gray-100;
+  }
+  .sn-modal-title {
+    @apply text-lg font-semibold text-gray-900;
+  }
+  .sn-modal-close {
+    @apply w-7 h-7 flex items-center justify-center rounded-lg
+           text-gray-400 hover:text-gray-600 hover:bg-gray-100
+           text-base leading-none transition-colors;
+  }
+  .sn-modal-actions {
+    @apply flex gap-3 pt-4 mt-2 border-t border-gray-100;
+  }
+
+  /* ── MISC ───────────────────────────────────────── */
+  .sn-empty {
+    @apply text-center py-16 text-sm text-gray-400;
+  }
+  .sn-skeleton {
+    @apply animate-pulse bg-gray-200 rounded;
+  }
+  .sn-filter-bar {
+    @apply flex flex-wrap gap-3 items-end;
+  }
+}

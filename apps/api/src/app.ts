@@ -29,6 +29,7 @@ import { usersRoutes } from './routes/users.js'
 import { profileRoutes } from './routes/profile.js'
 import { webhookRoutes } from './routes/webhooks.js'
 import { resourceRoutes } from './routes/resources.js'
+import { demandsRoutes } from './routes/demands.js'
 import { logSecurityEvent } from './auth/security.js'
 import { registerClient } from './websocket/broadcast.js'
 import { registerMetrics } from '@sinaur/metrics'
@@ -129,6 +130,7 @@ export async function createApp(): Promise<FastifyInstance> {
   await fastify.register(profileRoutes)
   await fastify.register(webhookRoutes)
   await fastify.register(resourceRoutes)
+  await fastify.register(demandsRoutes)
 
   fastify.get('/ws', { websocket: true }, (socket, request) => {
     let scope: string[] = []

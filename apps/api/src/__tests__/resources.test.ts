@@ -78,6 +78,10 @@ const FAKE_ALERT = {
 
 // ── Mock DB ───────────────────────────────────────────────────────────────────
 
+vi.mock('axios', () => ({
+  default: { post: vi.fn().mockResolvedValue({ data: { ok: true } }) },
+}))
+
 vi.mock('../db.js', () => ({
   sql: Object.assign(
     vi.fn().mockImplementation((strings: TemplateStringsArray) => {
@@ -108,9 +112,13 @@ vi.mock('../db.js', () => ({
         return Promise.resolve([{ id: DEPOT_ID }])
       }
 
-      // Lecture stock avant enregistrement d'un mouvement (camelCase via postgres.camel transform)
-      if (q.includes('SELECT id, quantity_available, quantity_reserved, resource_name')) {
-        return Promise.resolve([{ id: STOCK_ID, quantityAvailable: 500, quantityReserved: 0, resourceName: 'Rations alimentaires' }])
+      // Lecture stock avant enregistrement d'un mouvement (JOIN dépôt pour phase 23)
+      if (q.includes('d.name AS depot_name')) {
+        return Promise.resolve([{
+          id: STOCK_ID, quantityAvailable: 500, quantityReserved: 0,
+          resourceName: 'Rations alimentaires', unit: 'kg', minimumThreshold: 100,
+          depotName: 'Dépôt Central Kinshasa', pcode: 'CD-KN',
+        }])
       }
 
       // Création dépôt
@@ -552,7 +560,11 @@ describe('POST /resources/depots/:id/movements', () => {
   it('renvoie 409 INSUFFICIENT_STOCK si la sortie dépasse le disponible', async () => {
     const { sql } = await import('../db.js')
     ;(sql as any).mockImplementationOnce(() =>
-      Promise.resolve([{ id: STOCK_ID, quantityAvailable: 30, quantityReserved: 0, resourceName: 'Rations alimentaires' }])
+      Promise.resolve([{
+        id: STOCK_ID, quantityAvailable: 30, quantityReserved: 0,
+        resourceName: 'Rations alimentaires', unit: 'kg', minimumThreshold: 100,
+        depotName: 'Dépôt Central Kinshasa', pcode: 'CD-KN',
+      }])
     )
 
     const res = await app.inject({
@@ -748,5 +760,80 @@ describe('GET /resources/alerts', () => {
     })
     expect(res.statusCode).toBe(200)
     expect(res.json().data).toHaveLength(0)
+  })
+})
+
+// ── Phase 23 — push FCM stocks critiques ─────────────────────────────────────
+
+describe('Phase 23 — push FCM stock critique', () => {
+  it('appelle axios.post /notify/stock-low quand le seuil est franchi à la baisse', async () => {
+    const axios = (await import('axios')).default
+    ;(axios.post as any).mockClear()
+
+    const { sql } = await import('../db.js')
+    // Stock à 150, seuil 100 — sortie de 60 → newQty = 90 (franchissement du seuil)
+    ;(sql as any).mockImplementationOnce(() =>
+      Promise.resolve([{
+        id: STOCK_ID, quantityAvailable: 150, quantityReserved: 0,
+        resourceName: 'Rations alimentaires', unit: 'kg', minimumThreshold: 100,
+        depotName: 'Dépôt Central Kinshasa', pcode: 'CD-KN',
+      }])
+    )
+
+    const res = await app.inject({
+      method: 'POST', url: `/resources/depots/${DEPOT_ID}/movements`,
+      headers: authHeader(adminToken()),
+      payload: { stockId: STOCK_ID, movementType: 'out', quantity: 60 },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().data.newQuantityAvailable).toBe(90)
+    expect(axios.post).toHaveBeenCalledOnce()
+    const [url, payload] = (axios.post as any).mock.calls[0]
+    expect(url).toMatch(/\/notify\/stock-low$/)
+    expect(payload).toMatchObject({
+      resourceName: 'Rations alimentaires',
+      pcode: 'CD-KN',
+      quantityAvailable: 90,
+      minimumThreshold: 100,
+      depotId: DEPOT_ID,
+    })
+  })
+
+  it('ne déclenche pas axios.post si le stock était déjà sous le seuil', async () => {
+    const axios = (await import('axios')).default
+    ;(axios.post as any).mockClear()
+
+    const { sql } = await import('../db.js')
+    // Stock déjà à 80 (sous seuil 100) — pas de franchissement
+    ;(sql as any).mockImplementationOnce(() =>
+      Promise.resolve([{
+        id: STOCK_ID, quantityAvailable: 80, quantityReserved: 0,
+        resourceName: 'Rations alimentaires', unit: 'kg', minimumThreshold: 100,
+        depotName: 'Dépôt Central Kinshasa', pcode: 'CD-KN',
+      }])
+    )
+
+    const res = await app.inject({
+      method: 'POST', url: `/resources/depots/${DEPOT_ID}/movements`,
+      headers: authHeader(adminToken()),
+      payload: { stockId: STOCK_ID, movementType: 'out', quantity: 10 },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().data.newQuantityAvailable).toBe(70)
+    expect(axios.post).not.toHaveBeenCalled()
+  })
+
+  it('ne déclenche pas axios.post pour un mouvement "in" (réapprovisionnement)', async () => {
+    const axios = (await import('axios')).default
+    ;(axios.post as any).mockClear()
+
+    const res = await app.inject({
+      method: 'POST', url: `/resources/depots/${DEPOT_ID}/movements`,
+      headers: authHeader(adminToken()),
+      payload: { stockId: STOCK_ID, movementType: 'in', quantity: 500 },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().data.newQuantityAvailable).toBe(1000) // 500 + 500
+    expect(axios.post).not.toHaveBeenCalled()
   })
 })

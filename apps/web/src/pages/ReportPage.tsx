@@ -132,7 +132,7 @@ export function ReportPage() {
         )}
         <button
           onClick={() => setResult(null)}
-          className="mt-6 px-6 py-2.5 bg-red-700 text-white rounded-lg hover:bg-red-800 transition-colors font-medium"
+          className="sn-btn-primary mt-6 px-6 py-2.5"
         >
           Nouveau signalement
         </button>
@@ -274,7 +274,7 @@ export function ReportPage() {
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="w-full bg-red-700 hover:bg-red-800 disabled:bg-red-400 text-white font-semibold py-3 rounded-xl transition-colors text-base flex items-center justify-center gap-2"
+          className="sn-btn-primary w-full py-3 text-base"
         >
           {mutation.isPending ? (
             <><span className="animate-spin">⏳</span> Envoi en cours...</>

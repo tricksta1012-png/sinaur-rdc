@@ -152,3 +152,100 @@ export async function sendPushAlert(payload: PushPayload): Promise<void> {
     logger.error({ err: e, alertId: payload.alertId }, 'FCM send failed')
   }
 }
+
+export interface StockLowPayload {
+  stockId: string
+  resourceName: string
+  unit: string
+  quantityAvailable: number
+  minimumThreshold: number
+  depotId: string
+  depotName: string
+  pcode: string
+}
+
+const STOCK_ROLES = ['system_admin', 'national_decision_maker', 'provincial_coordinator', 'humanitarian_partner']
+
+/**
+ * Notifie les acteurs humanitaires (par rôle + scope géographique) qu'un stock est passé sous le seuil.
+ */
+export async function sendPushStockAlert(payload: StockLowPayload): Promise<void> {
+  const firebase = await getFirebaseAdmin()
+  if (!firebase) {
+    logger.warn('Stock push skipped: Firebase not initialized')
+    return
+  }
+
+  const tokenRows: { pushToken: string }[] = await sql`
+    SELECT DISTINCT sd.push_token
+    FROM sync_devices sd
+    JOIN users u ON u.id = sd.user_id
+    WHERE sd.push_token IS NOT NULL
+      AND u.is_active = true
+      AND u.deleted_at IS NULL
+      AND u.role = ANY(${STOCK_ROLES})
+      AND (
+        u.scope IS NULL
+        OR u.scope = '{}'
+        OR EXISTS (
+          SELECT 1 FROM unnest(u.scope) AS s
+          WHERE ${payload.pcode} LIKE s || '%'
+             OR s LIKE ${payload.pcode} || '%'
+        )
+      )
+    LIMIT 500
+  `
+
+  if (tokenRows.length === 0) {
+    logger.info({ pcode: payload.pcode, depotId: payload.depotId }, 'No FCM tokens for stock alert — skipped')
+    return
+  }
+
+  const tokens = tokenRows.map(t => t.pushToken)
+  const gap = payload.quantityAvailable - payload.minimumThreshold
+
+  const message = {
+    notification: {
+      title: `⚠️ Stock critique — ${payload.depotName}`,
+      body: `${payload.resourceName} : ${payload.quantityAvailable} ${payload.unit} (seuil : ${payload.minimumThreshold}, écart : ${gap})`,
+    },
+    data: {
+      type: 'SINAUR_STOCK_LOW',
+      stockId: payload.stockId,
+      depotId: payload.depotId,
+      pcode: payload.pcode,
+      resourceName: payload.resourceName,
+      quantityAvailable: String(payload.quantityAvailable),
+      minimumThreshold: String(payload.minimumThreshold),
+    },
+    android: {
+      priority: 'high' as const,
+      notification: { channelId: 'sinaur_alerts', priority: 'high' as const },
+    },
+    apns: {
+      payload: { aps: { sound: 'default', contentAvailable: true } },
+    },
+    tokens,
+  }
+
+  try {
+    const response = await firebase.messaging.sendEachForMulticast(message)
+    logger.info({
+      depotId: payload.depotId,
+      resourceName: payload.resourceName,
+      successCount: response.successCount,
+      failureCount: response.failureCount,
+    }, 'Stock low push notifications sent')
+
+    const invalidTokens = response.responses
+      .map((r: any, i: number) => ({ r, token: tokens[i] }))
+      .filter(({ r }: any) => !r.success && r.error?.code === 'messaging/registration-token-not-registered')
+      .map(({ token }: any) => token)
+
+    if (invalidTokens.length > 0) {
+      await sql`UPDATE sync_devices SET push_token = NULL WHERE push_token = ANY(${invalidTokens})`
+    }
+  } catch (e) {
+    logger.error({ err: e, depotId: payload.depotId }, 'Stock FCM send failed')
+  }
+}

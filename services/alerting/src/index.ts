@@ -9,6 +9,7 @@ import { logger } from './logger.js'
 import { runAlertingCycle } from './engine.js'
 import { dispatchValidatedAlert } from './engine.js'
 import { processSmsQueue } from './channels/sms.js'
+import { sendPushStockAlert } from './channels/push.js'
 import { sql } from './db.js'
 
 const metricsRegistry = new Registry()
@@ -72,6 +73,21 @@ async function main() {
         res.writeHead(500, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ ok: false, error: e.message }))
       }
+    } else if (req.method === 'POST' && req.url === '/notify/stock-low') {
+      let body = ''
+      req.on('data', (chunk) => { body += chunk })
+      req.on('end', async () => {
+        try {
+          const payload = JSON.parse(body)
+          await sendPushStockAlert(payload)
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: true }))
+        } catch (e: any) {
+          logger.error({ err: e }, 'Stock low push failed')
+          res.writeHead(500, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, error: e.message }))
+        }
+      })
     } else if (req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ status: 'ok', service: 'alerting' }))

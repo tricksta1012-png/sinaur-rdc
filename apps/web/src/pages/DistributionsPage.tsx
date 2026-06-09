@@ -23,17 +23,17 @@ interface Distribution {
 }
 
 const STATUS_LABELS: Record<AidStatus, string> = {
-  planned: 'Planifié',
+  planned:     'Planifié',
   in_progress: 'En cours',
-  completed: 'Terminé',
-  cancelled: 'Annulé',
+  completed:   'Terminé',
+  cancelled:   'Annulé',
 }
 
-const STATUS_COLORS: Record<AidStatus, string> = {
-  planned: 'bg-blue-100 text-blue-800',
-  in_progress: 'bg-yellow-100 text-yellow-800',
-  completed: 'bg-green-100 text-green-800',
-  cancelled: 'bg-gray-100 text-gray-500',
+const STATUS_BADGE: Record<AidStatus, string> = {
+  planned:     'sn-pill-blue',
+  in_progress: 'sn-pill-yellow',
+  completed:   'sn-pill-green',
+  cancelled:   'sn-pill-gray',
 }
 
 const AID_LABELS: Record<string, string> = {
@@ -44,30 +44,30 @@ const AID_LABELS: Record<string, string> = {
 }
 
 const CreateSchema = z.object({
-  aidType: z.string().min(1, 'Type requis'),
-  description: z.string().max(500).default(''),
-  quantity: z.coerce.number().positive('Quantité invalide'),
-  unit: z.string().min(1, 'Unité requise'),
-  targetPcodes: z.string().min(1, 'Zone requise'),
-  plannedDate: z.string().min(1, 'Date requise'),
-  organizationName: z.string().min(1, 'Organisation requise'),
-  totalBeneficiariesTargeted: z.coerce.number().int().positive('Nombre requis'),
+  aidType:                     z.string().min(1, 'Type requis'),
+  description:                 z.string().max(500).default(''),
+  quantity:                    z.coerce.number().positive('Quantité invalide'),
+  unit:                        z.string().min(1, 'Unité requise'),
+  targetPcodes:                z.string().min(1, 'Zone requise'),
+  plannedDate:                 z.string().min(1, 'Date requise'),
+  organizationName:            z.string().min(1, 'Organisation requise'),
+  totalBeneficiariesTargeted:  z.coerce.number().int().positive('Nombre requis'),
 })
 
 type CreateForm = z.infer<typeof CreateSchema>
 
 const ScanReceiptSchema = z.object({
   qrCodeScanned: z.string().min(1, 'QR code requis'),
-  quantity: z.coerce.number().positive().default(1),
-  notes: z.string().optional(),
+  quantity:      z.coerce.number().positive().default(1),
+  notes:         z.string().optional(),
 })
 
 type ScanForm = z.infer<typeof ScanReceiptSchema>
 
 export function DistributionsPage() {
   const queryClient = useQueryClient()
-  const [page, setPage] = useState(1)
-  const [status, setStatus] = useState('')
+  const [page, setPage]         = useState(1)
+  const [status, setStatus]     = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [selectedDist, setSelectedDist] = useState<Distribution | null>(null)
   const [showScan, setShowScan] = useState(false)
@@ -90,7 +90,7 @@ export function DistributionsPage() {
   })
 
   const createForm = useForm<CreateForm>({ resolver: zodResolver(CreateSchema) })
-  const scanForm = useForm<ScanForm>({
+  const scanForm   = useForm<ScanForm>({
     resolver: zodResolver(ScanReceiptSchema),
     defaultValues: { quantity: 1 },
   })
@@ -117,8 +117,7 @@ export function DistributionsPage() {
       scanForm.reset({ quantity: 1 })
     },
     onError: (e: any) => {
-      const msg = e.response?.data?.error?.message ?? 'Erreur lors du scan'
-      setScanResult({ success: false, message: msg })
+      setScanResult({ success: false, message: e.response?.data?.error?.message ?? 'Erreur lors du scan' })
     },
   })
 
@@ -133,20 +132,19 @@ export function DistributionsPage() {
   const receipts = receiptsData?.data ?? []
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Distributions d'aide</h1>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="px-4 py-2 bg-red-700 text-white rounded-lg text-sm font-medium hover:bg-red-800"
-        >
+    <div className="sn-page">
+      <div className="sn-page-header">
+        <div>
+          <h1 className="sn-page-title">Distributions d'aide</h1>
+          <p className="sn-page-subtitle">Planification et suivi des distributions humanitaires</p>
+        </div>
+        <button onClick={() => setShowCreate(true)} className="sn-btn-primary">
           + Créer une distribution
         </button>
       </div>
 
-      {/* Filtres */}
-      <select value={status} onChange={e => { setStatus(e.target.value); setPage(1) }}
-        className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500">
+      {/* Filtre statut */}
+      <select value={status} onChange={e => { setStatus(e.target.value); setPage(1) }} className="sn-select w-auto">
         <option value="">Tous statuts</option>
         {Object.entries(STATUS_LABELS).map(([v, l]) => (
           <option key={v} value={v}>{l}</option>
@@ -154,73 +152,69 @@ export function DistributionsPage() {
       </select>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
+      <div className="sn-table-wrap">
+        <table className="sn-table">
+          <thead>
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Type</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Organisation</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Zones cibles</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Statut</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Date prévue</th>
-              <th className="text-right px-4 py-3 font-medium text-gray-600">Progression</th>
-              <th className="px-4 py-3"></th>
+              <th>Type d'aide</th>
+              <th>Organisation</th>
+              <th>Zones cibles</th>
+              <th>Statut</th>
+              <th>Date prévue</th>
+              <th className="text-right">Progression</th>
+              <th>Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody>
             {isLoading && (
-              <tr><td colSpan={7} className="text-center py-12 text-gray-400">Chargement...</td></tr>
+              <tr><td colSpan={7} className="sn-empty">Chargement…</td></tr>
             )}
             {!isLoading && distributions.length === 0 && (
-              <tr><td colSpan={7} className="text-center py-12 text-gray-400">Aucune distribution</td></tr>
+              <tr><td colSpan={7} className="sn-empty">Aucune distribution</td></tr>
             )}
             {distributions.map(d => {
               const pct = d.totalBeneficiariesTargeted > 0
                 ? Math.round(d.totalBeneficiariesServed / d.totalBeneficiariesTargeted * 100)
                 : 0
               return (
-                <tr key={d.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-gray-900">
-                    {AID_LABELS[d.aidType] ?? d.aidType}
-                  </td>
-                  <td className="px-4 py-3 text-gray-700">{d.organizationName}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
+                <tr key={d.id}>
+                  <td className="font-medium text-gray-900">{AID_LABELS[d.aidType] ?? d.aidType}</td>
+                  <td>{d.organizationName}</td>
+                  <td className="text-xs text-gray-500">
                     {d.targetPcodes?.slice(0, 3).join(', ')}
                     {d.targetPcodes?.length > 3 ? ` +${d.targetPcodes.length - 3}` : ''}
                   </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[d.status]}`}>
-                      {STATUS_LABELS[d.status]}
-                    </span>
+                  <td>
+                    <span className={STATUS_BADGE[d.status]}>{STATUS_LABELS[d.status]}</span>
                   </td>
-                  <td className="px-4 py-3 text-gray-700">
+                  <td className="whitespace-nowrap text-gray-600">
                     {new Date(d.plannedDate).toLocaleDateString('fr-FR')}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <div className="w-20 bg-gray-200 rounded-full h-2">
+                      <div className="w-20 bg-gray-200 rounded-full h-1.5">
                         <div
-                          className={`h-2 rounded-full ${pct >= 100 ? 'bg-green-500' : 'bg-red-600'}`}
+                          className={`h-1.5 rounded-full ${pct >= 100 ? 'bg-green-500' : 'bg-sinaur-600'}`}
                           style={{ width: `${Math.min(pct, 100)}%` }}
                         />
                       </div>
-                      <span className="text-xs tabular-nums text-gray-600 w-12 text-right">
+                      <span className="text-xs tabular-nums text-gray-500 w-14 text-right">
                         {d.totalBeneficiariesServed}/{d.totalBeneficiariesTargeted}
                       </span>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
+                  <td>
+                    <div className="flex items-center gap-3">
                       <button
                         onClick={() => { setSelectedDist(d); setScanResult(null) }}
-                        className="text-xs text-blue-600 hover:text-blue-800"
+                        className="sn-btn-link-blue"
                       >
                         Détails
                       </button>
                       {d.status === 'in_progress' && (
                         <button
                           onClick={() => { setSelectedDist(d); setShowScan(true); setScanResult(null) }}
-                          className="text-xs bg-red-700 text-white px-2 py-1 rounded hover:bg-red-800"
+                          className="sn-btn-primary-sm"
                         >
                           Scanner QR
                         </button>
@@ -228,14 +222,14 @@ export function DistributionsPage() {
                       {d.status === 'planned' && (
                         <button
                           onClick={() => updateStatusMutation.mutate({ id: d.id, status: 'in_progress' })}
-                          className="text-xs text-green-600 hover:text-green-800"
+                          className="sn-btn-link-green"
                         >
                           Démarrer
                         </button>
                       )}
                       <a
                         href={`/api/distributions/${d.id}/export.csv`}
-                        className="text-xs text-gray-500 hover:text-gray-700"
+                        className="sn-btn-link-gray"
                         download
                       >
                         CSV
@@ -249,14 +243,12 @@ export function DistributionsPage() {
         </table>
 
         {pagination && pagination.pages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t text-sm">
-            <span className="text-gray-500">{pagination.total} distributions</span>
-            <div className="flex gap-2">
-              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                className="px-3 py-1.5 border rounded-lg disabled:opacity-40">Précédent</button>
-              <span className="px-3 py-1.5 text-gray-600">{page} / {pagination.pages}</span>
-              <button onClick={() => setPage(p => Math.min(pagination.pages, p + 1))} disabled={page === pagination.pages}
-                className="px-3 py-1.5 border rounded-lg disabled:opacity-40">Suivant</button>
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+            <span className="text-sm text-gray-500">{pagination.total} distributions</span>
+            <div className="sn-pagination">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="sn-page-btn">Précédent</button>
+              <span className="text-sm text-gray-600 px-2">{page} / {pagination.pages}</span>
+              <button onClick={() => setPage(p => Math.min(pagination.pages, p + 1))} disabled={page === pagination.pages} className="sn-page-btn">Suivant</button>
             </div>
           </div>
         )}
@@ -264,187 +256,165 @@ export function DistributionsPage() {
 
       {/* Panel détails + reçus */}
       {selectedDist && !showScan && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <div className="sn-card sn-card-body">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-gray-900">
               Reçus — {AID_LABELS[selectedDist.aidType]} ({selectedDist.organizationName})
             </h2>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               {selectedDist.status === 'in_progress' && (
                 <button
                   onClick={() => { setShowScan(true); setScanResult(null) }}
-                  className="px-3 py-1.5 bg-red-700 text-white text-sm rounded-lg hover:bg-red-800"
+                  className="sn-btn-primary-sm"
                 >
                   Scanner un QR code
                 </button>
               )}
-              <button onClick={() => setSelectedDist(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+              <button onClick={() => setSelectedDist(null)} className="sn-modal-close">✕</button>
             </div>
           </div>
 
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left px-3 py-2 font-medium text-gray-600">N° enreg.</th>
-                <th className="text-left px-3 py-2 font-medium text-gray-600">Zone</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600">Ménage</th>
-                <th className="text-left px-3 py-2 font-medium text-gray-600">Remis le</th>
-                <th className="text-left px-3 py-2 font-medium text-gray-600">Agent</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {receipts.length === 0 && (
-                <tr><td colSpan={5} className="text-center py-8 text-gray-400">Aucun reçu encore enregistré</td></tr>
-              )}
-              {receipts.map((r: any) => (
-                <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 font-mono text-xs">{r.registrationNumber}</td>
-                  <td className="px-3 py-2 text-gray-600">{r.locationPcode}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.householdSize}</td>
-                  <td className="px-3 py-2 text-gray-600">{new Date(r.receivedAt).toLocaleString('fr-FR')}</td>
-                  <td className="px-3 py-2 text-gray-600">{r.distributedByName}</td>
+          <div className="overflow-x-auto">
+            <table className="sn-table">
+              <thead>
+                <tr>
+                  <th>N° enreg.</th>
+                  <th>Zone</th>
+                  <th className="text-right">Ménage</th>
+                  <th>Remis le</th>
+                  <th>Agent</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {receipts.length === 0 && (
+                  <tr><td colSpan={5} className="sn-empty">Aucun reçu encore enregistré</td></tr>
+                )}
+                {receipts.map((r: any) => (
+                  <tr key={r.id}>
+                    <td className="font-mono text-xs">{r.registrationNumber}</td>
+                    <td>{r.locationPcode}</td>
+                    <td className="text-right tabular-nums">{r.householdSize}</td>
+                    <td className="text-xs whitespace-nowrap">{new Date(r.receivedAt).toLocaleString('fr-FR')}</td>
+                    <td className="text-xs">{r.distributedByName}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
-      {/* Panel scan QR */}
+      {/* Modal — Scanner QR */}
       {selectedDist && showScan && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">Scanner QR bénéficiaire</h3>
-              <button onClick={() => { setShowScan(false); setScanResult(null) }}
-                className="text-gray-400 hover:text-gray-600">✕</button>
+        <div className="sn-modal-backdrop">
+          <div className="sn-modal">
+            <div className="sn-modal-header">
+              <h3 className="sn-modal-title">Scanner QR bénéficiaire</h3>
+              <button className="sn-modal-close" onClick={() => { setShowScan(false); setScanResult(null) }}>✕</button>
             </div>
-            <p className="text-sm text-gray-500 mb-4">
+            <p className="text-sm text-gray-500 -mt-2">
               Distribution : <strong>{AID_LABELS[selectedDist.aidType]}</strong> — {selectedDist.organizationName}
             </p>
 
             {scanResult && (
-              <div className={`p-3 rounded-xl mb-4 text-sm ${scanResult.success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+              <div className={scanResult.success ? 'sn-alert-success' : 'sn-alert-danger'}>
                 {scanResult.success ? '✓ ' : '✗ '}{scanResult.message}
               </div>
             )}
 
             <form onSubmit={scanForm.handleSubmit(d => scanMutation.mutate(d))} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Données QR scannées *
-                </label>
+                <label className="sn-label">Données QR scannées *</label>
                 <textarea
                   {...scanForm.register('qrCodeScanned')}
                   rows={3}
                   placeholder='{"type":"SINAUR_BENEFICIARY","id":"...","regNum":"BEN-..."}'
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-500"
+                  className="sn-textarea font-mono"
                 />
                 {scanForm.formState.errors.qrCodeScanned && (
-                  <p className="text-red-600 text-xs mt-1">{scanForm.formState.errors.qrCodeScanned.message}</p>
+                  <p className="sn-field-error">{scanForm.formState.errors.qrCodeScanned.message}</p>
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Quantité distribuée</label>
-                <input
-                  type="number" step="0.1" min="0.1"
-                  {...scanForm.register('quantity')}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
+                <label className="sn-label">Quantité distribuée</label>
+                <input type="number" step="0.1" min="0.1" {...scanForm.register('quantity')} className="sn-input" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optionnel)</label>
-                <input
-                  {...scanForm.register('notes')}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
+                <label className="sn-label">Notes (optionnel)</label>
+                <input {...scanForm.register('notes')} className="sn-input" />
               </div>
-              <button
-                type="submit"
-                disabled={scanMutation.isPending}
-                className="w-full px-4 py-3 bg-red-700 text-white rounded-xl font-semibold hover:bg-red-800 disabled:opacity-50"
-              >
-                {scanMutation.isPending ? 'Enregistrement...' : 'Confirmer la distribution'}
+              <button type="submit" disabled={scanMutation.isPending} className="sn-btn-primary w-full py-3">
+                {scanMutation.isPending ? 'Enregistrement…' : 'Confirmer la distribution'}
               </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* Modal création */}
+      {/* Modal — Créer distribution */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl overflow-y-auto max-h-[90vh]">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">Nouvelle distribution</h3>
-              <button onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+        <div className="sn-modal-backdrop">
+          <div className="sn-modal-lg">
+            <div className="sn-modal-header">
+              <h3 className="sn-modal-title">Nouvelle distribution</h3>
+              <button className="sn-modal-close" onClick={() => setShowCreate(false)}>✕</button>
             </div>
 
             <form onSubmit={createForm.handleSubmit(d => createMutation.mutate(d))} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Type d'aide *</label>
-                  <select {...createForm.register('aidType')}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <label className="sn-label">Type d'aide *</label>
+                  <select {...createForm.register('aidType')} className="sn-select">
                     <option value="">— Choisir —</option>
                     {Object.entries(AID_LABELS).map(([v, l]) => (
                       <option key={v} value={v}>{l}</option>
                     ))}
                   </select>
                   {createForm.formState.errors.aidType && (
-                    <p className="text-red-600 text-xs mt-1">{createForm.formState.errors.aidType.message}</p>
+                    <p className="sn-field-error">{createForm.formState.errors.aidType.message}</p>
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Organisation *</label>
-                  <input {...createForm.register('organizationName')}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  <label className="sn-label">Organisation *</label>
+                  <input {...createForm.register('organizationName')} className="sn-input" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantité *</label>
-                  <input type="number" {...createForm.register('quantity')}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  <label className="sn-label">Quantité *</label>
+                  <input type="number" {...createForm.register('quantity')} className="sn-input" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Unité *</label>
-                  <input {...createForm.register('unit')} placeholder="kg / cartons / personnes..."
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  <label className="sn-label">Unité *</label>
+                  <input {...createForm.register('unit')} placeholder="kg / cartons / personnes…" className="sn-input" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Zones cibles (P-codes) *</label>
-                  <input {...createForm.register('targetPcodes')} placeholder="CD01, CD02, ..."
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  <label className="sn-label">Zones cibles (P-codes) *</label>
+                  <input {...createForm.register('targetPcodes')} placeholder="CD01, CD02, …" className="sn-input" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date prévue *</label>
-                  <input type="datetime-local" {...createForm.register('plannedDate')}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  <label className="sn-label">Date prévue *</label>
+                  <input type="datetime-local" {...createForm.register('plannedDate')} className="sn-input" />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nb bénéficiaires cibles *</label>
-                  <input type="number" {...createForm.register('totalBeneficiariesTargeted')}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  <label className="sn-label">Nb bénéficiaires cibles *</label>
+                  <input type="number" {...createForm.register('totalBeneficiariesTargeted')} className="sn-input" />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                  <textarea {...createForm.register('description')} rows={2}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  <label className="sn-label">Description</label>
+                  <textarea {...createForm.register('description')} rows={2} className="sn-textarea" />
                 </div>
               </div>
 
               {createMutation.isError && (
-                <p className="text-red-600 text-sm">
+                <p className="sn-field-error text-sm">
                   {(createMutation.error as any)?.response?.data?.error?.message ?? 'Erreur de création'}
                 </p>
               )}
 
-              <div className="flex gap-3">
-                <button type="submit" disabled={createMutation.isPending}
-                  className="flex-1 px-4 py-2 bg-red-700 text-white rounded-lg font-medium hover:bg-red-800 disabled:opacity-50">
-                  {createMutation.isPending ? 'Création...' : 'Créer la distribution'}
+              <div className="sn-modal-actions">
+                <button type="submit" disabled={createMutation.isPending} className="sn-btn-primary flex-1">
+                  {createMutation.isPending ? 'Création…' : 'Créer la distribution'}
                 </button>
-                <button type="button" onClick={() => setShowCreate(false)}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                <button type="button" onClick={() => setShowCreate(false)} className="sn-btn-secondary">
                   Annuler
                 </button>
               </div>
