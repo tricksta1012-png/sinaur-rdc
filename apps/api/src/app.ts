@@ -32,6 +32,12 @@ import { resourceRoutes } from './routes/resources.js'
 import { demandsRoutes } from './routes/demands.js'
 import { veilleRoutes } from './routes/veille.js'
 import { antifraudRoutes } from './routes/antifraud.js'
+import { anomalieStocksRoutes } from './routes/anomalie-stocks.js'
+import { signalementsRoutes } from './routes/signalements.js'
+import { reportingRoutes } from './routes/reporting.js'
+import { logistiqueRoutes } from './routes/logistique.js'
+import { epidemieRoutes } from './routes/epidemie.js'
+import { agentsStatusRoutes } from './routes/agents-status.js'
 import { logSecurityEvent } from './auth/security.js'
 import { aiHealthCheck } from './services/aiClient.js'
 import { registerClient } from './websocket/broadcast.js'
@@ -136,6 +142,12 @@ export async function createApp(): Promise<FastifyInstance> {
   await fastify.register(demandsRoutes)
   await fastify.register(veilleRoutes)
   await fastify.register(antifraudRoutes)
+  await fastify.register(anomalieStocksRoutes)
+  await fastify.register(signalementsRoutes)
+  await fastify.register(reportingRoutes)
+  await fastify.register(logistiqueRoutes)
+  await fastify.register(epidemieRoutes)
+  await fastify.register(agentsStatusRoutes)
 
   fastify.get('/ws', { websocket: true }, (socket, request) => {
     let scope: string[] = []

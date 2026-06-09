@@ -19,8 +19,37 @@ interface MapEvent {
   startDate: string;
   endDate: string | null;
   glideNumber: string | null;
+  source: string | null;
   lng: number | null;
   lat: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Centroïdes des 26 provinces RDC (WGS-84 : [lng, lat])
+// Utilisés comme fallback pour les événements sans coordonnées exactes.
+// ---------------------------------------------------------------------------
+const PROVINCE_CENTROIDS: Record<string, [number, number]> = {
+  'CD-BC': [15.3, -5.0],  'CD-BU': [25.5,  1.5],  'CD-EQ': [21.0,  2.5],
+  'CD-HK': [27.8, -3.0],  'CD-HL': [26.0, -5.5],  'CD-HU': [24.0, -7.0],
+  'CD-IT': [23.5,  1.0],  'CD-KA': [26.5,-10.5],  'CD-KC': [21.5, -6.0],
+  'CD-KE': [26.0, -7.5],  'CD-KL': [16.0, -4.5],  'CD-KN': [15.5, -4.3],
+  'CD-KW': [22.5, -8.5],  'CD-LO': [25.0,  0.5],  'CD-LT': [22.5, -5.0],
+  'CD-LU': [26.5, -8.0],  'CD-MA': [20.0, -5.5],  'CD-MN': [25.5, -3.5],
+  'CD-MO': [19.5,  3.5],  'CD-NK': [28.5, -0.5],  'CD-NU': [22.0,  3.0],
+  'CD-SA': [26.5,-12.5],  'CD-SK': [28.0, -4.0],  'CD-SU': [25.0,  5.5],
+  'CD-TA': [26.5, -5.5],  'CD-TO': [21.0, -2.5],
+};
+
+/**
+ * Retourne le centroïde pour un P-code de province (ex: "CD-KN" ou "CD-KN-123").
+ * Essaie d'abord le match exact, puis le préfixe à 5 caractères.
+ */
+function getProvinceCentroid(pcode: string): [number, number] | null {
+  if (!pcode) return null;
+  if (PROVINCE_CENTROIDS[pcode]) return PROVINCE_CENTROIDS[pcode];
+  // Essai préfixe CD-XX
+  const prefix = pcode.slice(0, 5).toUpperCase();
+  return PROVINCE_CENTROIDS[prefix] ?? null;
 }
 
 const HAZARD_ICONS: Record<string, string> = {
@@ -40,7 +69,15 @@ const HAZARD_FR: Record<string, string> = {
   drought: 'Sécheresse', fire: 'Incendie', conflict: 'Conflit', earthquake: 'Séisme', other: 'Autre',
 };
 
+const SOURCE_FR: Record<string, string> = {
+  citizen: 'Citoyen',
+  field_agent: 'Agent terrain',
+  ai_prediction: 'IA Prédiction',
+  reliefweb: 'ReliefWeb',
+};
+
 type FilterType = 'all' | 'flood' | 'mass_displacement' | 'health_epidemic' | 'conflict' | 'other_hazards';
+type SourceFilter = 'all' | 'citizen' | 'field_agent' | 'ai_prediction' | 'reliefweb';
 
 const PERIOD_OPTIONS = [
   { value: 'all', label: 'Toutes périodes' },
@@ -57,6 +94,7 @@ export function MapPage() {
   const mapRef = useRef<MapRef>(null);
   const [selected, setSelected] = useState<MapEvent | null>(null);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [showLayers, setShowLayers] = useState(true);
   const [historyMode, setHistoryMode] = useState(false);
   const [periodFilter, setPeriodFilter] = useState('all');
@@ -69,34 +107,64 @@ export function MapPage() {
       const { data } = await apiClient.get<ApiResponse<MapEvent[]>>(url);
       return data.data ?? [];
     },
-    refetchInterval: historyMode ? false : 30_000,
+    staleTime: 0,                                      // FIX 1: invalidation force toujours un refetch immédiat
+    refetchInterval: historyMode ? false : 10_000,     // FIX 3: 10s au lieu de 30s en mode live
   });
 
   const handleWs = useCallback((msg: any) => {
     if (msg.type === 'NEW_EVENT' || msg.type === 'EVENT_UPDATED') {
       void queryClient.invalidateQueries({ queryKey: ['map'] });
+      // FIX 4: aussi appeler refetchQueries directement pour NEW_EVENT
+      if (msg.type === 'NEW_EVENT') {
+        void queryClient.refetchQueries({ queryKey: ['map', 'events', historyMode] });
+      }
     }
-  }, [queryClient]);
+  }, [queryClient, historyMode]);
 
   const { connected } = useWebSocket(handleWs);
 
-  const filtered = (data ?? []).filter((e) => {
+  // ---------------------------------------------------------------------------
+  // Résolution des coordonnées — FIX 2 : fallback centroïde province
+  // ---------------------------------------------------------------------------
+  const resolvedEvents = (data ?? []).map((e) => {
+    if (e.lat && e.lng) return { ...e, isApprox: false };
+    const centroid = getProvinceCentroid(e.locationPcode ?? '');
+    if (centroid) {
+      return { ...e, lng: centroid[0], lat: centroid[1], isApprox: true };
+    }
+    return { ...e, isApprox: false };
+  });
+
+  // ---------------------------------------------------------------------------
+  // Filtrage
+  // ---------------------------------------------------------------------------
+  const filtered = resolvedEvents.filter((e) => {
     if (!e.lat || !e.lng) return false;
+
+    // Filtre type d'aléa
     if (filter !== 'all') {
-      if (filter === 'other_hazards' && ['flood','mass_displacement','health_epidemic','conflict'].includes(e.hazardType)) return false;
+      if (filter === 'other_hazards' && ['flood', 'mass_displacement', 'health_epidemic', 'conflict'].includes(e.hazardType)) return false;
       if (filter !== 'other_hazards' && e.hazardType !== filter) return false;
     }
+
+    // FIX 5 : filtre source
+    if (sourceFilter !== 'all' && e.source !== sourceFilter) return false;
+
+    // Filtre période
     if (periodFilter !== 'all') {
       const year = new Date(e.startDate).getFullYear();
       if (periodFilter === 'before2020' && year >= 2020) return false;
       if (periodFilter !== 'before2020' && String(year) !== periodFilter) return false;
     }
+
     return true;
   });
 
+  // Seuls les événements avec coordonnées précises alimentent la couche cluster GeoJSON
+  const exactFiltered = filtered.filter((e) => !e.isApprox);
   const geoJson = {
     type: 'FeatureCollection' as const,
-    features: filtered.map((e) => ({
+    features: exactFiltered.map((e) => ({
       type: 'Feature' as const,
       properties: { id: e.id, severity: e.severity, hazardType: e.hazardType },
       geometry: { type: 'Point' as const, coordinates: [e.lng!, e.lat!] },
@@ -118,7 +186,7 @@ export function MapPage() {
 
         {/* Filtre type d'aléa */}
         <div className="flex items-center gap-1 flex-wrap">
-          {(['all','flood','mass_displacement','health_epidemic','conflict','other_hazards'] as FilterType[]).map((f) => (
+          {(['all', 'flood', 'mass_displacement', 'health_epidemic', 'conflict', 'other_hazards'] as FilterType[]).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -127,6 +195,22 @@ export function MapPage() {
               }`}
             >
               {f === 'all' ? 'Tous' : f === 'other_hazards' ? 'Autres' : HAZARD_FR[f] ?? f}
+            </button>
+          ))}
+        </div>
+
+        {/* FIX 5 : Filtre source */}
+        <div className="flex items-center gap-1 flex-wrap">
+          <span className="text-xs text-gray-400 shrink-0">Source :</span>
+          {(['all', 'citizen', 'field_agent', 'ai_prediction', 'reliefweb'] as SourceFilter[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => setSourceFilter(s)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                sourceFilter === s ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {s === 'all' ? 'Toutes' : SOURCE_FR[s] ?? s}
             </button>
           ))}
         </div>
@@ -182,7 +266,7 @@ export function MapPage() {
           <NavigationControl position="top-right" />
           <ScaleControl position="bottom-left" unit="metric" />
 
-          {/* Couche cluster (heatmap / cercles) */}
+          {/* Couche cluster — uniquement pour les événements à coordonnées exactes */}
           {showLayers && (
             <Source id="events" type="geojson" data={geoJson} cluster clusterMaxZoom={10} clusterRadius={50}>
               <Layer
@@ -205,26 +289,39 @@ export function MapPage() {
             </Source>
           )}
 
-          {/* Marqueurs individuels (hors cluster) */}
+          {/* Marqueurs individuels */}
           {filtered.map((event) => {
             const isResolved = event.status === 'resolved';
+            const isApprox = (event as any).isApprox === true;
+
             return (
               <Marker
                 key={event.id}
                 longitude={event.lng!}
                 latitude={event.lat!}
                 onClick={() => setSelected(event)}
-                style={{ cursor: 'pointer', opacity: isResolved ? 0.55 : 1 }}
+                style={{
+                  cursor: 'pointer',
+                  opacity: isApprox ? 0.6 : (isResolved ? 0.55 : 1),
+                }}
               >
-                <div className="relative group">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white text-base ${SEVERITY_BG[event.severity] ?? 'bg-gray-500'}`}>
+                {/* FIX 2 : marqueur visuel différencié pour les coordonnées approx */}
+                <div className={`relative group${isApprox ? ' approx' : ''}`}>
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg text-base ${
+                      SEVERITY_BG[event.severity] ?? 'bg-gray-500'
+                    } ${isApprox ? 'border-2 border-dashed border-white/80' : 'border-2 border-white'}`}
+                  >
                     {HAZARD_ICONS[event.hazardType] ?? '⚠️'}
                   </div>
-                  {event.severity === 'Extreme' && !isResolved && (
+                  {event.severity === 'Extreme' && !isResolved && !isApprox && (
                     <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping" />
                   )}
                   {isResolved && (
                     <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-gray-400 rounded-full border border-white text-white flex items-center justify-center" style={{ fontSize: 7 }}>✓</span>
+                  )}
+                  {isApprox && (
+                    <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-gray-300 rounded-full border border-white text-gray-600 flex items-center justify-center" style={{ fontSize: 7 }} title="Position approximative (centroïde province)">~</span>
                   )}
                 </div>
               </Marker>
@@ -256,6 +353,11 @@ export function MapPage() {
                     selected.status === 'resolved' ? 'bg-gray-100 text-gray-500' :
                     'bg-yellow-100 text-yellow-700'
                   }`}>{selected.status === 'active' ? 'Actif' : selected.status === 'resolved' ? 'Résolu' : selected.status}</span>
+                  {(selected as any).isApprox && (
+                    <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500" title="Coordonnées exactes indisponibles">
+                      ~ Position approx.
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-gray-600 space-y-1">
                   <div className="flex gap-2">
@@ -280,6 +382,12 @@ export function MapPage() {
                       <span className="font-mono text-gray-700 text-xs">{selected.glideNumber}</span>
                     </div>
                   )}
+                  {selected.source && (
+                    <div className="flex gap-2">
+                      <span className="text-gray-400 w-14 shrink-0">Source</span>
+                      <span className="text-gray-700">{SOURCE_FR[selected.source] ?? selected.source}</span>
+                    </div>
+                  )}
                 </div>
                 <a href="/events" className="block mt-2 text-xs text-red-600 hover:underline">
                   Voir tous les événements →
@@ -292,12 +400,17 @@ export function MapPage() {
         {/* Légende */}
         <div className="absolute bottom-8 right-4 bg-white/90 backdrop-blur-sm rounded-xl shadow-lg p-3 text-xs">
           <p className="font-semibold text-gray-700 mb-2">Gravité</p>
-          {[['Minor','bg-yellow-400','Mineure'],['Moderate','bg-orange-500','Modérée'],['Severe','bg-red-600','Sévère'],['Extreme','bg-red-900','Extrême']].map(([, cls, label]) => (
+          {[['Minor', 'bg-yellow-400', 'Mineure'], ['Moderate', 'bg-orange-500', 'Modérée'], ['Severe', 'bg-red-600', 'Sévère'], ['Extreme', 'bg-red-900', 'Extrême']].map(([, cls, label]) => (
             <div key={label} className="flex items-center gap-1.5 mb-1">
               <span className={`w-3 h-3 rounded-full ${cls}`} />
               <span className="text-gray-600">{label}</span>
             </div>
           ))}
+          <hr className="my-2 border-gray-200" />
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="w-3 h-3 rounded-full bg-gray-300 border border-dashed border-gray-400" />
+            <span className="text-gray-500">Position approx.</span>
+          </div>
           {historyMode && (
             <>
               <hr className="my-2 border-gray-200" />
