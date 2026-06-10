@@ -158,8 +158,8 @@ export async function createApp(): Promise<FastifyInstance> {
         scope = payload.scope ?? []
       }
     } catch {}
-    registerClient(socket, scope)
-    socket.send(JSON.stringify({ type: 'CONNECTED', payload: { message: 'SINAUR-RDC flux temps réel actif' } }))
+    registerClient(socket.socket, scope)
+    socket.socket.send(JSON.stringify({ type: 'CONNECTED', payload: { message: 'SINAUR-RDC flux temps réel actif' } }))
   })
 
   fastify.get('/health', async () => {

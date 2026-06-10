@@ -5,6 +5,7 @@ export type UserRole =
   | 'field_agent'
   | 'local_validator'
   | 'territory_admin'
+  | 'provincial_coordinator'
   | 'humanitarian_partner'
   | 'national_decision_maker'
   | 'system_admin';
@@ -14,6 +15,7 @@ export const ROLE_HIERARCHY: Record<UserRole, number> = {
   field_agent: 1,
   local_validator: 2,
   territory_admin: 3,
+  provincial_coordinator: 3,
   humanitarian_partner: 3,
   national_decision_maker: 4,
   system_admin: 99,
@@ -24,6 +26,7 @@ export const ROLE_LABELS_FR: Record<UserRole, string> = {
   field_agent: 'Agent terrain',
   local_validator: 'Validateur local',
   territory_admin: 'Administrateur de territoire',
+  provincial_coordinator: 'Coordinateur provincial',
   humanitarian_partner: 'Partenaire humanitaire',
   national_decision_maker: 'Décideur national',
   system_admin: 'Administrateur système',
@@ -76,6 +79,17 @@ export const ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canManageUsers: false,
   },
   territory_admin: {
+    canReportIncident: true,
+    canValidateReports: true,
+    canManageRegistry: true,
+    canDistributeAid: true,
+    canViewNationalDashboard: true,
+    canManageAlerts: true,
+    canExportData: true,
+    canViewSensitiveData: true,
+    canManageUsers: false,
+  },
+  provincial_coordinator: {
     canReportIncident: true,
     canValidateReports: true,
     canManageRegistry: true,
@@ -148,6 +162,8 @@ export interface AuthTokens {
 
 export interface JwtPayload {
   sub: UUID;
+  id: UUID;
+  email?: string;
   role: UserRole;
   scope: PCode[];
   iat: number;

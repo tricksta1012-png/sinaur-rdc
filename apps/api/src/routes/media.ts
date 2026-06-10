@@ -56,7 +56,7 @@ export async function mediaRoutes(fastify: FastifyInstance): Promise<void> {
       const [record] = await sql`
         INSERT INTO event_media (event_id, media_type, url, uploaded_by, file_size_bytes, mime_type)
         VALUES (
-          ${data.fields['eventId']?.value ?? null},
+          ${(data.fields['eventId'] as any)?.value ?? null},
           ${mediaType},
           ${url},
           ${request.jwtUser.sub},

@@ -35,7 +35,7 @@ export function broadcastNewEvent(event: unknown, affectedPcodes: string[]): voi
   broadcast({ type: 'NEW_EVENT', payload: event }, affectedPcodes);
 }
 
-export function broadcastAlert(alert: unknown, targetPcodes: string[]): void {
+export function broadcastAlert(alert: unknown, targetPcodes: string[] = []): void {
   broadcast({ type: 'NEW_ALERT', payload: alert }, targetPcodes);
 }
 
