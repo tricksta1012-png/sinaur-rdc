@@ -37,7 +37,7 @@ CREATE TABLE beneficiaries (
   location_pcode          TEXT                NOT NULL REFERENCES admin_divisions(pcode),
   location_name           TEXT                NOT NULL,
   location_accuracy       TEXT                NOT NULL DEFAULT 'pcode',
-  location_point          GEOMETRY(POINT, 4326),
+  location_point          JSONB,   -- GeoJSON Point
 
   -- Localisation d'origine
   origin_pcode            TEXT                REFERENCES admin_divisions(pcode),
@@ -73,7 +73,7 @@ CREATE INDEX beneficiaries_head_name_trgm_idx
   ON beneficiaries USING GIN ((head_first_name || ' ' || head_last_name) gin_trgm_ops);
 CREATE INDEX beneficiaries_head_birth_idx    ON beneficiaries (head_birth_date);
 CREATE INDEX beneficiaries_location_pcode_idx ON beneficiaries (location_pcode);
-CREATE INDEX beneficiaries_location_point_idx ON beneficiaries USING GIST (location_point);
+CREATE INDEX beneficiaries_location_point_idx ON beneficiaries USING GIN  (location_point);
 CREATE INDEX beneficiaries_event_idx          ON beneficiaries (disaster_event_id);
 CREATE INDEX beneficiaries_status_idx         ON beneficiaries (status);
 CREATE INDEX beneficiaries_fingerprint_idx    ON beneficiaries (deduplication_fingerprint);

@@ -34,7 +34,7 @@ CREATE TABLE disaster_events (
   location_name       TEXT          NOT NULL,
   location_level      SMALLINT      NOT NULL,
   location_accuracy   TEXT          NOT NULL DEFAULT 'pcode',
-  location_point      GEOMETRY(POINT, 4326),
+  location_point      JSONB,   -- GeoJSON Point
   affected_pcodes     TEXT[]        NOT NULL DEFAULT '{}',
   estimated_affected  INTEGER,
   reported_by_id      UUID          REFERENCES users(id),
@@ -74,7 +74,7 @@ CREATE TABLE canonical_events (
   title                TEXT          NOT NULL,
   description          TEXT          NOT NULL DEFAULT '',
   location_pcode       TEXT          REFERENCES admin_divisions(pcode),
-  location_point       GEOMETRY(POINT, 4326),
+  location_point       JSONB,   -- GeoJSON Point
   start_date           TIMESTAMPTZ   NOT NULL,
   severity             alert_severity NOT NULL DEFAULT 'Unknown',
   confidence           confidence_level NOT NULL DEFAULT 'low',
@@ -87,7 +87,7 @@ CREATE TABLE canonical_events (
   created_at           TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX disaster_events_location_point_idx ON disaster_events USING GIST (location_point);
+CREATE INDEX disaster_events_location_point_idx ON disaster_events USING GIN  (location_point);
 CREATE INDEX disaster_events_pcode_idx          ON disaster_events (location_pcode);
 CREATE INDEX disaster_events_hazard_idx         ON disaster_events (hazard_type, status);
 CREATE INDEX disaster_events_start_date_idx     ON disaster_events (start_date DESC);
