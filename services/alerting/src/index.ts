@@ -63,7 +63,7 @@ async function main() {
   const server = http.createServer(async (req, res) => {
     const match = req.url?.match(/^\/dispatch\/([0-9a-f-]{36})$/)
     if (req.method === 'POST' && match) {
-      const alertId = match[1]
+      const alertId = match[1]!
       try {
         await dispatchValidatedAlert(alertId)
         res.writeHead(200, { 'Content-Type': 'application/json' })

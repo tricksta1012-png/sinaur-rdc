@@ -27,7 +27,7 @@ describe('hasSuspiciousInput', () => {
   })
 
   it('accepte les entrées légitimes', () => {
-    expect(hasSuspiciousInput('Inondation Kinshasa quartier N'Djili')).toBe(false)
+    expect(hasSuspiciousInput("Inondation Kinshasa quartier N'Djili")).toBe(false)
     expect(hasSuspiciousInput('CD-KN-001')).toBe(false)
     expect(hasSuspiciousInput('Rapport SitRep #12 — Nord-Kivu')).toBe(false)
     expect(hasSuspiciousInput('SELECT dans le texte (non-SQL)')).toBe(false)
