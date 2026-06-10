@@ -24,7 +24,7 @@ INSERT INTO disaster_events (
   'volcanic_eruption', 'resolved', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/disaster/vo-2021-000069-cod', 'VO-2021-000069-COD',
   'CD14', 'Goma, Nord-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.2333, -1.6833), 4326),
+  '{"type":"Point","coordinates":[29.2333,-1.6833]}'::jsonb,
   400000, '2021-05-22 19:58:00+00', '2021-06-15 00:00:00+00',
   ARRAY['nyiragongo','lave','goma','deplacement','nord-kivu']
 ),
@@ -37,7 +37,7 @@ INSERT INTO disaster_events (
   'volcanic_eruption', 'resolved', 'Extreme', 'high',
   'reliefweb', 'https://reliefweb.int/disaster/vo-2002-000006-cod', 'VO-2002-000006-COD',
   'CD14', 'Goma, Nord-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.2333, -1.6833), 4326),
+  '{"type":"Point","coordinates":[29.2333,-1.6833]}'::jsonb,
   350000, '2002-01-17 00:00:00+00', '2002-03-01 00:00:00+00',
   ARRAY['nyiragongo','lave','goma','2002','lac-kivu']
 ),
@@ -50,7 +50,7 @@ INSERT INTO disaster_events (
   'volcanic_eruption', 'resolved', 'Severe', 'high',
   'reliefweb', 'https://reliefweb.int/disaster/vo-2011-000190-cod', 'VO-2011-000190-COD',
   'CD14', 'Parc des Virunga, Nord-Kivu', 1, 'pcode',
-  ST_SetSRID(ST_MakePoint(28.8167, -1.4000), 4326),
+  '{"type":"Point","coordinates":[28.8167,-1.4000]}'::jsonb,
   8000, '2011-11-06 00:00:00+00', '2011-12-20 00:00:00+00',
   ARRAY['nyamulagira','virunga','nord-kivu','cendres']
 ),
@@ -63,7 +63,7 @@ INSERT INTO disaster_events (
   'volcanic_eruption', 'resolved', 'Moderate', 'high',
   'reliefweb', NULL, NULL,
   'CD14', 'Parc des Virunga, Nord-Kivu', 1, 'pcode',
-  ST_SetSRID(ST_MakePoint(28.8167, -1.4000), 4326),
+  '{"type":"Point","coordinates":[28.8167,-1.4000]}'::jsonb,
   3000, '2014-01-20 00:00:00+00', '2014-02-28 00:00:00+00',
   ARRAY['nyamulagira','virunga','nord-kivu','2014']
 ),
@@ -80,7 +80,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/disaster/ep-2018-000145-cod', 'EP-2018-000145-COD',
   'CD14', 'Mangina / Beni, Nord-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.4731, 0.4920), 4326),
+  '{"type":"Point","coordinates":[29.4731,0.4920]}'::jsonb,
   3481, '2018-08-01 00:00:00+00', '2020-06-25 00:00:00+00',
   ARRAY['ebola','mvd','nord-kivu','ituri','mangina','beni','vaccin','rvsvzebov']
 ),
@@ -93,7 +93,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Severe', 'high',
   'ocha', 'https://reliefweb.int/disaster/ep-2022-000108-cod', NULL,
   'CD14', 'Beni, Nord-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.4731, 0.4920), 4326),
+  '{"type":"Point","coordinates":[29.4731,0.4920]}'::jsonb,
   7, '2022-04-23 00:00:00+00', '2022-07-04 00:00:00+00',
   ARRAY['ebola','mvd','nord-kivu','beni','2022']
 ),
@@ -106,7 +106,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Severe', 'high',
   'ocha', 'https://reliefweb.int/disaster/ep-2017-000055-cod', 'EP-2017-000055-COD',
   'CD18', 'Likati, Bas-Uélé', 1, 'pcode',
-  ST_SetSRID(ST_MakePoint(24.0000, 3.2000), 4326),
+  '{"type":"Point","coordinates":[24.0000,3.2000]}'::jsonb,
   8, '2017-05-11 00:00:00+00', '2017-07-02 00:00:00+00',
   ARRAY['ebola','mvd','bas-uele','likati','2017']
 ),
@@ -119,7 +119,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Severe', 'high',
   'ocha', 'https://reliefweb.int/disaster/ep-2014-000110-cod', 'EP-2014-000110-COD',
   'CD23', 'Boende, Tshuapa', 1, 'city',
-  ST_SetSRID(ST_MakePoint(20.8833, -0.2167), 4326),
+  '{"type":"Point","coordinates":[20.8833,-0.2167]}'::jsonb,
   66, '2014-08-26 00:00:00+00', '2014-11-21 00:00:00+00',
   ARRAY['ebola','mvd','tshuapa','boende','2014']
 ),
@@ -132,7 +132,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Extreme', 'high',
   'reliefweb', 'https://reliefweb.int/disaster/ep-2007-000128-cod', 'EP-2007-000128-COD',
   'CD06', 'Luebo, Kasaï', 1, 'city',
-  ST_SetSRID(ST_MakePoint(21.4000, -5.3500), 4326),
+  '{"type":"Point","coordinates":[21.4000,-5.3500]}'::jsonb,
   264, '2007-09-10 00:00:00+00', '2007-11-20 00:00:00+00',
   ARRAY['ebola','mvd','kasai','luebo','2007','letalite']
 ),
@@ -149,7 +149,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'active', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/disaster/ep-2023-000230-cod', NULL,
   'CD10', 'Sankuru (Lusambo)', 1, 'city',
-  ST_SetSRID(ST_MakePoint(23.4333, -4.9667), 4326),
+  '{"type":"Point","coordinates":[23.4333,-4.9667]}'::jsonb,
   14000, '2023-01-01 00:00:00+00', NULL,
   ARRAY['mpox','monkeypox','clade-i','sankuru','omsusppi','zoonose']
 ),
@@ -162,7 +162,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'active', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/disaster/ep-2024-000208-cod', NULL,
   'CD12', 'Kamituga, Sud-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(28.1833, -3.0500), 4326),
+  '{"type":"Point","coordinates":[28.1833,-3.0500]}'::jsonb,
   5000, '2024-01-01 00:00:00+00', NULL,
   ARRAY['mpox','clade-ib','sud-kivu','kamituga','transmission-sexuelle']
 ),
@@ -179,7 +179,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Severe', 'high',
   'ocha', 'https://reliefweb.int/disaster/ep-2019-000012-cod', NULL,
   'CD14', 'Goma et zones de déplacement, Nord-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.2333, -1.6833), 4326),
+  '{"type":"Point","coordinates":[29.2333,-1.6833]}'::jsonb,
   60000, '2019-01-01 00:00:00+00', '2021-12-31 00:00:00+00',
   ARRAY['cholera','eau','assainissement','nord-kivu','goma','endemique']
 ),
@@ -192,7 +192,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Moderate', 'medium',
   'ocha', NULL, NULL,
   'CD07', 'Kananga, Kasaï-Central', 1, 'city',
-  ST_SetSRID(ST_MakePoint(22.4167, -5.8833), 4326),
+  '{"type":"Point","coordinates":[22.4167,-5.8833]}'::jsonb,
   8000, '2022-06-01 00:00:00+00', '2023-04-30 00:00:00+00',
   ARRAY['cholera','kasai','kananga','inondations','eau-contaminee']
 ),
@@ -205,7 +205,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Severe', 'high',
   'ocha', NULL, NULL,
   'CD12', 'Uvira, Sud-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.1383, -3.3944), 4326),
+  '{"type":"Point","coordinates":[29.1383,-3.3944]}'::jsonb,
   2000, '2024-03-01 00:00:00+00', '2024-06-30 00:00:00+00',
   ARRAY['cholera','uvira','sud-kivu','lac-tanganyika','2024']
 ),
@@ -222,7 +222,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Severe', 'high',
   'official', 'https://reliefweb.int/disaster/ep-2020-000012-cod', 'EP-2020-000012-COD',
   'CD01', 'Kinshasa', 1, 'city',
-  ST_SetSRID(ST_MakePoint(15.2663, -4.3219), 4326),
+  '{"type":"Point","coordinates":[15.2663,-4.3219]}'::jsonb,
   90000, '2020-03-10 00:00:00+00', '2022-12-31 00:00:00+00',
   ARRAY['covid19','pandemie','coronavirus','kinshasa','sars-cov-2']
 ),
@@ -235,7 +235,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Severe', 'high',
   'official', 'https://reliefweb.int/disaster/ep-2016-000053-cod', 'EP-2016-000053-COD',
   'CD01', 'Kinshasa', 1, 'city',
-  ST_SetSRID(ST_MakePoint(15.2663, -4.3219), 4326),
+  '{"type":"Point","coordinates":[15.2663,-4.3219]}'::jsonb,
   56000, '2016-04-01 00:00:00+00', '2016-12-01 00:00:00+00',
   ARRAY['fievre-jaune','vaccination','kinshasa','angola','aedes-aegypti']
 ),
@@ -248,7 +248,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Severe', 'medium',
   'ocha', NULL, NULL,
   'CD16', 'Niangara, Haut-Uélé', 1, 'city',
-  ST_SetSRID(ST_MakePoint(27.8833, 3.6667), 4326),
+  '{"type":"Point","coordinates":[27.8833,3.6667]}'::jsonb,
   200, '2023-03-01 00:00:00+00', '2023-07-31 00:00:00+00',
   ARRAY['meningite','meningocoque','haut-uele','niangara','bacterie']
 ),
@@ -261,7 +261,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Extreme', 'medium',
   'official', 'https://reliefweb.int/report/democratic-republic-congo/mysterious-disease-kwango', NULL,
   'CD03', 'Panzi, Kwango', 1, 'pcode',
-  ST_SetSRID(ST_MakePoint(16.9667, -4.8333), 4326),
+  '{"type":"Point","coordinates":[16.9667,-4.8333]}'::jsonb,
   300, '2024-10-01 00:00:00+00', '2025-01-31 00:00:00+00',
   ARRAY['maladie-inconnue','nkumu','kwango','panzi','enquete-epidemiologique','2024']
 ),
@@ -274,7 +274,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/disaster/ep-2020-000005-cod', NULL,
   'CD14', 'Nord-Kivu (épicentre national)', 1, 'pcode',
-  ST_SetSRID(ST_MakePoint(29.2333, -1.6833), 4326),
+  '{"type":"Point","coordinates":[29.2333,-1.6833]}'::jsonb,
   300000, '2020-01-01 00:00:00+00', '2020-12-31 00:00:00+00',
   ARRAY['rougeole','vaccination','enfants','nord-kivu','national','2020']
 ),
@@ -291,7 +291,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/disaster/fl-2023-000063-cod', 'FL-2023-000063-COD',
   'CD12', 'Kalehe (Nyamukubi-Bushushu), Sud-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(28.9036, -2.0964), 4326),
+  '{"type":"Point","coordinates":[28.9036,-2.0964]}'::jsonb,
   50000, '2023-05-04 00:00:00+00', '2023-07-31 00:00:00+00',
   ARRAY['inondation','glissement','kalehe','bushushu','nyamukubi','lac-kivu','sud-kivu','catastrophe']
 ),
@@ -304,7 +304,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Severe', 'high',
   'ocha', 'https://reliefweb.int/disaster/fl-2020-000260-cod', NULL,
   'CD12', 'Uvira, Sud-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.1383, -3.3944), 4326),
+  '{"type":"Point","coordinates":[29.1383,-3.3944]}'::jsonb,
   30000, '2020-12-01 00:00:00+00', '2021-01-31 00:00:00+00',
   ARRAY['inondation','uvira','lac-tanganyika','ruzizi','sud-kivu','2020']
 ),
@@ -317,7 +317,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Severe', 'medium',
   'ocha', NULL, NULL,
   'CD12', 'Uvira et Fizi, Sud-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.1383, -3.3944), 4326),
+  '{"type":"Point","coordinates":[29.1383,-3.3944]}'::jsonb,
   15000, '2022-04-01 00:00:00+00', '2022-07-31 00:00:00+00',
   ARRAY['inondation','uvira','fizi','lac-tanganyika','sud-kivu','2022']
 ),
@@ -330,7 +330,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/disaster/fl-2022-000072-cod', NULL,
   'CD01', 'Kinshasa (Kimbanseke, Kisenso, Masina)', 1, 'city',
-  ST_SetSRID(ST_MakePoint(15.3333, -4.3333), 4326),
+  '{"type":"Point","coordinates":[15.3333,-4.3333]}'::jsonb,
   80000, '2022-03-15 00:00:00+00', '2022-05-31 00:00:00+00',
   ARRAY['inondation','kinshasa','kimbanseke','kisenso','ndjili','2022']
 ),
@@ -343,7 +343,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Severe', 'medium',
   'ocha', NULL, NULL,
   'CD01', 'Kinshasa (Limete, Mont-Ngafula)', 1, 'city',
-  ST_SetSRID(ST_MakePoint(15.2663, -4.3219), 4326),
+  '{"type":"Point","coordinates":[15.2663,-4.3219]}'::jsonb,
   50000, '2023-04-01 00:00:00+00', '2023-12-31 00:00:00+00',
   ARRAY['inondation','kinshasa','limete','mont-ngafula','drainage','2023']
 ),
@@ -356,7 +356,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/disaster/fl-2024-000028-cod', NULL,
   'CD01', 'Kinshasa', 1, 'city',
-  ST_SetSRID(ST_MakePoint(15.2663, -4.3219), 4326),
+  '{"type":"Point","coordinates":[15.2663,-4.3219]}'::jsonb,
   50000, '2024-01-13 00:00:00+00', '2024-03-31 00:00:00+00',
   ARRAY['inondation','kinshasa','kimbanseke','kingabwa','2024','urgence']
 ),
@@ -369,7 +369,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Moderate', 'medium',
   'ocha', NULL, NULL,
   'CD14', 'Butembo, Nord-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.2827, 0.1322), 4326),
+  '{"type":"Point","coordinates":[29.2827,0.1322]}'::jsonb,
   5000, '2021-10-15 00:00:00+00', '2021-11-30 00:00:00+00',
   ARRAY['inondation','butembo','nord-kivu','kimemi','2021']
 ),
@@ -382,7 +382,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Moderate', 'medium',
   'ocha', NULL, NULL,
   'CD14', 'Butembo, Nord-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.2827, 0.1322), 4326),
+  '{"type":"Point","coordinates":[29.2827,0.1322]}'::jsonb,
   8000, '2022-06-01 00:00:00+00', '2022-07-31 00:00:00+00',
   ARRAY['inondation','butembo','nord-kivu','2022']
 ),
@@ -395,7 +395,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Moderate', 'medium',
   'ocha', NULL, NULL,
   'CD22', 'Mbandaka, Équateur', 1, 'city',
-  ST_SetSRID(ST_MakePoint(18.2833, 0.0500), 4326),
+  '{"type":"Point","coordinates":[18.2833,0.0500]}'::jsonb,
   20000, '2020-09-01 00:00:00+00', '2020-11-30 00:00:00+00',
   ARRAY['inondation','mbandaka','equateur','fleuve-congo','2020']
 ),
@@ -408,7 +408,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Severe', 'high',
   'ocha', NULL, NULL,
   'CD24', 'Kalemie, Tanganyika', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.1833, -5.9333), 4326),
+  '{"type":"Point","coordinates":[29.1833,-5.9333]}'::jsonb,
   25000, '2022-02-01 00:00:00+00', '2022-06-30 00:00:00+00',
   ARRAY['inondation','kalemie','tanganyika','lac-tanganyika','2022']
 ),
@@ -421,7 +421,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Moderate', 'medium',
   'official', NULL, NULL,
   'CD27', 'Lubumbashi, Haut-Katanga', 1, 'city',
-  ST_SetSRID(ST_MakePoint(27.4667, -11.6667), 4326),
+  '{"type":"Point","coordinates":[27.4667,-11.6667]}'::jsonb,
   15000, '2021-01-10 00:00:00+00', '2021-03-31 00:00:00+00',
   ARRAY['inondation','lubumbashi','haut-katanga','katuba','kampemba','2021']
 ),
@@ -434,7 +434,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Moderate', 'medium',
   'ocha', NULL, NULL,
   'CD17', 'Kisangani, Tshopo', 1, 'city',
-  ST_SetSRID(ST_MakePoint(25.1833, 0.5333), 4326),
+  '{"type":"Point","coordinates":[25.1833,0.5333]}'::jsonb,
   12000, '2021-09-01 00:00:00+00', '2021-10-31 00:00:00+00',
   ARRAY['inondation','kisangani','tshopo','fleuve-congo','2021']
 ),
@@ -447,7 +447,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Moderate', 'medium',
   'official', NULL, NULL,
   'CD02', 'Matadi, Kongo-Central', 1, 'city',
-  ST_SetSRID(ST_MakePoint(13.4500, -5.8167), 4326),
+  '{"type":"Point","coordinates":[13.4500,-5.8167]}'::jsonb,
   3000, '2020-11-01 00:00:00+00', '2020-12-31 00:00:00+00',
   ARRAY['inondation','matadi','kongo-central','glissement','2020']
 ),
@@ -460,7 +460,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Severe', 'medium',
   'ocha', NULL, NULL,
   'CD14', 'Goma, Nord-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.2333, -1.6833), 4326),
+  '{"type":"Point","coordinates":[29.2333,-1.6833]}'::jsonb,
   40000, '2024-04-01 00:00:00+00', '2024-08-31 00:00:00+00',
   ARRAY['inondation','goma','nord-kivu','deplacement','m23','camps','2024']
 ),
@@ -477,7 +477,7 @@ INSERT INTO disaster_events (
   'landslide', 'resolved', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/disaster/ls-2023-000062-cod', 'LS-2023-000062-COD',
   'CD12', 'Nyamukubi, Kalehe, Sud-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(28.9036, -2.0964), 4326),
+  '{"type":"Point","coordinates":[28.9036,-2.0964]}'::jsonb,
   40000, '2023-05-04 22:00:00+00', '2023-06-30 00:00:00+00',
   ARRAY['glissement','coulée-de-boue','nyamukubi','kalehe','sud-kivu','catastrophe','2023']
 ),
@@ -490,7 +490,7 @@ INSERT INTO disaster_events (
   'landslide', 'resolved', 'Moderate', 'medium',
   'ocha', NULL, NULL,
   'CD12', 'Uvira, Sud-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.1383, -3.3944), 4326),
+  '{"type":"Point","coordinates":[29.1383,-3.3944]}'::jsonb,
   500, '2020-10-15 00:00:00+00', '2020-11-15 00:00:00+00',
   ARRAY['glissement','uvira','sud-kivu','pentes','lac-tanganyika','2020']
 ),
@@ -503,7 +503,7 @@ INSERT INTO disaster_events (
   'landslide', 'resolved', 'Moderate', 'medium',
   'ocha', NULL, NULL,
   'CD14', 'Masisi, Nord-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(28.8167, -1.4000), 4326),
+  '{"type":"Point","coordinates":[28.8167,-1.4000]}'::jsonb,
   2000, '2022-09-10 00:00:00+00', '2022-10-30 00:00:00+00',
   ARRAY['glissement','masisi','nord-kivu','deforestation','2022']
 ),
@@ -516,7 +516,7 @@ INSERT INTO disaster_events (
   'landslide', 'resolved', 'Severe', 'low',
   'ocha', NULL, NULL,
   'CD14', 'Rutshuru, Nord-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.4500, -1.1833), 4326),
+  '{"type":"Point","coordinates":[29.4500,-1.1833]}'::jsonb,
   3000, '2023-09-01 00:00:00+00', '2023-10-31 00:00:00+00',
   ARRAY['glissement','rutshuru','nord-kivu','m23','acces-humanitaire','2023']
 ),
@@ -533,7 +533,7 @@ INSERT INTO disaster_events (
   'conflict', 'resolved', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/disaster/ce-2017-000024-cod', 'CE-2017-000024-COD',
   'CD06', 'Kasaï (Tshikapa et Grand-Kasaï)', 1, 'city',
-  ST_SetSRID(ST_MakePoint(20.8000, -6.4167), 4326),
+  '{"type":"Point","coordinates":[20.8000,-6.4167]}'::jsonb,
   1400000, '2016-08-01 00:00:00+00', '2018-06-30 00:00:00+00',
   ARRAY['conflit','kasai','kamuina-nsapu','fosses-communes','deplacement','milice','2016']
 ),
@@ -546,7 +546,7 @@ INSERT INTO disaster_events (
   'conflict', 'resolved', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/disaster/ce-2019-000108-cod', NULL,
   'CD14', 'Territoire de Beni, Nord-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.4731, 0.4920), 4326),
+  '{"type":"Point","coordinates":[29.4731,0.4920]}'::jsonb,
   300000, '2019-01-01 00:00:00+00', '2020-12-31 00:00:00+00',
   ARRAY['conflit','adf','beni','massacres','nord-kivu','virunga','islamiste']
 ),
@@ -559,7 +559,7 @@ INSERT INTO disaster_events (
   'conflict', 'active', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/disaster/ce-2022-000245-cod', NULL,
   'CD14', 'Rutshuru / Kiwanja, Nord-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.3667, -1.0500), 4326),
+  '{"type":"Point","coordinates":[29.3667,-1.0500]}'::jsonb,
   1500000, '2022-03-01 00:00:00+00', NULL,
   ARRAY['conflit','m23','nord-kivu','rutshuru','kiwanja','rwanda','deplacement']
 ),
@@ -572,7 +572,7 @@ INSERT INTO disaster_events (
   'conflict', 'resolved', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/disaster/ce-2020-000085-cod', NULL,
   'CD15', 'Djugu, Ituri', 1, 'city',
-  ST_SetSRID(ST_MakePoint(30.5000, 1.9167), 4326),
+  '{"type":"Point","coordinates":[30.5000,1.9167]}'::jsonb,
   1600000, '2020-01-01 00:00:00+00', '2022-12-31 00:00:00+00',
   ARRAY['conflit','codeco','djugu','ituri','hema','lendu','deplacement']
 ),
@@ -585,7 +585,7 @@ INSERT INTO disaster_events (
   'conflict', 'active', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/disaster/ce-2025-000012-cod', NULL,
   'CD14', 'Goma, Nord-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.2333, -1.6833), 4326),
+  '{"type":"Point","coordinates":[29.2333,-1.6833]}'::jsonb,
   7000000, '2024-10-01 00:00:00+00', NULL,
   ARRAY['conflit','m23','goma','bukavu','deplacement','urgence-niveau3','2025']
 ),
@@ -598,7 +598,7 @@ INSERT INTO disaster_events (
   'conflict', 'resolved', 'Severe', 'medium',
   'ocha', NULL, NULL,
   'CD12', 'Minembwe, hauts plateaux Sud-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(28.7667, -3.5833), 4326),
+  '{"type":"Point","coordinates":[28.7667,-3.5833]}'::jsonb,
   100000, '2021-01-01 00:00:00+00', '2022-06-30 00:00:00+00',
   ARRAY['conflit','minembwe','hauts-plateaux','banyamulenge','fizi','uvira','sud-kivu']
 ),
@@ -611,7 +611,7 @@ INSERT INTO disaster_events (
   'conflict', 'resolved', 'Moderate', 'medium',
   'ocha', NULL, NULL,
   'CD12', 'Fizi, Sud-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.0983, -4.2964), 4326),
+  '{"type":"Point","coordinates":[29.0983,-4.2964]}'::jsonb,
   30000, '2022-01-01 00:00:00+00', '2022-09-30 00:00:00+00',
   ARRAY['conflit','fizi','sud-kivu','groupes-armes','baraka','2022']
 ),
@@ -628,7 +628,7 @@ INSERT INTO disaster_events (
   'mass_displacement', 'active', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/report/democratic-republic-congo/drc-humanitarian-overview-2023', NULL,
   'CD14', 'Est de la RDC (Nord-Kivu, Sud-Kivu, Ituri)', 1, 'pcode',
-  ST_SetSRID(ST_MakePoint(29.2333, -1.6833), 4326),
+  '{"type":"Point","coordinates":[29.2333,-1.6833]}'::jsonb,
   6900000, '2023-01-01 00:00:00+00', NULL,
   ARRAY['deplacement','est-rdc','humanitarian','nord-kivu','sud-kivu','ituri','pdis']
 ),
@@ -641,7 +641,7 @@ INSERT INTO disaster_events (
   'mass_displacement', 'active', 'Extreme', 'high',
   'ocha', NULL, NULL,
   'CD14', 'Camps de Bulengo / Lushagala, Goma', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.2333, -1.6833), 4326),
+  '{"type":"Point","coordinates":[29.2333,-1.6833]}'::jsonb,
   500000, '2023-02-01 00:00:00+00', NULL,
   ARRAY['deplacement','rutshuru','goma','bulengo','lushagala','m23','camps']
 ),
@@ -654,7 +654,7 @@ INSERT INTO disaster_events (
   'mass_displacement', 'resolved', 'Severe', 'medium',
   'ocha', NULL, NULL,
   'CD15', 'Bunia, Ituri', 1, 'city',
-  ST_SetSRID(ST_MakePoint(30.2500, 1.5667), 4326),
+  '{"type":"Point","coordinates":[30.2500,1.5667]}'::jsonb,
   800000, '2022-01-01 00:00:00+00', '2022-12-31 00:00:00+00',
   ARRAY['deplacement','bunia','ituri','codeco','camps','humanitaire']
 ),
@@ -671,7 +671,7 @@ INSERT INTO disaster_events (
   'drought', 'resolved', 'Severe', 'high',
   'fews_net', 'https://fews.net/central-africa/drc', NULL,
   'CD06', 'Grand-Kasaï (Kasaï, Kasaï-Central, Kasaï-Oriental)', 1, 'city',
-  ST_SetSRID(ST_MakePoint(20.8000, -6.4167), 4326),
+  '{"type":"Point","coordinates":[20.8000,-6.4167]}'::jsonb,
   6000000, '2019-04-01 00:00:00+00', '2020-06-30 00:00:00+00',
   ARRAY['secheresse','insecurite-alimentaire','kasai','malnutrition','ipc','fews-net']
 ),
@@ -684,7 +684,7 @@ INSERT INTO disaster_events (
   'drought', 'resolved', 'Moderate', 'medium',
   'fews_net', NULL, NULL,
   'CD24', 'Tanganyika (Kalemie, Kongolo)', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.1833, -5.9333), 4326),
+  '{"type":"Point","coordinates":[29.1833,-5.9333]}'::jsonb,
   500000, '2022-06-01 00:00:00+00', '2022-11-30 00:00:00+00',
   ARRAY['secheresse','tanganyika','kalemie','insecurite-alimentaire','2022']
 ),
@@ -697,7 +697,7 @@ INSERT INTO disaster_events (
   'drought', 'resolved', 'Moderate', 'medium',
   'fews_net', NULL, NULL,
   'CD25', 'Kamina, Haut-Lomami', 1, 'city',
-  ST_SetSRID(ST_MakePoint(24.9833, -8.7333), 4326),
+  '{"type":"Point","coordinates":[24.9833,-8.7333]}'::jsonb,
   400000, '2021-05-01 00:00:00+00', '2021-12-31 00:00:00+00',
   ARRAY['secheresse','haut-lomami','kamina','agriculture','2021']
 ),
@@ -714,7 +714,7 @@ INSERT INTO disaster_events (
   'humanitarian_crisis', 'resolved', 'Extreme', 'high',
   'ocha', 'https://reliefweb.int/report/democratic-republic-congo/drc-humanitarian-response-plan-2020', NULL,
   'CD01', 'République Démocratique du Congo (national)', 1, 'pcode',
-  ST_SetSRID(ST_MakePoint(24.0000, -3.5000), 4326),
+  '{"type":"Point","coordinates":[24.0000,-3.5000]}'::jsonb,
   19600000, '2020-01-01 00:00:00+00', '2020-12-31 00:00:00+00',
   ARRAY['crise-humanitaire','national','covid19','ebola','conflits','insecurite-alimentaire','2020']
 ),
@@ -727,7 +727,7 @@ INSERT INTO disaster_events (
   'humanitarian_crisis', 'resolved', 'Extreme', 'high',
   'ocha', NULL, NULL,
   'CD15', 'Ituri (Bunia)', 1, 'city',
-  ST_SetSRID(ST_MakePoint(30.2500, 1.5667), 4326),
+  '{"type":"Point","coordinates":[30.2500,1.5667]}'::jsonb,
   1500000, '2020-03-01 00:00:00+00', '2020-12-31 00:00:00+00',
   ARRAY['crise-humanitaire','ituri','insecurite-alimentaire','codeco','covid19','2020']
 ),
@@ -740,7 +740,7 @@ INSERT INTO disaster_events (
   'humanitarian_crisis', 'resolved', 'Extreme', 'high',
   'ocha', NULL, NULL,
   'CD06', 'Grand-Kasaï', 1, 'city',
-  ST_SetSRID(ST_MakePoint(20.8000, -6.4167), 4326),
+  '{"type":"Point","coordinates":[20.8000,-6.4167]}'::jsonb,
   3000000, '2017-03-01 00:00:00+00', '2018-06-30 00:00:00+00',
   ARRAY['crise-humanitaire','kasai','malnutrition','enfants','unicef','post-conflit','2017']
 ),
@@ -757,7 +757,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Moderate', 'low',
   'ocha', NULL, NULL,
   'CD22', 'Bikoro, Équateur', 1, 'city',
-  ST_SetSRID(ST_MakePoint(18.1000, -0.7667), 4326),
+  '{"type":"Point","coordinates":[18.1000,-0.7667]}'::jsonb,
   15000, '2018-05-01 00:00:00+00', '2018-08-31 00:00:00+00',
   ARRAY['inondation','bikoro','equateur','ebola','double-urgence','2018']
 ),
@@ -770,7 +770,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Moderate', 'medium',
   'official', NULL, NULL,
   'CD08', 'Mbuji-Mayi, Kasaï-Oriental', 1, 'city',
-  ST_SetSRID(ST_MakePoint(23.6000, -6.1500), 4326),
+  '{"type":"Point","coordinates":[23.6000,-6.1500]}'::jsonb,
   10000, '2021-11-01 00:00:00+00', '2021-12-31 00:00:00+00',
   ARRAY['inondation','mbuji-mayi','kasai-oriental','sankuru','diamants','2021']
 ),
@@ -783,7 +783,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Moderate', 'low',
   'ocha', NULL, NULL,
   'CD04', 'Kwilu (Bandundu)', 1, 'city',
-  ST_SetSRID(ST_MakePoint(17.3833, -3.3167), 4326),
+  '{"type":"Point","coordinates":[17.3833,-3.3167]}'::jsonb,
   8000, '2020-10-01 00:00:00+00', '2020-12-31 00:00:00+00',
   ARRAY['inondation','kwilu','bandundu','fleuve-kwilu','2020']
 ),
@@ -796,7 +796,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Minor', 'medium',
   'official', NULL, NULL,
   'CD26', 'Kolwezi, Lualaba', 1, 'city',
-  ST_SetSRID(ST_MakePoint(25.4500, -10.7167), 4326),
+  '{"type":"Point","coordinates":[25.4500,-10.7167]}'::jsonb,
   5000, '2022-03-01 00:00:00+00', '2022-04-30 00:00:00+00',
   ARRAY['inondation','kolwezi','lualaba','cobalt','mines','2022']
 ),
@@ -809,7 +809,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Moderate', 'low',
   'ocha', NULL, NULL,
   'CD21', 'Gemena, Sud-Ubangi', 1, 'city',
-  ST_SetSRID(ST_MakePoint(19.7667, 3.2500), 4326),
+  '{"type":"Point","coordinates":[19.7667,3.2500]}'::jsonb,
   6000, '2021-09-01 00:00:00+00', '2021-11-30 00:00:00+00',
   ARRAY['inondation','gemena','sud-ubangi','ubangi','logistique','2021']
 ),
@@ -826,7 +826,7 @@ INSERT INTO disaster_events (
   'conflict', 'resolved', 'Severe', 'medium',
   'ocha', NULL, NULL,
   'CD15', 'Djugu, Ituri', 1, 'city',
-  ST_SetSRID(ST_MakePoint(30.5000, 1.9167), 4326),
+  '{"type":"Point","coordinates":[30.5000,1.9167]}'::jsonb,
   200000, '2023-01-01 00:00:00+00', '2023-12-31 00:00:00+00',
   ARRAY['conflit','djugu','ituri','deplacement','humanitaire','2023']
 ),
@@ -839,7 +839,7 @@ INSERT INTO disaster_events (
   'fire', 'resolved', 'Moderate', 'medium',
   'official', NULL, NULL,
   'CD01', 'Kinshasa (Kasa-Vubu)', 1, 'city',
-  ST_SetSRID(ST_MakePoint(15.2663, -4.3219), 4326),
+  '{"type":"Point","coordinates":[15.2663,-4.3219]}'::jsonb,
   5000, '2021-08-15 00:00:00+00', '2021-08-20 00:00:00+00',
   ARRAY['incendie','marche','kinshasa','kasa-vubu','economie','2021']
 ),
@@ -852,7 +852,7 @@ INSERT INTO disaster_events (
   'humanitarian_crisis', 'resolved', 'Severe', 'medium',
   'fews_net', NULL, NULL,
   'CD11', 'Maniema (Kindu)', 1, 'pcode',
-  ST_SetSRID(ST_MakePoint(25.9500, -2.9500), 4326),
+  '{"type":"Point","coordinates":[25.9500,-2.9500]}'::jsonb,
   700000, '2021-01-01 00:00:00+00', '2021-12-31 00:00:00+00',
   ARRAY['insecurite-alimentaire','maniema','ipc3','enclavement','2021']
 ),
@@ -865,7 +865,7 @@ INSERT INTO disaster_events (
   'earthquake', 'resolved', 'Moderate', 'high',
   'reliefweb', NULL, NULL,
   'CD12', 'Lac Kivu / Bukavu, Sud-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(28.8500, -2.5100), 4326),
+  '{"type":"Point","coordinates":[28.8500,-2.5100]}'::jsonb,
   5000, '2008-02-03 00:00:00+00', '2008-03-01 00:00:00+00',
   ARRAY['seisme','lac-kivu','bukavu','goma','2008','magnitude6']
 ),
@@ -878,7 +878,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Extreme', 'high',
   'reliefweb', NULL, 'EP-2003-000024-COD',
   'CD22', 'Équateur (zone frontière)', 1, 'pcode',
-  ST_SetSRID(ST_MakePoint(18.2833, 0.0500), 4326),
+  '{"type":"Point","coordinates":[18.2833,0.0500]}'::jsonb,
   143, '2003-12-01 00:00:00+00', '2004-01-15 00:00:00+00',
   ARRAY['ebola','mvd','equateur','mbandaka','frontalier','2003','letalite']
 ),
@@ -891,7 +891,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Severe', 'high',
   'ocha', 'https://reliefweb.int/disaster/ep-2020-000110-cod', NULL,
   'CD22', 'Mbandaka, Équateur', 1, 'city',
-  ST_SetSRID(ST_MakePoint(18.2833, 0.0500), 4326),
+  '{"type":"Point","coordinates":[18.2833,0.0500]}'::jsonb,
   130, '2020-06-01 00:00:00+00', '2020-11-18 00:00:00+00',
   ARRAY['ebola','mvd','equateur','mbandaka','covid19','2020']
 ),
@@ -904,7 +904,7 @@ INSERT INTO disaster_events (
   'mass_displacement', 'resolved', 'Severe', 'medium',
   'ocha', NULL, NULL,
   'CD09', 'Kabinda, Lomami', 1, 'city',
-  ST_SetSRID(ST_MakePoint(24.4833, -6.1333), 4326),
+  '{"type":"Point","coordinates":[24.4833,-6.1333]}'::jsonb,
   80000, '2017-04-01 00:00:00+00', '2017-12-31 00:00:00+00',
   ARRAY['deplacement','lomami','kabinda','kamuina-nsapu','kasai','2017']
 ),
@@ -917,7 +917,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Moderate', 'low',
   'ocha', NULL, NULL,
   'CD24', 'Kongolo, Tanganyika', 1, 'city',
-  ST_SetSRID(ST_MakePoint(27.0000, -5.3833), 4326),
+  '{"type":"Point","coordinates":[27.0000,-5.3833]}'::jsonb,
   10000, '2021-11-01 00:00:00+00', '2022-01-31 00:00:00+00',
   ARRAY['inondation','kongolo','tanganyika','fleuve-congo','2021']
 ),
@@ -930,7 +930,7 @@ INSERT INTO disaster_events (
   'drought', 'resolved', 'Moderate', 'medium',
   'fews_net', NULL, NULL,
   'CD26', 'Kolwezi, Lualaba', 1, 'city',
-  ST_SetSRID(ST_MakePoint(25.4500, -10.7167), 4326),
+  '{"type":"Point","coordinates":[25.4500,-10.7167]}'::jsonb,
   200000, '2020-06-01 00:00:00+00', '2020-12-31 00:00:00+00',
   ARRAY['secheresse','insecurite-alimentaire','lualaba','kolwezi','mines','2020']
 ),
@@ -943,7 +943,7 @@ INSERT INTO disaster_events (
   'flood', 'resolved', 'Moderate', 'low',
   'ocha', NULL, NULL,
   'CD14', 'Rutshuru, Nord-Kivu', 1, 'city',
-  ST_SetSRID(ST_MakePoint(29.4500, -1.1833), 4326),
+  '{"type":"Point","coordinates":[29.4500,-1.1833]}'::jsonb,
   3000, '2022-10-01 00:00:00+00', '2022-11-30 00:00:00+00',
   ARRAY['inondation','rutshuru','nord-kivu','m23','virunga','2022']
 ),
@@ -956,7 +956,7 @@ INSERT INTO disaster_events (
   'fire', 'resolved', 'Moderate', 'medium',
   'official', NULL, NULL,
   'CD14', 'Parc national des Virunga, Nord-Kivu', 1, 'pcode',
-  ST_SetSRID(ST_MakePoint(29.2333, -1.6833), 4326),
+  '{"type":"Point","coordinates":[29.2333,-1.6833]}'::jsonb,
   NULL, '2021-02-01 00:00:00+00', '2021-03-31 00:00:00+00',
   ARRAY['incendie','foret','virunga','gorilles','biodiversite','adf','2021']
 ),
@@ -969,7 +969,7 @@ INSERT INTO disaster_events (
   'health_epidemic', 'resolved', 'Moderate', 'medium',
   'ocha', NULL, NULL,
   'CD17', 'Kisangani, Tshopo', 1, 'city',
-  ST_SetSRID(ST_MakePoint(25.1833, 0.5333), 4326),
+  '{"type":"Point","coordinates":[25.1833,0.5333]}'::jsonb,
   3000, '2023-06-01 00:00:00+00', '2023-11-30 00:00:00+00',
   ARRAY['cholera','tshopo','kisangani','fleuve-congo','eau-potable','2023']
 )
