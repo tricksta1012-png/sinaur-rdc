@@ -1,4 +1,4 @@
-import type { WebSocket } from '@fastify/websocket';
+import type { WebSocket } from 'ws';
 
 type WsEvent =
   | { type: 'NEW_EVENT'; payload: unknown }

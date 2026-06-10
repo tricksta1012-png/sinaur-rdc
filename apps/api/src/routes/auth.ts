@@ -79,6 +79,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
     const payload: Omit<JwtPayload, 'iat' | 'exp'> = {
       sub: user.id,
+      id: user.id,
       role: user.role as JwtPayload['role'],
       scope: user.geographicScopePcodes,
     };
@@ -169,6 +170,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
       const payload: Omit<JwtPayload, 'iat' | 'exp'> = {
         sub: user.id,
+        id: user.id,
         role: user.role as JwtPayload['role'],
         scope: user.geographicScopePcodes,
       };

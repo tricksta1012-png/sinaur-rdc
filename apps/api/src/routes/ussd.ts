@@ -13,7 +13,7 @@ export async function ussdRoutes(fastify: FastifyInstance) {
   // ── Rapports USSD ─────────────────────────────────────────────────────────
 
   fastify.get('/ussd/reports', {
-    preHandler: [requireAuth, requireRole('admin', 'territory_admin', 'humanitarian_partner')],
+    preHandler: [requireAuth, requireRole('system_admin', 'territory_admin', 'humanitarian_partner')],
   }, async (request, reply) => {
     const user = request.jwtUser
     const q = request.query as Record<string, string>
@@ -47,7 +47,7 @@ export async function ussdRoutes(fastify: FastifyInstance) {
   })
 
   fastify.get('/ussd/reports/:id', {
-    preHandler: [requireAuth, requireRole('admin', 'territory_admin', 'humanitarian_partner')],
+    preHandler: [requireAuth, requireRole('system_admin', 'territory_admin', 'humanitarian_partner')],
   }, async (request, reply) => {
     const user = request.jwtUser
     const { id } = request.params as { id: string }
@@ -72,7 +72,7 @@ export async function ussdRoutes(fastify: FastifyInstance) {
   // ── Abonnements SMS ───────────────────────────────────────────────────────
 
   fastify.get('/ussd/subscriptions', {
-    preHandler: [requireAuth, requireRole('admin', 'territory_admin')],
+    preHandler: [requireAuth, requireRole('system_admin', 'territory_admin')],
   }, async (request, reply) => {
     const user = request.jwtUser
     const q = request.query as Record<string, string>
