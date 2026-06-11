@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import MapGL, { Marker } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -10,6 +10,7 @@ import type {
   ResourceDepotDetail,
   ResourceMovementRow,
   StockAlert,
+  ResourceStock,
 } from '@sinaur/shared-types';
 
 // ── Constantes ──────────────────────────────────────────────────────────────
@@ -66,10 +67,301 @@ function markerCoords(d: ResourceDepotSummary, idx: number): [number, number] {
   ];
 }
 
+// ── Modal Nouveau Dépôt ───────────────────────────────────────────────────────
+
+function NewDepotModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({ name: '', pcode: '', address: '' });
+
+  const mutation = useMutation({
+    mutationFn: (body: { name: string; pcode: string; address?: string }) =>
+      apiClient.post('/resources/depots', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cc-stocks-depots'] });
+      onClose();
+    },
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    mutation.mutate({
+      name: form.name,
+      pcode: form.pcode,
+      address: form.address || undefined,
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-cc-900 border border-cc-700 rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-cc-700">
+          <h2 className="text-white font-semibold">Nouveau dépôt</h2>
+          <button onClick={onClose} className="text-cc-600 hover:text-gray-300 text-xl leading-none">×</button>
+        </div>
+        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-3">
+          <div>
+            <label className="dist-label">Nom *</label>
+            <input
+              className="dist-input"
+              required
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="Ex: Dépôt central Kinshasa"
+            />
+          </div>
+          <div>
+            <label className="dist-label">Code province (pcode) *</label>
+            <input
+              className="dist-input font-mono"
+              required
+              maxLength={10}
+              value={form.pcode}
+              onChange={e => setForm(f => ({ ...f, pcode: e.target.value }))}
+              placeholder="Ex: CD10"
+            />
+          </div>
+          <div>
+            <label className="dist-label">Adresse</label>
+            <input
+              className="dist-input"
+              value={form.address}
+              onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
+              placeholder="Ex: Avenue de la Paix, Goma"
+            />
+          </div>
+          {mutation.isError && (
+            <div className="text-red-400 text-xs bg-red-950 px-3 py-2 rounded-lg">
+              Erreur lors de la création du dépôt.
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="cc-btn-ghost">Annuler</button>
+            <button type="submit" disabled={mutation.isPending} className="cc-btn-primary">
+              {mutation.isPending ? 'Création…' : 'Créer'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal Ajouter Stock ───────────────────────────────────────────────────────
+
+function AddStockModal({ depotId, onClose }: { depotId: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    resourceName: '',
+    resourceType: 'food',
+    unit: '',
+    quantityAvailable: '',
+    minimumThreshold: '',
+  });
+
+  const mutation = useMutation({
+    mutationFn: (body: {
+      resourceName: string;
+      resourceType: string;
+      unit: string;
+      quantityAvailable: number;
+      minimumThreshold?: number;
+    }) => apiClient.post(`/resources/depots/${depotId}/stocks`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cc-depot-detail', depotId] });
+      qc.invalidateQueries({ queryKey: ['cc-stocks-depots'] });
+      onClose();
+    },
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    mutation.mutate({
+      resourceName: form.resourceName,
+      resourceType: form.resourceType,
+      unit: form.unit,
+      quantityAvailable: Number(form.quantityAvailable),
+      minimumThreshold: form.minimumThreshold ? Number(form.minimumThreshold) : undefined,
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-cc-900 border border-cc-700 rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-cc-700">
+          <h2 className="text-white font-semibold">Ajouter un stock</h2>
+          <button onClick={onClose} className="text-cc-600 hover:text-gray-300 text-xl leading-none">×</button>
+        </div>
+        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-3">
+          <div>
+            <label className="dist-label">Nom ressource *</label>
+            <input
+              className="dist-input"
+              required
+              value={form.resourceName}
+              onChange={e => setForm(f => ({ ...f, resourceName: e.target.value }))}
+              placeholder="Ex: Riz basmati 25kg"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="dist-label">Type *</label>
+              <select
+                className="dist-input"
+                value={form.resourceType}
+                onChange={e => setForm(f => ({ ...f, resourceType: e.target.value }))}
+              >
+                {Object.entries(RES_LABEL).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="dist-label">Unité *</label>
+              <input
+                className="dist-input"
+                required
+                value={form.unit}
+                onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
+                placeholder="Ex: kg, L, unités"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="dist-label">Quantité disponible *</label>
+              <input
+                className="dist-input"
+                type="number"
+                min="0"
+                required
+                value={form.quantityAvailable}
+                onChange={e => setForm(f => ({ ...f, quantityAvailable: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="dist-label">Seuil minimum</label>
+              <input
+                className="dist-input"
+                type="number"
+                min="0"
+                value={form.minimumThreshold}
+                onChange={e => setForm(f => ({ ...f, minimumThreshold: e.target.value }))}
+              />
+            </div>
+          </div>
+          {mutation.isError && (
+            <div className="text-red-400 text-xs bg-red-950 px-3 py-2 rounded-lg">
+              Erreur lors de l'ajout du stock.
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="cc-btn-ghost">Annuler</button>
+            <button type="submit" disabled={mutation.isPending} className="cc-btn-primary">
+              {mutation.isPending ? 'Ajout…' : 'Ajouter'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal Mouvement ───────────────────────────────────────────────────────────
+
+function MovementModal({
+  depotId,
+  stock,
+  movementType,
+  onClose,
+}: {
+  depotId: string;
+  stock: ResourceStock;
+  movementType: 'in' | 'out';
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({ quantity: '', reason: '' });
+
+  const mutation = useMutation({
+    mutationFn: (body: {
+      stockId: string;
+      movementType: string;
+      quantity: number;
+      reason?: string;
+    }) => apiClient.post(`/resources/depots/${depotId}/movements`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cc-depot-movements', depotId] });
+      qc.invalidateQueries({ queryKey: ['cc-depot-detail', depotId] });
+      qc.invalidateQueries({ queryKey: ['cc-stocks-depots'] });
+      onClose();
+    },
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    mutation.mutate({
+      stockId: stock.id,
+      movementType,
+      quantity: Number(form.quantity),
+      reason: form.reason || undefined,
+    });
+  }
+
+  const isEntree = movementType === 'in';
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-cc-900 border border-cc-700 rounded-2xl w-full max-w-sm shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-cc-700">
+          <h2 className="text-white font-semibold">
+            {isEntree ? '↑ Entrée' : '↓ Sortie'} — {stock.resourceName}
+          </h2>
+          <button onClick={onClose} className="text-cc-600 hover:text-gray-300 text-xl leading-none">×</button>
+        </div>
+        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-3">
+          <div>
+            <label className="dist-label">Quantité ({stock.unit}) *</label>
+            <input
+              className="dist-input"
+              type="number"
+              min="1"
+              required
+              value={form.quantity}
+              onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="dist-label">Motif</label>
+            <input
+              className="dist-input"
+              value={form.reason}
+              onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
+              placeholder="Ex: Livraison OCHA, Distribution…"
+            />
+          </div>
+          {mutation.isError && (
+            <div className="text-red-400 text-xs bg-red-950 px-3 py-2 rounded-lg">
+              Erreur lors de l'enregistrement du mouvement.
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="cc-btn-ghost">Annuler</button>
+            <button type="submit" disabled={mutation.isPending} className="cc-btn-primary">
+              {mutation.isPending ? 'Enregistrement…' : 'Enregistrer'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export function StocksPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showNewDepot, setShowNewDepot] = useState(false);
 
   const { data: depotsRaw, refetch: refetchDepots } = useQuery({
     queryKey: ['cc-stocks-depots'],
@@ -123,7 +415,16 @@ export function StocksPage() {
             <span>📦</span>
             <span className="text-sm font-semibold text-white">Stocks humanitaires</span>
           </div>
-          <button onClick={refresh} title="Actualiser" className="cc-btn cc-btn-ghost px-2 py-1 text-xs">↺</button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowNewDepot(true)}
+              title="Nouveau dépôt"
+              className="cc-btn cc-btn-ghost px-2 py-1 text-xs"
+            >
+              + Nouveau dépôt
+            </button>
+            <button onClick={refresh} title="Actualiser" className="cc-btn cc-btn-ghost px-2 py-1 text-xs">↺</button>
+          </div>
         </div>
 
         {/* KPIs */}
@@ -222,11 +523,21 @@ export function StocksPage() {
             detail={detail}
             movements={movements ?? []}
             onClose={() => setSelectedId(null)}
+            depotId={selectedId}
           />
         ) : (
           <MapView depots={depots} onSelect={setSelectedId} />
         )}
       </div>
+
+      {/* ── Modals ── */}
+      {showNewDepot && <NewDepotModal onClose={() => setShowNewDepot(false)} />}
+
+      <style>{`
+        .dist-label { display:block; font-size:.7rem; color:#475569; font-family:monospace; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.25rem; }
+        .dist-input  { width:100%; background:#1e293b; border:1px solid #334155; border-radius:.5rem; padding:.5rem .75rem; font-size:.875rem; color:#f1f5f9; }
+        .dist-input:focus { outline:none; border-color:#3b82f6; }
+      `}</style>
     </div>
   );
 }
@@ -314,11 +625,19 @@ function DepotDetailView({
   detail,
   movements,
   onClose,
+  depotId,
 }: {
   detail: ResourceDepotDetail;
   movements: ResourceMovementRow[];
   onClose: () => void;
+  depotId: string;
 }) {
+  const [showAddStock, setShowAddStock] = useState(false);
+  const [movementTarget, setMovementTarget] = useState<{
+    stock: ResourceStock;
+    movementType: 'in' | 'out';
+  } | null>(null);
+
   const criticalCount = detail.stocks.filter(s => {
     const qty = Number(s.quantityAvailable);
     const thr = Number(s.minimumThreshold);
@@ -347,6 +666,13 @@ function DepotDetailView({
             </div>
           )}
         </div>
+        <button
+          onClick={() => setShowAddStock(true)}
+          className="cc-btn cc-btn-ghost px-2 py-1 text-xs shrink-0"
+          title="Ajouter un stock"
+        >
+          + Ajouter stock
+        </button>
         <span className={`cc-badge shrink-0 ${detail.isActive ? 'bg-green-900/60 text-green-400' : 'bg-cc-800 text-cc-600'}`}>
           {detail.isActive ? 'Actif' : 'Inactif'}
         </span>
@@ -389,15 +715,31 @@ function DepotDetailView({
                           {s.crisisGlide && <span className="ml-1.5 font-mono">{s.crisisGlide}</span>}
                         </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <div className={`text-sm font-mono font-bold ${text}`}>
-                          {qty.toLocaleString('fr')} {s.unit}
-                        </div>
-                        {thr > 0 && (
-                          <div className="text-[11px] text-cc-600">
-                            seuil {thr.toLocaleString('fr')}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => setMovementTarget({ stock: s, movementType: 'in' })}
+                          title="Entrée"
+                          className="w-6 h-6 flex items-center justify-center rounded bg-green-900/40 hover:bg-green-900/70 text-green-400 text-xs font-bold transition-colors"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          onClick={() => setMovementTarget({ stock: s, movementType: 'out' })}
+                          title="Sortie"
+                          className="w-6 h-6 flex items-center justify-center rounded bg-red-900/40 hover:bg-red-900/70 text-red-400 text-xs font-bold transition-colors"
+                        >
+                          ↓
+                        </button>
+                        <div className="text-right ml-1">
+                          <div className={`text-sm font-mono font-bold ${text}`}>
+                            {qty.toLocaleString('fr')} {s.unit}
                           </div>
-                        )}
+                          {thr > 0 && (
+                            <div className="text-[11px] text-cc-600">
+                              seuil {thr.toLocaleString('fr')}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -454,6 +796,19 @@ function DepotDetailView({
           </div>
         )}
       </div>
+
+      {/* ── Modals ── */}
+      {showAddStock && (
+        <AddStockModal depotId={depotId} onClose={() => setShowAddStock(false)} />
+      )}
+      {movementTarget && (
+        <MovementModal
+          depotId={depotId}
+          stock={movementTarget.stock}
+          movementType={movementTarget.movementType}
+          onClose={() => setMovementTarget(null)}
+        />
+      )}
     </div>
   );
 }

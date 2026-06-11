@@ -73,6 +73,64 @@ const STATUS_FR: Record<string, { label: string; color: string }> = {
   rejected:     { label: 'Rejeté',           color: 'bg-cc-800 text-gray-500 border-cc-700' },
 };
 
+// Détecte si un texte est probablement en anglais (pas de caractères français)
+function isLikelyEnglish(text: string): boolean {
+  if (!text || text.length < 20) return false;
+  const frenchChars = /[àâäéèêëîïôùûüçœæÀÂÄÉÈÊËÎÏÔÙÛÜÇŒÆ]/;
+  const englishWords = /\b(the|and|in|of|is|for|to|was|has|been|this|that|with|from|notification|reported|affected|areas|located|fire|flood)\b/i;
+  return !frenchChars.test(text) && englishWords.test(text);
+}
+
+function DescriptionBlock({ text, eventTitle }: { text: string; eventTitle: string }) {
+  const [translated, setTranslated] = useState<string | null>(null);
+  const [translating, setTranslating] = useState(false);
+  const needsTranslation = isLikelyEnglish(text);
+
+  const translate = async () => {
+    setTranslating(true);
+    try {
+      const res = await fetch(
+        `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|fr`,
+      );
+      const json = await res.json();
+      const t = json?.responseData?.translatedText;
+      if (t && t !== text) setTranslated(t);
+    } catch { /* ignore */ } finally {
+      setTranslating(false);
+    }
+  };
+
+  return (
+    <div className="border-t border-cc-800 pt-2 mt-1">
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-[10px] font-mono text-cc-500 uppercase">Description</div>
+        {needsTranslation && !translated && (
+          <button
+            onClick={translate}
+            disabled={translating}
+            className="text-[10px] text-sinaur-400 hover:text-sinaur-300 font-mono disabled:opacity-50 flex items-center gap-1"
+          >
+            {translating ? '⟳ Traduction…' : '🌐 Traduire'}
+          </button>
+        )}
+        {translated && (
+          <button onClick={() => setTranslated(null)} className="text-[10px] text-cc-500 hover:text-cc-400 font-mono">
+            Voir original
+          </button>
+        )}
+      </div>
+      {needsTranslation && !translated && (
+        <span className="inline-flex items-center gap-1 text-[9px] text-yellow-600 font-mono mb-1">
+          <span>⚠</span> Texte source en anglais
+        </span>
+      )}
+      <p className="text-gray-300 leading-relaxed line-clamp-5 text-[11px]">
+        {translated ?? text}
+      </p>
+    </div>
+  );
+}
+
 // Convert lng/lat to XYZ tile coords
 function lngLatToTile(lng: number, lat: number, z: number) {
   const n = Math.pow(2, z);
@@ -229,16 +287,13 @@ function EventDetailPanel({ event, onClose }: { event: SelectedEvent; onClose: (
           <span>{SOURCE_FR[event.source] ?? event.source}</span>
         </div>
 
-        {/* Full description from /events/:id */}
+        {/* Description — détection langue + traduction */}
         {detail?.description && (
-          <div className="border-t border-cc-800 pt-2 mt-1">
-            <div className="text-[10px] font-mono text-cc-500 uppercase mb-1">Description</div>
-            <p className="text-gray-300 leading-relaxed line-clamp-4">{detail.description}</p>
-          </div>
+          <DescriptionBlock text={detail.description} eventTitle={event.title} />
         )}
 
         {/* Tags */}
-        {detail?.tags && detail.tags.length > 0 && (
+        {detail?.tags && (detail.tags as string[]).length > 0 && (
           <div className="flex flex-wrap gap-1">
             {(detail.tags as string[]).map(t => (
               <span key={t} className="text-[10px] bg-cc-800 text-cc-400 px-1.5 py-0.5 rounded font-mono">
@@ -252,7 +307,11 @@ function EventDetailPanel({ event, onClose }: { event: SelectedEvent; onClose: (
         {detail?.confidence && (
           <div className="flex items-center gap-2 text-gray-400">
             <span className="w-4 text-center shrink-0">🎯</span>
-            <span className="capitalize">{detail.confidence}</span>
+            <span className="capitalize">{
+              detail.confidence === 'confirmed' ? 'Confirmé' :
+              detail.confidence === 'probable'  ? 'Probable' :
+              detail.confidence === 'possible'  ? 'Possible' : detail.confidence
+            }</span>
           </div>
         )}
 
