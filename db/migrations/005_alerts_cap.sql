@@ -29,7 +29,7 @@ CREATE TABLE cap_alerts (
   related_event_id  UUID          REFERENCES disaster_events(id),
   -- Zones géographiques (dénormalisées pour requêtes rapides)
   target_pcodes     TEXT[]        NOT NULL DEFAULT '{}',
-  target_geometry   JSONB,   -- GeoJSON MultiPolygon
+  target_geometry   GEOMETRY(MultiPolygon, 4326),
   created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
@@ -49,7 +49,7 @@ CREATE TABLE alert_deliveries (
 );
 
 CREATE INDEX cap_alerts_target_pcodes_idx ON cap_alerts USING GIN (target_pcodes);
-CREATE INDEX cap_alerts_target_geom_idx   ON cap_alerts USING GIN  (target_geometry);
+CREATE INDEX cap_alerts_target_geom_idx   ON cap_alerts USING GIST (target_geometry);
 CREATE INDEX cap_alerts_sent_idx          ON cap_alerts (sent DESC);
 CREATE INDEX cap_alerts_status_idx        ON cap_alerts (status, msg_type);
 CREATE INDEX alert_deliveries_alert_idx   ON alert_deliveries (alert_id);

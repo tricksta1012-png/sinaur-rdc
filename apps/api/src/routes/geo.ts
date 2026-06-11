@@ -9,21 +9,41 @@ const listSchema = z.object({
   withGeometry: z.coerce.boolean().default(false),
 });
 
+// Detect at startup whether geometry columns are PostGIS or JSONB
+let geometryIsPostGIS: boolean | null = null;
+async function geoMode(): Promise<boolean> {
+  if (geometryIsPostGIS !== null) return geometryIsPostGIS;
+  const [r] = await sql`
+    SELECT udt_name FROM information_schema.columns
+    WHERE table_name = 'admin_divisions' AND column_name = 'geometry'
+  `;
+  geometryIsPostGIS = r?.udt_name === 'geometry';
+  return geometryIsPostGIS;
+}
+
+/** Returns centroid as JSON — works for both PostGIS and JSONB columns */
+function centroidExpr(postgis: boolean) {
+  return postgis ? sql`ST_AsGeoJSON(centroid)::json AS centroid,` : sql`centroid,`;
+}
+function geometryExpr(postgis: boolean) {
+  return postgis ? sql`ST_AsGeoJSON(geometry)::json AS geometry,` : sql`geometry,`;
+}
+
 export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /geo/divisions — liste les divisions administratives
   fastify.get('/geo/divisions', async (request, reply) => {
     const query = listSchema.parse(request.query);
+    const postgis = await geoMode();
     const rows = await sql`
       SELECT
         id, pcode, name_fr AS name, name_local,
         level, parent_pcode,
         population,
-        ST_AsGeoJSON(centroid)::json AS centroid,
-        ${query.withGeometry ? sql`ST_AsGeoJSON(geometry)::json AS geometry,` : sql``}
+        ${centroidExpr(postgis)}
+        ${query.withGeometry ? geometryExpr(postgis) : sql``}
         is_active
       FROM admin_divisions
-      WHERE deleted_at IS NULL
-        AND is_active = TRUE
+      WHERE is_active = TRUE
         ${query.level !== undefined ? sql`AND level = ${query.level}` : sql``}
         ${query.parentPcode ? sql`AND parent_pcode = ${query.parentPcode}` : sql``}
         ${query.search ? sql`AND name_fr ILIKE ${'%' + query.search + '%'}` : sql``}
@@ -36,12 +56,13 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /geo/divisions/:pcode — détail d'une division avec ses enfants
   fastify.get('/geo/divisions/:pcode', async (request, reply) => {
     const { pcode } = request.params as { pcode: string };
+    const postgis = await geoMode();
     const [division] = await sql`
       SELECT
         id, pcode, name_fr AS name, name_local,
         level, parent_pcode, population, area_km2,
-        ST_AsGeoJSON(centroid)::json AS centroid,
-        ST_AsGeoJSON(geometry)::json AS geometry,
+        ${centroidExpr(postgis)}
+        ${geometryExpr(postgis)}
         is_active
       FROM admin_divisions WHERE pcode = ${pcode}
     `;
@@ -49,7 +70,8 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
 
     const children = await sql`
       SELECT id, pcode, name_fr AS name, level, population,
-             ST_AsGeoJSON(centroid)::json AS centroid
+             ${centroidExpr(postgis)}
+             is_active
       FROM admin_divisions
       WHERE parent_pcode = ${pcode} AND is_active = TRUE
       ORDER BY name_fr
@@ -58,13 +80,18 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.send({ success: true, data: { ...division, children } });
   });
 
-  // GET /geo/search — recherche par coordonnées GPS (reverse geocode via PostGIS)
+  // GET /geo/reverse — reverse geocoding (PostGIS only; JSONB falls back to null)
   fastify.get('/geo/reverse', async (request, reply) => {
     const { lat, lng, level } = z.object({
       lat: z.coerce.number().min(-13).max(6),
       lng: z.coerce.number().min(11).max(32),
       level: z.coerce.number().int().min(0).max(6).default(3),
     }).parse(request.query);
+
+    const postgis = await geoMode();
+    if (!postgis) {
+      return reply.status(503).send({ success: false, error: { code: 'NOT_AVAILABLE', message: 'Reverse geocoding nécessite PostGIS' } });
+    }
 
     const [found] = await sql`
       SELECT pcode, name_fr AS name, level, parent_pcode

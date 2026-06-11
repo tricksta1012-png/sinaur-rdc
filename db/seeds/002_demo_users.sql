@@ -17,4 +17,4 @@ VALUES
   ('unicef@un.org',              NULL,           'UNICEF RDC',                    'humanitarian_partner',      '{}',       TRUE),
   ('validateur.goma@rdc.cd',     '+243820000001','Validateur Local — Goma',       'local_validator',           '{CD14}',   TRUE),
   (NULL,                         '+243830000001','Citoyen Test (Anonyme)',         'citizen',                   '{CD01}',   TRUE)
-ON CONFLICT (email) DO NOTHING;
+ON CONFLICT DO NOTHING;

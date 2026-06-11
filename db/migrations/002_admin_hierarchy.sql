@@ -11,8 +11,8 @@ CREATE TABLE admin_divisions (
   level         SMALLINT    NOT NULL CHECK (level BETWEEN 0 AND 6),
   parent_pcode  TEXT        REFERENCES admin_divisions(pcode),
   parent_id     UUID        REFERENCES admin_divisions(id),
-  centroid      JSONB,   -- GeoJSON Point { type, coordinates }
-  geometry      JSONB,   -- GeoJSON MultiPolygon
+  centroid      GEOMETRY(Point, 4326),
+  geometry      GEOMETRY(MultiPolygon, 4326),
   bbox          FLOAT8[4],  -- [west, south, east, north]
   population    INTEGER,
   area_km2      FLOAT8,
@@ -25,6 +25,10 @@ CREATE TABLE admin_divisions (
 CREATE INDEX admin_divisions_level_idx       ON admin_divisions (level);
 CREATE INDEX admin_divisions_parent_pcode_idx ON admin_divisions (parent_pcode);
 CREATE INDEX admin_divisions_pcode_idx       ON admin_divisions (pcode);
+
+-- Index spatiaux
+CREATE INDEX admin_divisions_geometry_idx ON admin_divisions USING GIST (geometry);
+CREATE INDEX admin_divisions_centroid_idx ON admin_divisions USING GIST (centroid);
 
 -- Index de recherche full-text
 CREATE INDEX admin_divisions_name_trgm_idx ON admin_divisions USING GIN (name_fr gin_trgm_ops);
