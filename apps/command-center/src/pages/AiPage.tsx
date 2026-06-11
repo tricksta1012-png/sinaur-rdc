@@ -146,7 +146,8 @@ function VeilleTab() {
     refetchInterval: 30_000,
   });
 
-  const events: any[] = data?.events ?? [];
+  // API returns array directly, not {events:[...]}
+  const events: any[] = Array.isArray(data) ? data : (data?.events ?? []);
   const connectors: any[] = healthData?.connectors ?? [];
 
   return (
@@ -156,19 +157,23 @@ function VeilleTab() {
         <div>
           <div className="text-xs font-mono text-gray-500 uppercase mb-2">Connecteurs d'ingestion</div>
           <div className="grid grid-cols-5 gap-2">
-            {connectors.map(c => (
-              <div key={c.source} className="bg-cc-800 rounded-lg p-2 text-center">
+            {connectors.map(c => {
+              const srcId = c.source_id ?? c.source ?? String(Math.random());
+              const status = c.status ?? (c.circuit_open ? 'down' : 'ok');
+              return (
+              <div key={srcId} className="bg-cc-800 rounded-lg p-2 text-center">
                 <div className="flex items-center justify-center gap-1 mb-1">
-                  <span className={`w-2 h-2 rounded-full ${CONNECTOR_STATUS[c.status] ?? 'bg-gray-500'}`} />
-                  <span className={`text-[10px] font-mono font-bold ${c.status === 'ok' ? 'text-green-400' : c.status === 'degraded' ? 'text-yellow-400' : 'text-red-400'}`}>
-                    {c.status.toUpperCase()}
+                  <span className={`w-2 h-2 rounded-full ${CONNECTOR_STATUS[status] ?? 'bg-gray-500'}`} />
+                  <span className={`text-[10px] font-mono font-bold ${status === 'ok' ? 'text-green-400' : status === 'degraded' ? 'text-yellow-400' : 'text-red-400'}`}>
+                    {status.toUpperCase()}
                   </span>
                 </div>
-                <div className="text-[10px] text-gray-400">{SOURCE_LABELS[c.source] ?? c.source}</div>
-                <div className="text-xs font-bold text-white">{c.events_48h}</div>
+                <div className="text-[10px] text-gray-400">{SOURCE_LABELS[srcId] ?? srcId}</div>
+                <div className="text-xs font-bold text-white">{c.events_48h ?? c.event_store_size ?? '—'}</div>
                 <div className="text-[9px] text-gray-600">evt / 48h</div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
