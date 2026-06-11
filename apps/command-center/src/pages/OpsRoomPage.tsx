@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useMemo, useEffect } from 'react';
-import MapGL, { Source, Layer, Popup, type MapLayerMouseEvent } from 'react-map-gl/maplibre';
+import MapGL, { Source, Layer, type MapLayerMouseEvent } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { apiClient } from '../lib/api.js';
 import { useRealtimeFeed } from '../hooks/useRealtimeFeed.js';
@@ -41,37 +41,255 @@ const SEVERITY_COLOR: Record<string, string> = {
 };
 
 const SEVERITY_FR: Record<string, string> = {
-  Extreme:  'Extrême',
-  Severe:   'Sévère',
-  Moderate: 'Modérée',
-  Minor:    'Mineure',
-  Unknown:  'Inconnue',
+  Extreme: 'Extrême', Severe: 'Sévère', Moderate: 'Modérée',
+  Minor: 'Mineure', Unknown: 'Inconnue',
 };
 
 const HAZARD_FR: Record<string, string> = {
-  flood:              'Inondation',
-  landslide:          'Glissement',
-  mass_displacement:  'Déplacement',
-  humanitarian_crisis:'Crise humanitaire',
-  health_epidemic:    'Épidémie',
-  volcanic_eruption:  'Éruption',
-  drought:            'Sécheresse',
-  fire:               'Incendie',
-  conflict:           'Conflit',
-  earthquake:         'Séisme',
-  other:              'Autre',
+  flood: 'Inondation', landslide: 'Glissement de terrain',
+  mass_displacement: 'Déplacement de masse', humanitarian_crisis: 'Crise humanitaire',
+  health_epidemic: 'Épidémie sanitaire', volcanic_eruption: 'Éruption volcanique',
+  drought: 'Sécheresse', fire: 'Incendie', conflict: 'Conflit armé',
+  earthquake: 'Séisme', other: 'Autre',
 };
 
-interface PopupInfo {
+const HAZARD_ICON: Record<string, string> = {
+  flood: '🌊', landslide: '⛰️', mass_displacement: '🏃', humanitarian_crisis: '🆘',
+  health_epidemic: '🦠', volcanic_eruption: '🌋', drought: '☀️',
+  fire: '🔥', conflict: '⚔️', earthquake: '📳', other: '⚠️',
+};
+
+const SOURCE_FR: Record<string, string> = {
+  official: 'Source officielle', field_agent: 'Agent terrain', ngo: 'ONG',
+  community: 'Communauté', media: 'Médias', reliefweb: 'ReliefWeb',
+  gdacs: 'GDACS', other: 'Autre',
+};
+
+const STATUS_FR: Record<string, { label: string; color: string }> = {
+  active:       { label: 'Actif',            color: 'bg-red-900/70 text-red-300 border-red-700' },
+  monitoring:   { label: 'Surveillance',     color: 'bg-yellow-900/70 text-yellow-300 border-yellow-700' },
+  under_review: { label: 'En révision',      color: 'bg-blue-900/70 text-blue-300 border-blue-700' },
+  resolved:     { label: 'Résolu',           color: 'bg-green-900/70 text-green-300 border-green-700' },
+  rejected:     { label: 'Rejeté',           color: 'bg-cc-800 text-gray-500 border-cc-700' },
+};
+
+// Convert lng/lat to XYZ tile coords
+function lngLatToTile(lng: number, lat: number, z: number) {
+  const n = Math.pow(2, z);
+  const x = Math.floor((lng + 180) / 360 * n);
+  const latRad = lat * Math.PI / 180;
+  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+  return { x, y };
+}
+
+// ESRI World Imagery — free, no API key, high-res satellite
+const esriTile = (z: number, y: number, x: number) =>
+  `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+
+function SatelliteMosaic({ lng, lat }: { lng: number; lat: number }) {
+  const z = 13;
+  const { x, y } = lngLatToTile(lng, lat, z);
+  return (
+    <div className="relative w-full h-40 overflow-hidden bg-cc-900">
+      <div className="grid grid-cols-3 absolute inset-0" style={{ gridTemplateRows: 'repeat(3,1fr)' }}>
+        {[-1, 0, 1].flatMap(dy =>
+          [-1, 0, 1].map(dx => (
+            <img
+              key={`${dx},${dy}`}
+              src={esriTile(z, y + dy, x + dx)}
+              className="w-full h-full object-cover"
+              alt=""
+              loading="lazy"
+              onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+            />
+          ))
+        )}
+      </div>
+      {/* Crosshair */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="relative">
+          <div className="w-5 h-5 rounded-full border-2 border-white shadow-lg" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-px h-7 bg-white/80" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-px w-7 bg-white/80" />
+        </div>
+      </div>
+      {/* Attribution */}
+      <div className="absolute bottom-1 right-1 text-[8px] text-white/50 font-mono bg-black/40 px-1 rounded">
+        © Esri Satellite
+      </div>
+    </div>
+  );
+}
+
+interface SelectedEvent {
+  id: string;
   lng: number; lat: number;
   title: string; severity: string;
-  hazardType: string; locationPcode: string;
-  locationName: string; estimatedAffected: number;
+  hazardType: string; status: string;
+  locationPcode: string; locationName: string;
+  estimatedAffected: number; startDate: string; source: string;
+}
+
+function EventDetailPanel({ event, onClose }: { event: SelectedEvent; onClose: () => void }) {
+  const { data: detail } = useQuery({
+    queryKey: ['event-detail', event.id],
+    queryFn: () => apiClient.get(`/events/${event.id}`).then(r => r.data.data),
+    staleTime: 5 * 60_000,
+    enabled: !!event.id,
+  });
+
+  const sev = SEVERITY_COLOR[event.severity] ?? '#6b7280';
+  const st  = STATUS_FR[event.status] ?? { label: event.status, color: 'bg-cc-800 text-gray-400 border-cc-700' };
+
+  return (
+    <div className="absolute top-14 left-3 w-72 z-20 bg-cc-950/97 border border-cc-700 rounded-xl shadow-2xl overflow-hidden backdrop-blur-sm">
+      {/* Satellite view */}
+      <SatelliteMosaic lng={event.lng} lat={event.lat} />
+
+      {/* Close */}
+      <button
+        onClick={onClose}
+        className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 text-white/80 hover:text-white flex items-center justify-center text-sm leading-none"
+      >×</button>
+
+      {/* Header */}
+      <div className="px-3 pt-3 pb-2 border-b border-cc-800">
+        <div className="flex items-start gap-2">
+          <span className="text-xl shrink-0 mt-0.5">{HAZARD_ICON[event.hazardType] ?? '⚠️'}</span>
+          <div className="min-w-0">
+            <h3 className="text-white text-sm font-bold leading-snug line-clamp-2">{event.title}</h3>
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {/* Severity badge */}
+              <span
+                className="text-[10px] font-bold px-2 py-0.5 rounded-full border"
+                style={{ borderColor: sev + '80', color: sev, background: sev + '22' }}
+              >
+                {SEVERITY_FR[event.severity] ?? event.severity}
+              </span>
+              {/* Status badge */}
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${st.color}`}>
+                {st.label}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Details */}
+      <div className="px-3 py-2.5 space-y-2 text-xs">
+        {/* Hazard type */}
+        <div className="flex items-center gap-2 text-gray-400">
+          <span className="w-4 text-center shrink-0">🏷️</span>
+          <span>{HAZARD_FR[event.hazardType] ?? event.hazardType}</span>
+        </div>
+
+        {/* Location */}
+        {event.locationName && (
+          <div className="flex items-start gap-2 text-gray-300">
+            <span className="w-4 text-center shrink-0 mt-0.5">📍</span>
+            <div>
+              <div>{event.locationName}</div>
+              <div className="text-[10px] font-mono text-cc-500">{event.locationPcode}</div>
+            </div>
+          </div>
+        )}
+
+        {/* GPS coords */}
+        <div className="flex items-center gap-2 text-cc-500 font-mono text-[10px]">
+          <span className="w-4 text-center shrink-0">🌐</span>
+          <span>{event.lat.toFixed(4)}°, {event.lng.toFixed(4)}°</span>
+        </div>
+
+        {/* Affected */}
+        {event.estimatedAffected > 0 && (
+          <div className="flex items-center gap-2 text-gray-300">
+            <span className="w-4 text-center shrink-0">👥</span>
+            <span>
+              <span className="font-bold text-white">{event.estimatedAffected.toLocaleString('fr')}</span>
+              {' '}personnes estimées
+            </span>
+          </div>
+        )}
+
+        {/* Date */}
+        {event.startDate && (
+          <div className="flex items-center gap-2 text-gray-400">
+            <span className="w-4 text-center shrink-0">📅</span>
+            <span>
+              {new Date(event.startDate).toLocaleDateString('fr-FR', {
+                day: 'numeric', month: 'long', year: 'numeric',
+              })}
+            </span>
+          </div>
+        )}
+
+        {/* Source */}
+        <div className="flex items-center gap-2 text-gray-400">
+          <span className="w-4 text-center shrink-0">📡</span>
+          <span>{SOURCE_FR[event.source] ?? event.source}</span>
+        </div>
+
+        {/* Full description from /events/:id */}
+        {detail?.description && (
+          <div className="border-t border-cc-800 pt-2 mt-1">
+            <div className="text-[10px] font-mono text-cc-500 uppercase mb-1">Description</div>
+            <p className="text-gray-300 leading-relaxed line-clamp-4">{detail.description}</p>
+          </div>
+        )}
+
+        {/* Tags */}
+        {detail?.tags && detail.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {(detail.tags as string[]).map(t => (
+              <span key={t} className="text-[10px] bg-cc-800 text-cc-400 px-1.5 py-0.5 rounded font-mono">
+                #{t}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Confidence */}
+        {detail?.confidence && (
+          <div className="flex items-center gap-2 text-gray-400">
+            <span className="w-4 text-center shrink-0">🎯</span>
+            <span className="capitalize">{detail.confidence}</span>
+          </div>
+        )}
+
+        {/* Media thumbnails */}
+        {detail?.media && (detail.media as any[]).length > 0 && (
+          <div className="border-t border-cc-800 pt-2">
+            <div className="text-[10px] font-mono text-cc-500 uppercase mb-1.5">Médias ({(detail.media as any[]).length})</div>
+            <div className="flex gap-1.5 flex-wrap">
+              {(detail.media as any[]).slice(0, 4).map((m: any) => (
+                <img
+                  key={m.id}
+                  src={m.thumbnailUrl ?? m.url}
+                  alt=""
+                  className="w-14 h-14 object-cover rounded border border-cc-700"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="px-3 pb-3">
+        <a
+          href={`/crises?event=${event.id}`}
+          className="block w-full text-center text-[11px] font-mono text-sinaur-400 hover:text-sinaur-300 border border-sinaur-800 hover:border-sinaur-600 rounded-lg py-1.5 transition-colors"
+        >
+          Voir dans Gestion des crises →
+        </a>
+      </div>
+    </div>
+  );
 }
 
 export function OpsRoomPage() {
   const { events, connected, clearFeed } = useRealtimeFeed();
-  const [popup, setPopup] = useState<PopupInfo | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<SelectedEvent | null>(null);
   const [wsLiveIds, setWsLiveIds] = useState<Set<string>>(new Set());
 
   const { data: statsData } = useQuery({
@@ -81,7 +299,6 @@ export function OpsRoomPage() {
     refetchInterval: 30_000,
   });
 
-  // GeoJSON events for map dots — refreshed every 30s
   const { data: mapGeoJSON } = useQuery({
     queryKey: ['cc-events-map'],
     queryFn: () => apiClient.get('/events/map?limit=200').then(r => r.data),
@@ -89,7 +306,6 @@ export function OpsRoomPage() {
     refetchInterval: 30_000,
   });
 
-  // Province boundary polygons — choropleth; cached 1h
   const { data: divisionsGeo = [] } = useQuery({
     queryKey: ['cc-divisions-geo'],
     queryFn: () => apiClient.get('/geo/divisions?level=1&withGeometry=true').then(r => r.data.data),
@@ -102,7 +318,6 @@ export function OpsRoomPage() {
     staleTime: 30_000,
   });
 
-  // Merge new WebSocket events into the live-highlight set
   useEffect(() => {
     const last = events[0];
     if (!last || (last.type !== 'NEW_ALERT' && last.type !== 'NEW_EVENT')) return;
@@ -110,7 +325,6 @@ export function OpsRoomPage() {
     if (id) setWsLiveIds(prev => new Set([...prev, id]));
   }, [events]);
 
-  // Annotate map features with isLive flag for WebSocket highlights
   const annotatedGeoJSON = useMemo(() => {
     if (!mapGeoJSON) return null;
     return {
@@ -126,7 +340,6 @@ export function OpsRoomPage() {
     };
   }, [mapGeoJSON, wsLiveIds]);
 
-  // Province choropleth: count events per province from map GeoJSON
   const provinceGeoJSON = useMemo(() => {
     const countByPcode = new Map<string, number>();
     for (const f of (mapGeoJSON?.features ?? [])) {
@@ -151,16 +364,21 @@ export function OpsRoomPage() {
 
   const onMapClick = (e: MapLayerMouseEvent) => {
     const f = e.features?.[0];
-    if (!f) return;
+    if (!f) { setSelectedEvent(null); return; }
     const p = f.properties as any;
-    setPopup({
-      lng: e.lngLat.lng, lat: e.lngLat.lat,
-      title: p.title ?? 'Événement',
-      severity: p.severity ?? 'Unknown',
-      hazardType: p.hazardType ?? '',
-      locationPcode: p.locationPcode ?? '',
-      locationName: p.locationName ?? '',
-      estimatedAffected: p.estimatedAffected ?? 0,
+    setSelectedEvent({
+      id:                 p.id ?? '',
+      lng:                e.lngLat.lng,
+      lat:                e.lngLat.lat,
+      title:              p.title ?? 'Événement',
+      severity:           p.severity ?? 'Unknown',
+      hazardType:         p.hazardType ?? 'other',
+      status:             p.status ?? 'active',
+      locationPcode:      p.locationPcode ?? '',
+      locationName:       p.locationName ?? '',
+      estimatedAffected:  Number(p.estimatedAffected ?? 0),
+      startDate:          p.startDate ?? '',
+      source:             p.source ?? 'other',
     });
   };
 
@@ -168,32 +386,16 @@ export function OpsRoomPage() {
 
   return (
     <div className="flex h-full">
-      {/* Map — 65% */}
+      {/* Map */}
       <div className="flex-1 relative">
 
         {/* Stats bar */}
         <div className="absolute top-3 left-3 right-3 z-10 flex gap-2 flex-wrap">
           {[
-            {
-              label: 'Événements actifs',
-              value: statsData?.counts?.activeEvents ?? eventCount,
-              color: 'bg-red-900/90 border-red-700',
-            },
-            {
-              label: 'Événements 24h',
-              value: statsData?.counts?.events24h ?? '…',
-              color: 'bg-orange-900/90 border-orange-700',
-            },
-            {
-              label: 'Crises ouvertes',
-              value: statsData?.crisisStats?.activeCrises ?? activeCrises?.length ?? '…',
-              color: 'bg-yellow-900/90 border-yellow-700',
-            },
-            {
-              label: 'Flux temps réel',
-              value: connected ? '● EN DIRECT' : '○ Déconnecté',
-              color: connected ? 'bg-green-900/90 border-green-700' : 'bg-cc-800/90 border-cc-700',
-            },
+            { label: 'Événements actifs', value: statsData?.counts?.activeEvents ?? eventCount, color: 'bg-red-900/90 border-red-700' },
+            { label: 'Événements 24h',    value: statsData?.counts?.events24h ?? '…',           color: 'bg-orange-900/90 border-orange-700' },
+            { label: 'Crises ouvertes',   value: statsData?.crisisStats?.activeCrises ?? activeCrises?.length ?? '…', color: 'bg-yellow-900/90 border-yellow-700' },
+            { label: 'Flux temps réel',   value: connected ? '● EN DIRECT' : '○ Déconnecté',   color: connected ? 'bg-green-900/90 border-green-700' : 'bg-cc-800/90 border-cc-700' },
           ].map(s => (
             <div key={s.label} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs backdrop-blur-sm ${s.color}`}>
               <span className="font-mono font-bold text-white text-sm">{s.value}</span>
@@ -209,7 +411,6 @@ export function OpsRoomPage() {
           interactiveLayerIds={['event-unclustered']}
           onClick={onMapClick}
         >
-          {/* Province choropleth */}
           {provinceGeoJSON.features.length > 0 && (
             <Source id="provinces" type="geojson" data={provinceGeoJSON}>
               <Layer
@@ -226,117 +427,46 @@ export function OpsRoomPage() {
                   'fill-opacity': 1,
                 }}
               />
-              <Layer
-                id="province-border"
-                type="line"
-                paint={{ 'line-color': '#2d4a6e', 'line-width': 1 }}
-              />
+              <Layer id="province-border" type="line" paint={{ 'line-color': '#2d4a6e', 'line-width': 1 }} />
             </Source>
           )}
 
-          {/* Event circles with clustering */}
           {annotatedGeoJSON && (
-            <Source
-              id="events"
-              type="geojson"
-              data={annotatedGeoJSON}
-              cluster={true}
-              clusterMaxZoom={8}
-              clusterRadius={45}
-            >
-              {/* Cluster halos */}
-              <Layer
-                id="cluster-halo"
-                type="circle"
-                filter={['has', 'point_count']}
-                paint={{
-                  'circle-radius': ['step', ['get', 'point_count'], 22, 5, 30, 20, 38],
-                  'circle-color': '#ea580c',
-                  'circle-opacity': 0.15,
-                }}
-              />
-              {/* Cluster circles */}
-              <Layer
-                id="cluster-circle"
-                type="circle"
-                filter={['has', 'point_count']}
+            <Source id="events" type="geojson" data={annotatedGeoJSON}
+              cluster={true} clusterMaxZoom={8} clusterRadius={45}>
+              <Layer id="cluster-halo" type="circle" filter={['has', 'point_count']}
+                paint={{ 'circle-radius': ['step', ['get', 'point_count'], 22, 5, 30, 20, 38], 'circle-color': '#ea580c', 'circle-opacity': 0.15 }} />
+              <Layer id="cluster-circle" type="circle" filter={['has', 'point_count']}
                 paint={{
                   'circle-radius': ['step', ['get', 'point_count'], 14, 5, 20, 20, 26],
-                  'circle-color': ['step', ['get', 'point_count'],
-                    '#2563eb', 5, '#ca8a04', 15, '#ea580c', 30, '#dc2626'],
-                  'circle-opacity': 0.92,
-                  'circle-stroke-width': 1.5,
-                  'circle-stroke-color': '#ffffff',
-                }}
-              />
-              {/* Cluster count labels */}
-              <Layer
-                id="cluster-count"
-                type="symbol"
-                filter={['has', 'point_count']}
-                layout={{
-                  'text-field': '{point_count_abbreviated}',
-                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                  'text-size': 12,
-                }}
-                paint={{ 'text-color': '#ffffff' }}
-              />
-              {/* Individual event halo (pulse effect for live WS events) */}
-              <Layer
-                id="event-halo"
-                type="circle"
-                filter={['!', ['has', 'point_count']]}
+                  'circle-color': ['step', ['get', 'point_count'], '#2563eb', 5, '#ca8a04', 15, '#ea580c', 30, '#dc2626'],
+                  'circle-opacity': 0.92, 'circle-stroke-width': 1.5, 'circle-stroke-color': '#ffffff',
+                }} />
+              <Layer id="cluster-count" type="symbol" filter={['has', 'point_count']}
+                layout={{ 'text-field': '{point_count_abbreviated}', 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-size': 12 }}
+                paint={{ 'text-color': '#ffffff' }} />
+              <Layer id="event-halo" type="circle" filter={['!', ['has', 'point_count']]}
                 paint={{
-                  'circle-radius':  ['case', ['get', 'isLive'], 28, 16],
-                  'circle-color':   ['get', 'color'],
+                  'circle-radius': ['case', ['get', 'isLive'], 28, 16],
+                  'circle-color': ['get', 'color'],
                   'circle-opacity': ['case', ['get', 'isLive'], 0.25, 0.12],
-                }}
-              />
-              {/* Individual event dots */}
-              <Layer
-                id="event-unclustered"
-                type="circle"
-                filter={['!', ['has', 'point_count']]}
+                }} />
+              <Layer id="event-unclustered" type="circle" filter={['!', ['has', 'point_count']]}
                 paint={{
-                  'circle-radius':       ['case', ['get', 'isLive'], 11, 8],
-                  'circle-color':        ['get', 'color'],
-                  'circle-opacity':      0.9,
+                  'circle-radius': ['case', ['get', 'isLive'], 11, 8],
+                  'circle-color': ['get', 'color'],
+                  'circle-opacity': 0.9,
                   'circle-stroke-color': '#ffffff',
                   'circle-stroke-width': ['case', ['get', 'isLive'], 2.5, 1.5],
-                }}
-              />
+                }} />
             </Source>
           )}
-
-          {popup && (
-            <Popup longitude={popup.lng} latitude={popup.lat} onClose={() => setPopup(null)} anchor="bottom">
-              <div className="text-sm p-1.5 min-w-48">
-                <div className="font-semibold text-gray-900 leading-snug">{popup.title}</div>
-                <div className="text-xs text-gray-600 mt-1 flex flex-wrap gap-1.5">
-                  {popup.hazardType && (
-                    <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700">
-                      {HAZARD_FR[popup.hazardType] ?? popup.hazardType}
-                    </span>
-                  )}
-                  <span className="font-medium" style={{ color: SEVERITY_COLOR[popup.severity] }}>
-                    {SEVERITY_FR[popup.severity] ?? popup.severity}
-                  </span>
-                </div>
-                {popup.locationName && (
-                  <div className="text-xs text-gray-500 mt-0.5">{popup.locationName}</div>
-                )}
-                {popup.estimatedAffected > 0 && (
-                  <div className="text-xs text-gray-600 mt-0.5 font-mono">
-                    {popup.estimatedAffected.toLocaleString('fr')} affectés
-                  </div>
-                )}
-                {popup.locationPcode && (
-                  <div className="text-xs text-gray-400 font-mono mt-0.5">{popup.locationPcode}</div>
-                )}
-              </div>
-            </Popup>
-          )}
         </MapGL>
+
+        {/* Event detail panel */}
+        {selectedEvent && (
+          <EventDetailPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+        )}
 
         {/* Severity legend */}
         <div className="absolute bottom-4 left-3 bg-cc-900/95 border border-cc-700 rounded-lg px-3 py-2 backdrop-blur-sm">
@@ -354,7 +484,6 @@ export function OpsRoomPage() {
           </div>
         </div>
 
-        {/* Active crises floating panel */}
         {activeCrises && activeCrises.length > 0 && (
           <div className="absolute bottom-4 right-1 w-64 bg-cc-900/95 border border-cc-700 rounded-xl p-3 backdrop-blur-sm">
             <div className="text-xs font-mono text-cc-500 uppercase tracking-wider mb-2">Crises actives</div>
@@ -373,7 +502,7 @@ export function OpsRoomPage() {
         )}
       </div>
 
-      {/* Live feed — 35% */}
+      {/* Live feed */}
       <div className="w-80 shrink-0 bg-cc-900 border-l border-cc-700 flex flex-col">
         <LiveFeed events={events} onClear={clearFeed} />
       </div>
