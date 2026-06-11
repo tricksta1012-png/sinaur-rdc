@@ -4,10 +4,11 @@ Inter-agent message bus — Redis Pub/Sub.
 Topics:
   signalements.new          → Agent 8 (épidémie)
   signalements.catastrophe  → Agent 2 (prédiction)
-  veille.new_event          → Agent 2 (prédiction)
+  veille.new_event          → Agent 2 (prédiction), Agent 9 (conflit)
   prediction.critical       → Agent 7 (logistique)
   anomalie_stocks.flag      → Agent 3 (antifraud)
   epidemie.alert            → Agent 6 (reporting)
+  conflit.critical          → Agent 7 (logistique)
   cap.alert                 → alerting service
 """
 from __future__ import annotations

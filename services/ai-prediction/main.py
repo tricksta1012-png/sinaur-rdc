@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 
 from agents.anomalie_stocks.router import router as anomalie_stocks_router
 from agents.antifraud.router import router as antifraud_router
+from agents.conflit.router import router as conflit_router
 from agents.epidemie.router import router as epidemie_router
 from agents.logistique.router import router as logistique_router
 from agents.prediction.router import router as prediction_router
@@ -102,6 +103,14 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("lifespan.epidemie_agent_start_failed", error=str(exc))
 
+    # Start Conflit agent (armed conflict surveillance + displacement prediction)
+    try:
+        from agents.conflit.agent import conflit_agent
+        await conflit_agent.start()
+        logger.info("lifespan.conflit_agent_started")
+    except Exception as exc:
+        logger.warning("lifespan.conflit_agent_start_failed", error=str(exc))
+
     # Verify Redis connectivity
     try:
         redis = get_redis()
@@ -148,6 +157,12 @@ async def lifespan(app: FastAPI):
     try:
         from agents.epidemie.agent import epidemie_agent
         await epidemie_agent.stop()
+    except Exception:
+        pass
+
+    try:
+        from agents.conflit.agent import conflit_agent
+        await conflit_agent.stop()
     except Exception:
         pass
 
@@ -271,6 +286,7 @@ app.include_router(signalements_router)
 app.include_router(reporting_router)
 app.include_router(logistique_router)
 app.include_router(epidemie_router)
+app.include_router(conflit_router)
 
 
 # --- Unified agents status endpoint ---
@@ -401,6 +417,17 @@ async def agents_status():
         ))
     except Exception as exc:
         agents.append(_agent_entry("epidemie", "Surveillance Épidémique", "", status="error", metrics={"error": str(exc)}))
+
+    # Agent 9 — Conflit
+    try:
+        from agents.conflit.agent import conflit_agent, _EVENT_STORE, _PREDICTION_STORE
+        agents.append(_agent_entry(
+            "conflit", "Surveillance des Conflits Armés",
+            "Résolution acteurs ACLED, prédiction déplacements, carte opérationnelle RESTRICTED",
+            metrics={"events_stored": len(_EVENT_STORE), "predictions": len(_PREDICTION_STORE)},
+        ))
+    except Exception as exc:
+        agents.append(_agent_entry("conflit", "Surveillance des Conflits Armés", "", status="error", metrics={"error": str(exc)}))
 
     elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
     overall = "ok" if all(a["status"] == "ok" for a in agents) else (
