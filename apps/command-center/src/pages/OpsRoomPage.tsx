@@ -6,7 +6,6 @@ import { apiClient } from '../lib/api.js';
 import { useRealtimeFeed } from '../hooks/useRealtimeFeed.js';
 import { LiveFeed } from '../components/LiveFeed.js';
 
-// Dark command-center style — OSM raster with desaturation filter, no API key required
 const MAP_STYLE = {
   version: 8 as const,
   sources: {
@@ -41,17 +40,39 @@ const SEVERITY_COLOR: Record<string, string> = {
   Unknown:  '#6b7280',
 };
 
+const SEVERITY_FR: Record<string, string> = {
+  Extreme:  'Extrême',
+  Severe:   'Sévère',
+  Moderate: 'Modérée',
+  Minor:    'Mineure',
+  Unknown:  'Inconnue',
+};
+
+const HAZARD_FR: Record<string, string> = {
+  flood:              'Inondation',
+  landslide:          'Glissement',
+  mass_displacement:  'Déplacement',
+  humanitarian_crisis:'Crise humanitaire',
+  health_epidemic:    'Épidémie',
+  volcanic_eruption:  'Éruption',
+  drought:            'Sécheresse',
+  fire:               'Incendie',
+  conflict:           'Conflit',
+  earthquake:         'Séisme',
+  other:              'Autre',
+};
+
 interface PopupInfo {
   lng: number; lat: number;
   title: string; severity: string;
   hazardType: string; locationPcode: string;
+  locationName: string; estimatedAffected: number;
 }
 
 export function OpsRoomPage() {
   const { events, connected, clearFeed } = useRealtimeFeed();
   const [popup, setPopup] = useState<PopupInfo | null>(null);
-  // Accumulates alerts pushed via WebSocket since last full refresh
-  const [wsAlerts, setWsAlerts] = useState<any[]>([]);
+  const [wsLiveIds, setWsLiveIds] = useState<Set<string>>(new Set());
 
   const { data: statsData } = useQuery({
     queryKey: ['cc-stats'],
@@ -60,21 +81,15 @@ export function OpsRoomPage() {
     refetchInterval: 30_000,
   });
 
-  const { data: activeAlerts = [] } = useQuery({
-    queryKey: ['cc-alerts'],
-    queryFn: () => apiClient.get('/alerts?status=actual&limit=50').then(r => r.data.data),
+  // GeoJSON events for map dots — refreshed every 30s
+  const { data: mapGeoJSON } = useQuery({
+    queryKey: ['cc-events-map'],
+    queryFn: () => apiClient.get('/events/map?limit=200').then(r => r.data),
     staleTime: 30_000,
     refetchInterval: 30_000,
   });
 
-  // Province centroids — used to place alert dots on the map
-  const { data: divisions = [] } = useQuery({
-    queryKey: ['cc-divisions-l1'],
-    queryFn: () => apiClient.get('/geo/divisions?level=1').then(r => r.data.data),
-    staleTime: 5 * 60_000,
-  });
-
-  // Province boundary polygons — used for choropleth; cached 1 h
+  // Province boundary polygons — choropleth; cached 1h
   const { data: divisionsGeo = [] } = useQuery({
     queryKey: ['cc-divisions-geo'],
     queryFn: () => apiClient.get('/geo/divisions?level=1&withGeometry=true').then(r => r.data.data),
@@ -87,72 +102,35 @@ export function OpsRoomPage() {
     staleTime: 30_000,
   });
 
-  // Build pcode → [lng, lat] from province centroids
-  const centroidByPcode = useMemo(() => {
-    const m = new Map<string, [number, number]>();
-    for (const d of divisions as any[]) {
-      if (d.centroid?.coordinates) {
-        m.set(d.pcode, d.centroid.coordinates as [number, number]);
-      }
-    }
-    return m;
-  }, [divisions]);
-
-  // Merge NEW_ALERT WebSocket events into the local live list
+  // Merge new WebSocket events into the live-highlight set
   useEffect(() => {
     const last = events[0];
-    if (!last || last.type !== 'NEW_ALERT') return;
-    const p = last.payload as any;
-    setWsAlerts(prev => {
-      if (prev.some(a => a.identifier === p.identifier)) return prev;
-      return [{ ...p, _isLive: true }, ...prev].slice(0, 50);
-    });
+    if (!last || (last.type !== 'NEW_ALERT' && last.type !== 'NEW_EVENT')) return;
+    const id = (last.payload as any).id ?? (last.payload as any).identifier;
+    if (id) setWsLiveIds(prev => new Set([...prev, id]));
   }, [events]);
 
-  // Merge API alerts + WebSocket alerts, deduplicated
-  const allAlerts = useMemo(() => {
-    const seen = new Set<string>();
-    const merged: any[] = [];
-    for (const a of [...wsAlerts, ...(activeAlerts as any[])]) {
-      const key = a.identifier ?? a.id ?? JSON.stringify(a);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(a);
-    }
-    return merged;
-  }, [activeAlerts, wsAlerts]);
+  // Annotate map features with isLive flag for WebSocket highlights
+  const annotatedGeoJSON = useMemo(() => {
+    if (!mapGeoJSON) return null;
+    return {
+      ...mapGeoJSON,
+      features: (mapGeoJSON.features ?? []).map((f: any) => ({
+        ...f,
+        properties: {
+          ...f.properties,
+          color: SEVERITY_COLOR[f.properties.severity] ?? '#6b7280',
+          isLive: wsLiveIds.has(f.properties.id),
+        },
+      })),
+    };
+  }, [mapGeoJSON, wsLiveIds]);
 
-  // Build GeoJSON points using real province centroids
-  const alertFeatures = useMemo(() =>
-    allAlerts
-      .map((a, i) => {
-        const pcode = a.areaPcode ?? a.locationPcode ?? '';
-        // Try exact pcode, then 4-char province prefix (e.g. CD10 from CD10T01)
-        const coords = centroidByPcode.get(pcode)
-          ?? centroidByPcode.get(pcode.slice(0, 4));
-        if (!coords) return null;
-        return {
-          type: 'Feature' as const,
-          geometry: { type: 'Point' as const, coordinates: coords },
-          properties: {
-            id: a.identifier ?? a.id ?? i,
-            title: a.headline ?? a.title ?? 'Événement',
-            severity: a.severity ?? 'Unknown',
-            hazardType: a.event ?? a.hazardType ?? '',
-            locationPcode: pcode,
-            color: SEVERITY_COLOR[a.severity] ?? '#6b7280',
-            isLive: !!(a._isLive),
-          },
-        };
-      })
-      .filter(Boolean) as GeoJSON.Feature[],
-  [allAlerts, centroidByPcode]);
-
-  // Build province choropleth colored by number of active alerts per province
+  // Province choropleth: count events per province from map GeoJSON
   const provinceGeoJSON = useMemo(() => {
     const countByPcode = new Map<string, number>();
-    for (const f of alertFeatures) {
-      const p = (f.properties as any).locationPcode as string;
+    for (const f of (mapGeoJSON?.features ?? [])) {
+      const p = f.properties?.locationPcode as string;
       if (p) countByPcode.set(p, (countByPcode.get(p) ?? 0) + 1);
     }
     return {
@@ -169,7 +147,7 @@ export function OpsRoomPage() {
           },
         })),
     };
-  }, [divisionsGeo, alertFeatures]);
+  }, [divisionsGeo, mapGeoJSON]);
 
   const onMapClick = (e: MapLayerMouseEvent) => {
     const f = e.features?.[0];
@@ -181,8 +159,12 @@ export function OpsRoomPage() {
       severity: p.severity ?? 'Unknown',
       hazardType: p.hazardType ?? '',
       locationPcode: p.locationPcode ?? '',
+      locationName: p.locationName ?? '',
+      estimatedAffected: p.estimatedAffected ?? 0,
     });
   };
+
+  const eventCount = mapGeoJSON?.features?.length ?? 0;
 
   return (
     <div className="flex h-full">
@@ -192,10 +174,26 @@ export function OpsRoomPage() {
         {/* Stats bar */}
         <div className="absolute top-3 left-3 right-3 z-10 flex gap-2 flex-wrap">
           {[
-            { label: 'Alertes actives',  value: statsData?.activeAlerts ?? '…',               color: 'bg-red-900/90 border-red-700'       },
-            { label: 'Événements 24h',   value: statsData?.eventsToday  ?? '…',               color: 'bg-orange-900/90 border-orange-700' },
-            { label: 'Crises ouvertes',  value: activeCrises?.length    ?? '…',               color: 'bg-yellow-900/90 border-yellow-700' },
-            { label: 'Flux temps réel',  value: connected ? '● EN DIRECT' : '○ Déconnecté',  color: connected ? 'bg-green-900/90 border-green-700' : 'bg-cc-800/90 border-cc-700' },
+            {
+              label: 'Événements actifs',
+              value: statsData?.counts?.activeEvents ?? eventCount,
+              color: 'bg-red-900/90 border-red-700',
+            },
+            {
+              label: 'Événements 24h',
+              value: statsData?.counts?.events24h ?? '…',
+              color: 'bg-orange-900/90 border-orange-700',
+            },
+            {
+              label: 'Crises ouvertes',
+              value: statsData?.crisisStats?.activeCrises ?? activeCrises?.length ?? '…',
+              color: 'bg-yellow-900/90 border-yellow-700',
+            },
+            {
+              label: 'Flux temps réel',
+              value: connected ? '● EN DIRECT' : '○ Déconnecté',
+              color: connected ? 'bg-green-900/90 border-green-700' : 'bg-cc-800/90 border-cc-700',
+            },
           ].map(s => (
             <div key={s.label} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs backdrop-blur-sm ${s.color}`}>
               <span className="font-mono font-bold text-white text-sm">{s.value}</span>
@@ -208,10 +206,10 @@ export function OpsRoomPage() {
           initialViewState={{ longitude: 24.0, latitude: -4.0, zoom: 5.2 }}
           style={{ width: '100%', height: '100%' }}
           mapStyle={MAP_STYLE}
-          interactiveLayerIds={['alert-circles']}
+          interactiveLayerIds={['event-unclustered']}
           onClick={onMapClick}
         >
-          {/* Province choropleth — colored by alert density */}
+          {/* Province choropleth */}
           {provinceGeoJSON.features.length > 0 && (
             <Source id="provinces" type="geojson" data={provinceGeoJSON}>
               <Layer
@@ -220,7 +218,7 @@ export function OpsRoomPage() {
                 paint={{
                   'fill-color': [
                     'interpolate', ['linear'], ['get', 'alertCount'],
-                    0, 'rgba(30,58,95,0.25)',
+                    0, 'rgba(30,58,95,0.20)',
                     1, 'rgba(202,138,4,0.28)',
                     3, 'rgba(234,88,12,0.38)',
                     6, 'rgba(220,38,38,0.48)',
@@ -236,21 +234,69 @@ export function OpsRoomPage() {
             </Source>
           )}
 
-          {/* Alert circles with larger pulse for live WS events */}
-          {alertFeatures.length > 0 && (
-            <Source id="alerts" type="geojson" data={{ type: 'FeatureCollection', features: alertFeatures }}>
+          {/* Event circles with clustering */}
+          {annotatedGeoJSON && (
+            <Source
+              id="events"
+              type="geojson"
+              data={annotatedGeoJSON}
+              cluster={true}
+              clusterMaxZoom={8}
+              clusterRadius={45}
+            >
+              {/* Cluster halos */}
               <Layer
-                id="alert-halo"
+                id="cluster-halo"
                 type="circle"
+                filter={['has', 'point_count']}
                 paint={{
-                  'circle-radius':  ['case', ['get', 'isLive'], 28, 18],
-                  'circle-color':   ['get', 'color'],
-                  'circle-opacity': ['case', ['get', 'isLive'], 0.22, 0.12],
+                  'circle-radius': ['step', ['get', 'point_count'], 22, 5, 30, 20, 38],
+                  'circle-color': '#ea580c',
+                  'circle-opacity': 0.15,
                 }}
               />
+              {/* Cluster circles */}
               <Layer
-                id="alert-circles"
+                id="cluster-circle"
                 type="circle"
+                filter={['has', 'point_count']}
+                paint={{
+                  'circle-radius': ['step', ['get', 'point_count'], 14, 5, 20, 20, 26],
+                  'circle-color': ['step', ['get', 'point_count'],
+                    '#2563eb', 5, '#ca8a04', 15, '#ea580c', 30, '#dc2626'],
+                  'circle-opacity': 0.92,
+                  'circle-stroke-width': 1.5,
+                  'circle-stroke-color': '#ffffff',
+                }}
+              />
+              {/* Cluster count labels */}
+              <Layer
+                id="cluster-count"
+                type="symbol"
+                filter={['has', 'point_count']}
+                layout={{
+                  'text-field': '{point_count_abbreviated}',
+                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                  'text-size': 12,
+                }}
+                paint={{ 'text-color': '#ffffff' }}
+              />
+              {/* Individual event halo (pulse effect for live WS events) */}
+              <Layer
+                id="event-halo"
+                type="circle"
+                filter={['!', ['has', 'point_count']]}
+                paint={{
+                  'circle-radius':  ['case', ['get', 'isLive'], 28, 16],
+                  'circle-color':   ['get', 'color'],
+                  'circle-opacity': ['case', ['get', 'isLive'], 0.25, 0.12],
+                }}
+              />
+              {/* Individual event dots */}
+              <Layer
+                id="event-unclustered"
+                type="circle"
+                filter={['!', ['has', 'point_count']]}
                 paint={{
                   'circle-radius':       ['case', ['get', 'isLive'], 11, 8],
                   'circle-color':        ['get', 'color'],
@@ -264,14 +310,28 @@ export function OpsRoomPage() {
 
           {popup && (
             <Popup longitude={popup.lng} latitude={popup.lat} onClose={() => setPopup(null)} anchor="bottom">
-              <div className="text-sm p-1.5 min-w-44">
-                <div className="font-semibold text-gray-900">{popup.title}</div>
-                <div className="text-xs text-gray-600 mt-0.5">
-                  {popup.hazardType && <span>{popup.hazardType} · </span>}
-                  <span className="font-medium">{popup.severity}</span>
+              <div className="text-sm p-1.5 min-w-48">
+                <div className="font-semibold text-gray-900 leading-snug">{popup.title}</div>
+                <div className="text-xs text-gray-600 mt-1 flex flex-wrap gap-1.5">
+                  {popup.hazardType && (
+                    <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700">
+                      {HAZARD_FR[popup.hazardType] ?? popup.hazardType}
+                    </span>
+                  )}
+                  <span className="font-medium" style={{ color: SEVERITY_COLOR[popup.severity] }}>
+                    {SEVERITY_FR[popup.severity] ?? popup.severity}
+                  </span>
                 </div>
+                {popup.locationName && (
+                  <div className="text-xs text-gray-500 mt-0.5">{popup.locationName}</div>
+                )}
+                {popup.estimatedAffected > 0 && (
+                  <div className="text-xs text-gray-600 mt-0.5 font-mono">
+                    {popup.estimatedAffected.toLocaleString('fr')} affectés
+                  </div>
+                )}
                 {popup.locationPcode && (
-                  <div className="text-xs text-gray-500 font-mono mt-0.5">{popup.locationPcode}</div>
+                  <div className="text-xs text-gray-400 font-mono mt-0.5">{popup.locationPcode}</div>
                 )}
               </div>
             </Popup>
@@ -285,9 +345,12 @@ export function OpsRoomPage() {
             {Object.entries(SEVERITY_COLOR).map(([k, c]) => (
               <div key={k} className="flex items-center gap-2 text-xs text-gray-300">
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: c }} />
-                {k}
+                {SEVERITY_FR[k] ?? k}
               </div>
             ))}
+          </div>
+          <div className="border-t border-cc-700 mt-2 pt-1.5 text-[10px] text-cc-600 font-mono">
+            {eventCount} événement{eventCount !== 1 ? 's' : ''}
           </div>
         </div>
 

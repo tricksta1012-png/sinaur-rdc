@@ -4,12 +4,15 @@ import { useRealtimeFeed } from '../hooks/useRealtimeFeed.js';
 import { AlertTicker } from './AlertTicker.js';
 
 const NAV = [
-  { to: '/ops',          icon: '🖥️',  label: 'Salle des opérations' },
-  { to: '/crises',       icon: '🚨',  label: 'Gestion des crises'   },
-  { to: '/coordination', icon: '🤝',  label: 'Coordination'         },
-  { to: '/rapports',     icon: '📄',  label: 'Rapports SitRep'      },
-  { to: '/stocks',       icon: '📦',  label: 'Stocks humanitaires'  },
-  { to: '/ai',           icon: '🤖',  label: 'Intelligence Artif.'  },
+  { to: '/dashboard',     icon: '📊',  label: 'Tableau de bord'     },
+  { to: '/ops',           icon: '🖥️',  label: 'Salle des opérations' },
+  { to: '/crises',        icon: '🚨',  label: 'Gestion des crises'   },
+  { to: '/registre',      icon: '👥',  label: 'Registre sinistrés'  },
+  { to: '/distributions', icon: '📤',  label: 'Distributions'        },
+  { to: '/stocks',        icon: '📦',  label: 'Stocks humanitaires'  },
+  { to: '/coordination',  icon: '🤝',  label: 'Coordination'         },
+  { to: '/rapports',      icon: '📄',  label: 'Rapports SitRep'      },
+  { to: '/ai',            icon: '🤖',  label: 'Intelligence Artif.'  },
 ];
 
 export function CCLayout() {

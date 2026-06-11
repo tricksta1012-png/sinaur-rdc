@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import Map, { Marker } from 'react-map-gl/maplibre';
+import MapGL, { Marker } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -233,6 +233,15 @@ export function StocksPage() {
 
 // ── Vue carte ────────────────────────────────────────────────────────────────
 
+const STOCKS_MAP_STYLE = {
+  version: 8 as const,
+  sources: { osm: { type: 'raster' as const, tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap' } },
+  layers: [
+    { id: 'bg', type: 'background' as const, paint: { 'background-color': '#0d1b2a' } },
+    { id: 'osm', type: 'raster' as const, source: 'osm', paint: { 'raster-saturation': -1, 'raster-brightness-max': 0.30, 'raster-opacity': 0.85 } },
+  ],
+};
+
 function MapView({
   depots,
   onSelect,
@@ -244,10 +253,10 @@ function MapView({
 
   return (
     <div className="relative h-full">
-      <Map
+      <MapGL
         initialViewState={{ longitude: 24.0, latitude: -4.0, zoom: 5.0 }}
         style={{ width: '100%', height: '100%' }}
-        mapStyle="https://demotiles.maplibre.org/style.json"
+        mapStyle={STOCKS_MAP_STYLE}
       >
         {activeDepots.map((d, i) => {
           const [lng, lat] = markerCoords(d, i);
@@ -271,7 +280,7 @@ function MapView({
             </Marker>
           );
         })}
-      </Map>
+      </MapGL>
 
       {/* Légende */}
       <div className="absolute bottom-4 right-4 bg-cc-900/92 border border-cc-700 rounded-xl p-3 backdrop-blur-sm">

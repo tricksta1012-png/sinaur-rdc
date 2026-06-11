@@ -162,6 +162,73 @@ export async function eventRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.status(201).send({ success: true, data: event });
   });
 
+  // GET /events/map — GeoJSON FeatureCollection pour la carte (public, cache 30s)
+  fastify.get('/events/map', async (request, reply) => {
+    const q = z.object({
+      hazardType: z.string().optional(),
+      status:     z.string().optional(),
+      province:   z.string().optional(),
+      dateFrom:   z.string().optional(),
+      dateTo:     z.string().optional(),
+      bbox:       z.string().optional(), // "minLng,minLat,maxLng,maxLat"
+      limit:      z.coerce.number().int().min(1).max(500).default(200),
+    }).parse(request.query);
+
+    let bboxFilter = sql``;
+    if (q.bbox) {
+      const parts = q.bbox.split(',').map(Number);
+      if (parts.length === 4 && parts.every(n => !isNaN(n))) {
+        const [minLng, minLat, maxLng, maxLat] = parts;
+        bboxFilter = sql`AND e.location_point && ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326)`;
+      }
+    }
+
+    const rows = await sql`
+      SELECT
+        e.id, e.title, e.hazard_type, e.status, e.severity,
+        e.location_pcode, e.location_name, e.estimated_affected,
+        e.start_date, e.source,
+        ST_X(e.location_point) AS lng,
+        ST_Y(e.location_point) AS lat
+      FROM disaster_events e
+      WHERE e.deleted_at IS NULL
+        AND e.location_point IS NOT NULL
+        AND e.status NOT IN ('rejected')
+        ${q.status    ? sql`AND e.status       = ${q.status}::event_status`      : sql``}
+        ${q.hazardType ? sql`AND e.hazard_type = ${q.hazardType}::hazard_type`   : sql``}
+        ${q.province  ? sql`AND (e.location_pcode = ${q.province} OR ${q.province} = ANY(e.affected_pcodes))` : sql``}
+        ${q.dateFrom  ? sql`AND e.start_date   >= ${q.dateFrom}::timestamptz`    : sql``}
+        ${q.dateTo    ? sql`AND e.start_date   <= ${q.dateTo}::timestamptz`      : sql``}
+        ${bboxFilter}
+      ORDER BY e.start_date DESC
+      LIMIT ${q.limit}
+    `;
+
+    const geojson = {
+      type: 'FeatureCollection',
+      features: rows.map(r => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [r.lng, r.lat] },
+        properties: {
+          id:               r.id,
+          title:            r.title,
+          hazardType:       r.hazardType,
+          severity:         r.severity,
+          status:           r.status,
+          locationPcode:    r.locationPcode,
+          locationName:     r.locationName,
+          estimatedAffected: r.estimatedAffected ?? 0,
+          startDate:        r.startDate,
+          source:           r.source,
+        },
+      })),
+    };
+
+    return reply
+      .header('Cache-Control', 'public, max-age=30')
+      .send(geojson);
+  });
+
   // PATCH /events/:id/validate — validation par un validateur ou admin
   fastify.patch(
     '/events/:id/validate',

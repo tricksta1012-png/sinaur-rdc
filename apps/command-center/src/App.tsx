@@ -2,11 +2,14 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/auth.js';
 import { CCLayout } from './components/CCLayout.js';
 import { LoginPage } from './pages/LoginPage.js';
+import { DashboardPage } from './pages/DashboardPage.js';
 import { OpsRoomPage } from './pages/OpsRoomPage.js';
 import { CrisesPage } from './pages/CrisesPage.js';
+import { RegistrePage } from './pages/RegistrePage.js';
+import { DistributionsPage } from './pages/DistributionsPage.js';
 import { CoordinationPage } from './pages/CoordinationPage.js';
 import { RapportsPage } from './pages/RapportsPage.js';
-import { StocksPage } from './pages/StocksPage.js'
+import { StocksPage } from './pages/StocksPage.js';
 import { AiPage } from './pages/AiPage.js';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -26,15 +29,18 @@ export default function App() {
           </RequireAuth>
         }
       >
-        <Route index element={<Navigate to="/ops" replace />} />
-        <Route path="ops"          element={<OpsRoomPage />} />
-        <Route path="crises"       element={<CrisesPage />} />
-        <Route path="coordination" element={<CoordinationPage />} />
-        <Route path="rapports"     element={<RapportsPage />} />
-        <Route path="stocks"       element={<StocksPage />} />
-        <Route path="ai"           element={<AiPage />} />
+        <Route index                 element={<Navigate to="/dashboard" replace />} />
+        <Route path="dashboard"      element={<DashboardPage />} />
+        <Route path="ops"            element={<OpsRoomPage />} />
+        <Route path="crises"         element={<CrisesPage />} />
+        <Route path="registre"       element={<RegistrePage />} />
+        <Route path="distributions"  element={<DistributionsPage />} />
+        <Route path="coordination"   element={<CoordinationPage />} />
+        <Route path="rapports"       element={<RapportsPage />} />
+        <Route path="stocks"         element={<StocksPage />} />
+        <Route path="ai"             element={<AiPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/ops" replace />} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }
