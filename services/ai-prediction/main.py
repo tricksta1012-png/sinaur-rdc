@@ -326,7 +326,7 @@ async def agents_status():
     try:
         from agents.veille.agent import veille_agent, _CONNECTOR_HEALTH
         health = veille_agent.get_health()
-        n_ok = sum(1 for c in health.get("connectors", []) if c.get("status") == "ok")
+        n_ok = sum(1 for c in health.get("connectors", []) if c.get("healthy") is True)
         total_c = len(health.get("connectors", []))
         agents.append(_agent_entry(
             "veille", "Veille & Ingestion",

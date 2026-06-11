@@ -134,15 +134,15 @@ class AnomalieStocksAgent:
 
             async with engine.connect() as conn:
                 result = await conn.execute(text("""
-                    SELECT sm.id, sm.warehouse_id, sm.quantity, sm.agent_id,
-                           sm.beneficiary_id, sm.token_qr, sm.created_at,
-                           ST_X(sm.location_point) AS lng, ST_Y(sm.location_point) AS lat,
-                           ST_X(w.location_point) AS warehouse_lng,
-                           ST_Y(w.location_point) AS warehouse_lat
-                    FROM stock_movements sm
-                    LEFT JOIN warehouses w ON w.id = sm.warehouse_id
-                    WHERE sm.created_at >= NOW() - INTERVAL '2 hours'
-                    ORDER BY sm.created_at DESC
+                    SELECT rm.id, rm.depot_id AS warehouse_id, rm.quantity,
+                           rm.created_by AS agent_id,
+                           NULL AS beneficiary_id, NULL AS token_qr,
+                           rm.created_at,
+                           0.0 AS lng, 0.0 AS lat,
+                           0.0 AS warehouse_lng, 0.0 AS warehouse_lat
+                    FROM resource_movements rm
+                    WHERE rm.created_at >= NOW() - INTERVAL '2 hours'
+                    ORDER BY rm.created_at DESC
                     LIMIT 5000
                 """))
                 rows = [dict(row._mapping) for row in result]

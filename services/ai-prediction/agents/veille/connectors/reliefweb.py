@@ -25,16 +25,24 @@ class ReliefWebConnector(AbstractConnector):
     circuit_breaker_threshold = 5
 
     async def fetch(self) -> list[RawEvent]:
-        url = (
-            f"{_RELIEFWEB_BASE}/disasters"
-            f"?appname={settings.reliefweb_app_name}"
-            f"&filter[field]=primary_country.iso3"
-            f"&filter[value]=COD"
-            f"&limit=50"
-            f"&sort[]=date:desc"
-        )
+        # /v1/disasters endpoint returned 410; use /v1/reports with POST (current ReliefWeb API)
+        url = f"{_RELIEFWEB_BASE}/reports?appname={settings.reliefweb_app_name}"
+        payload = {
+            "filter": {
+                "operator": "AND",
+                "conditions": [
+                    {"field": "primary_country.iso3", "value": "COD"},
+                    {"field": "theme.name", "value": "Disaster Management"},
+                ],
+            },
+            "fields": {
+                "include": ["title", "date", "type", "primary_country", "glide", "status", "body-html"],
+            },
+            "limit": 50,
+            "sort": ["date.created:desc"],
+        }
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url)
+            resp = await client.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()
 
@@ -54,6 +62,8 @@ class ReliefWebConnector(AbstractConnector):
 
     async def normalize(self, raw: RawEvent) -> CanonicalEvent:
         fields = raw.raw_data.get("fields", raw.raw_data)
+
+        # /v1/reports uses "title" directly; type is a list of {id, name} dicts
         type_name: str = ""
         types = fields.get("type", [])
         if isinstance(types, list) and types:
@@ -63,16 +73,11 @@ class ReliefWebConnector(AbstractConnector):
 
         event_type = RELIEFWEB_TYPE_MAP.get(type_name, EventType.AUTRE)
 
-        title: str = fields.get("name", fields.get("title", "Unnamed disaster"))
+        title: str = fields.get("title", fields.get("name", "Unnamed report"))
 
-        # Extract province/location
-        countries = fields.get("primary_country", {})
-        if isinstance(countries, list) and countries:
-            countries = countries[0]
+        # Province matching from title
         province: str | None = None
         p_code: str | None = None
-
-        # Try to match province from title or description
         title_lower = title.lower()
         for prov_name, pcode in PROVINCE_PCODE_MAP.items():
             if prov_name.lower() in title_lower:
@@ -80,8 +85,9 @@ class ReliefWebConnector(AbstractConnector):
                 p_code = pcode
                 break
 
-        # Date parsing
-        date_str: str = fields.get("date", {}).get("created", "") if isinstance(fields.get("date"), dict) else ""
+        # Date — /v1/reports nests date as {"created": "...", "changed": "..."}
+        date_obj = fields.get("date", {})
+        date_str: str = date_obj.get("created", "") if isinstance(date_obj, dict) else ""
         try:
             fetched_at = datetime.fromisoformat(date_str.replace("Z", "+00:00")) if date_str else raw.fetched_at
         except ValueError:
@@ -89,21 +95,30 @@ class ReliefWebConnector(AbstractConnector):
 
         glide: str | None = fields.get("glide", None)
 
+        # Description from body-html stripped to plain text (rough)
+        body_html: str = fields.get("body-html", fields.get("body", "")) or ""
+        import re as _re
+        description = _re.sub(r"<[^>]+>", " ", body_html).strip() or None
+
+        status_val = fields.get("status", "")
+        if isinstance(status_val, list) and status_val:
+            status_val = status_val[0].get("name", "") if isinstance(status_val[0], dict) else str(status_val[0])
+
         return CanonicalEvent(
             source_id=raw.source_id,
             external_id=raw.external_id,
             glide_number=glide,
             event_type=event_type,
             title=title,
-            description=fields.get("description", None),
+            description=description,
             p_code=p_code,
             province=province,
             coordinates=None,
-            severity=_map_status_to_severity(fields.get("status", "")),
-            source_url=f"https://reliefweb.int/disaster/{raw.external_id}",
+            severity=_map_status_to_severity(str(status_val)),
+            source_url=f"https://reliefweb.int/report/{raw.external_id}",
             raw_data=raw.raw_data,
             fetched_at=fetched_at,
-            reliability_score=0.9,
+            reliability_score=0.85,
         )
 
 
