@@ -40,12 +40,12 @@ export async function alertRoutes(fastify: FastifyInstance) {
     const rows = await sql`
       SELECT
         id, identifier, sender, status, msg_type, scope,
-        info, sent_at, validated_at, validated_by
+        info, sent, validated_at, validated_by
       FROM cap_alerts
       WHERE status = ${status}
         ${isAdmin ? sql`` : sql`AND (info->>'pcode' = ANY(${user.scope}::text[]) OR ${user.scope}::text[] = '{}')`}
         ${query.pcode ? sql`AND info->>'pcode' = ${query.pcode}` : sql``}
-      ORDER BY sent_at DESC
+      ORDER BY sent DESC
       LIMIT ${limit} OFFSET ${offset}
     `
 
@@ -102,7 +102,7 @@ export async function alertRoutes(fastify: FastifyInstance) {
 
     const [row] = await sql`
       INSERT INTO cap_alerts (
-        identifier, sender, status, msg_type, scope, info, sent_at
+        identifier, sender, status, msg_type, scope, info, sent
       ) VALUES (
         ${'SINAUR-RDC-MANUAL-' + Date.now()},
         ${user.email ?? 'system'},
@@ -122,7 +122,7 @@ export async function alertRoutes(fastify: FastifyInstance) {
         })}::jsonb,
         NOW()
       )
-      RETURNING id, identifier, status, info, sent_at
+      RETURNING id, identifier, status, info, sent
     `
 
     await writeAuditLog(user.sub, 'create_alert', 'cap_alerts', row.id, request, { level: body.level, pcode: body.pcode })
@@ -220,7 +220,7 @@ export async function alertRoutes(fastify: FastifyInstance) {
                     THEN info || ${JSON.stringify({ instruction: body.instruction })}::jsonb
                     ELSE info END
       WHERE id = ${id}::uuid
-      RETURNING id, status, info, sent_at
+      RETURNING id, status, info, sent
     `
 
     await writeAuditLog(user.sub, 'update_alert', 'cap_alerts', id, request, body)
@@ -233,10 +233,10 @@ export async function alertRoutes(fastify: FastifyInstance) {
     preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker')],
   }, async (_request, reply) => {
     const rows = await sql`
-      SELECT id, identifier, info, sent_at
+      SELECT id, identifier, info, sent
       FROM cap_alerts
       WHERE status = 'pending_validation'
-      ORDER BY sent_at ASC
+      ORDER BY sent ASC
     `
     return reply.send({ success: true, data: rows, count: rows.length })
   })
