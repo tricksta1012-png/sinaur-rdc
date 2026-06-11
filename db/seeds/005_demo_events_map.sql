@@ -1,7 +1,7 @@
 -- =============================================================================
 -- SINAUR-RDC — Seed 005: 50 événements géolocalisés de démonstration
--- Couvre les 26 provinces · Catégories : inondation, déplacement, épidémie,
--- conflit, glissement, éruption, sécheresse
+-- Couvre les 26 provinces · Pcodes COD-AB officiels
+-- Inondations, déplacements, épidémies, conflits, glissements, éruptions, sécheresses
 -- Idempotent : ON CONFLICT DO NOTHING
 -- =============================================================================
 
@@ -15,7 +15,7 @@ INSERT INTO disaster_events (
 
 (
   'Inondations — Ndjili/Masina, Kinshasa',
-  'Montée des eaux du fleuve Congo et de la rivière Ndjili. Quartiers Masina, Kimbanseke et Lemba partiellement submergés. 4 200 maisons touchées.',
+  'Montée des eaux du fleuve Congo et de la rivière Ndjili. Quartiers Masina, Kimbanseke et Lemba partiellement submergés.',
   'flood', 'active', 'Extreme', 'confirmed',
   'official', 'CD10', 'Kinshasa — Communes Masina et Ndjili', 3, 'gps',
   ST_SetSRID(ST_MakePoint(15.385, -4.365), 4326),
@@ -26,32 +26,32 @@ INSERT INTO disaster_events (
   'Crues rivière Lukunga — Matadi (Kongo-Central)',
   'Débordement de la Lukunga après 72h de pluies intenses. Axe routier Matadi–Boma temporairement coupé.',
   'flood', 'active', 'Severe', 'confirmed',
-  'official', 'CD11', 'Matadi — Kongo-Central', 2, 'gps',
+  'official', 'CD20', 'Matadi — Kongo-Central', 2, 'gps',
   ST_SetSRID(ST_MakePoint(13.443, -5.825), 4326),
-  ARRAY['CD11'], 8400, NOW() - INTERVAL '5 days',
+  ARRAY['CD20'], 8400, NOW() - INTERVAL '5 days',
   ARRAY['inondation','kongo-central','matadi']
 ),
 (
   'Inondations Kikwit — Kwilu',
   'La rivière Kwilu en crue a inondé les zones basses de Kikwit. Accès à la route nationale RN1 compromis.',
   'flood', 'active', 'Severe', 'high',
-  'field_agent', 'CD13', 'Kikwit — Kwilu', 2, 'gps',
+  'field_agent', 'CD32', 'Kikwit — Kwilu', 2, 'gps',
   ST_SetSRID(ST_MakePoint(18.822, -5.042), 4326),
-  ARRAY['CD13'], 6200, NOW() - INTERVAL '2 days',
+  ARRAY['CD32'], 6200, NOW() - INTERVAL '2 days',
   ARRAY['inondation','kwilu','kikwit']
 ),
 (
   'Montée des eaux — Lac Maï-Ndombe',
-  'Niveau du lac Maï-Ndombe anormalement haut (+1,4 m par rapport à la normale saisonnière). Villages riverains évacués.',
+  'Niveau du lac Maï-Ndombe anormalement haut (+1,4 m). Villages riverains évacués.',
   'flood', 'validated', 'Moderate', 'confirmed',
-  'official', 'CD14', 'Inongo — Mai-Ndombe', 2, 'gps',
+  'official', 'CD33', 'Inongo — Maï-Ndombe', 2, 'gps',
   ST_SetSRID(ST_MakePoint(18.312, -2.145), 4326),
-  ARRAY['CD14'], 3100, NOW() - INTERVAL '8 days',
+  ARRAY['CD33'], 3100, NOW() - INTERVAL '8 days',
   ARRAY['inondation','lac','mai-ndombe','inongo']
 ),
 (
   'Crues Uvira — Lac Tanganyika (Sud-Kivu)',
-  'Inondations sévères dans les quartiers bas d''Uvira suite à des pluies diluviennes. Déplacements d''urgence en cours.',
+  'Inondations sévères dans les quartiers bas d''Uvira suite à des pluies diluviennes.',
   'flood', 'active', 'Extreme', 'confirmed',
   'ocha', 'CD62', 'Uvira — Sud-Kivu', 2, 'gps',
   ST_SetSRID(ST_MakePoint(29.141, -3.395), 4326),
@@ -69,11 +69,11 @@ INSERT INTO disaster_events (
 ),
 (
   'Inondations Bunia — Ituri',
-  'Quartiers Bankoko et Mudzi Pela inondés après une tempête nocturne. Plusieurs centaines de familles déplacées.',
+  'Quartiers Bankoko et Mudzi Pela inondés après une tempête nocturne.',
   'flood', 'active', 'Severe', 'confirmed',
-  'ocha', 'CD63', 'Bunia — Ituri', 2, 'gps',
+  'ocha', 'CD54', 'Bunia — Ituri', 2, 'gps',
   ST_SetSRID(ST_MakePoint(30.249, 1.565), 4326),
-  ARRAY['CD63'], 7300, NOW() - INTERVAL '6 days',
+  ARRAY['CD54'], 7300, NOW() - INTERVAL '6 days',
   ARRAY['inondation','bunia','ituri']
 ),
 (
@@ -89,63 +89,63 @@ INSERT INTO disaster_events (
   'Inondations Kolwezi — Lualaba',
   'Quartiers miniers inondés. Accès à la zone industrielle perturbé pendant 48h.',
   'flood', 'validated', 'Moderate', 'high',
-  'field_agent', 'CD73', 'Kolwezi — Lualaba', 2, 'gps',
+  'field_agent', 'CD72', 'Kolwezi — Lualaba', 2, 'gps',
   ST_SetSRID(ST_MakePoint(25.467, -10.721), 4326),
-  ARRAY['CD73'], 3600, NOW() - INTERVAL '12 days',
+  ARRAY['CD72'], 3600, NOW() - INTERVAL '12 days',
   ARRAY['inondation','kolwezi','lualaba']
 ),
 (
-  'Crues rivière Lukula — Kasaï-Oriental',
+  'Crues Mbuji-Mayi — Kasaï-Oriental',
   'Zone rurale inondée. Cultures maraîchères détruites sur environ 800 hectares.',
   'flood', 'validated', 'Minor', 'medium',
-  'field_agent', 'CD17', 'Territoire de Kabeya-Kamwanga — Kasaï-Oriental', 3, 'gps',
+  'field_agent', 'CD82', 'Mbuji-Mayi — Kasaï-Oriental', 2, 'gps',
   ST_SetSRID(ST_MakePoint(23.834, -5.942), 4326),
-  ARRAY['CD17'], 1200, NOW() - INTERVAL '15 days',
+  ARRAY['CD82'], 1200, NOW() - INTERVAL '15 days',
   ARRAY['inondation','kasai-oriental']
 ),
 (
   'Inondations Kabinda — Lomami',
   'Secteur de Lomami inondé. Axes routiers vers Kabinda Nord impraticables.',
   'flood', 'reported', 'Minor', 'low',
-  'citizen', 'CD18', 'Kabinda — Lomami', 2, 'gps',
+  'citizen', 'CD81', 'Kabinda — Lomami', 2, 'gps',
   ST_SetSRID(ST_MakePoint(24.481, -6.131), 4326),
-  ARRAY['CD18'], 800, NOW() - INTERVAL '1 day',
+  ARRAY['CD81'], 800, NOW() - INTERVAL '1 day',
   ARRAY['inondation','lomami','kabinda']
 ),
 (
   'Inondations Kisangani — Tshopo',
   'Débordement du fleuve Congo à Kisangani. Communes Kabondo et Mangobo affectées.',
   'flood', 'active', 'Severe', 'confirmed',
-  'official', 'CD66', 'Kisangani — Tshopo', 2, 'gps',
+  'official', 'CD51', 'Kisangani — Tshopo', 2, 'gps',
   ST_SetSRID(ST_MakePoint(25.198, 0.519), 4326),
-  ARRAY['CD66'], 11000, NOW() - INTERVAL '7 days',
+  ARRAY['CD51'], 11000, NOW() - INTERVAL '7 days',
   ARRAY['inondation','kisangani','tshopo','fleuve-congo']
 ),
 (
   'Crues Mbandaka — Équateur',
-  'Montée exceptionnelle du fleuve Congo à Mbandaka. Quartiers riverains évacués préventativement.',
+  'Montée exceptionnelle du fleuve Congo à Mbandaka. Quartiers riverains évacués préventivement.',
   'flood', 'active', 'Moderate', 'confirmed',
-  'official', 'CD94', 'Mbandaka — Équateur', 2, 'gps',
+  'official', 'CD41', 'Mbandaka — Équateur', 2, 'gps',
   ST_SetSRID(ST_MakePoint(18.260, 0.046), 4326),
-  ARRAY['CD94'], 5400, NOW() - INTERVAL '9 days',
+  ARRAY['CD41'], 5400, NOW() - INTERVAL '9 days',
   ARRAY['inondation','mbandaka','equateur']
 ),
 (
   'Inondations Boende — Tshuapa',
   'Rivière Tshuapa en crue modérée. Routes secondaires impraticables.',
   'flood', 'validated', 'Minor', 'medium',
-  'field_agent', 'CD95', 'Boende — Tshuapa', 2, 'gps',
+  'field_agent', 'CD45', 'Boende — Tshuapa', 2, 'gps',
   ST_SetSRID(ST_MakePoint(23.002, -0.512), 4326),
-  ARRAY['CD95'], 1400, NOW() - INTERVAL '14 days',
+  ARRAY['CD45'], 1400, NOW() - INTERVAL '14 days',
   ARRAY['inondation','tshuapa','boende']
 ),
 (
   'Inondations Gemena — Sud-Ubangi',
   'Quartiers périphériques de Gemena inondés. Système de drainage insuffisant.',
   'flood', 'reported', 'Minor', 'low',
-  'citizen', 'CD92', 'Gemena — Sud-Ubangi', 2, 'gps',
+  'citizen', 'CD42', 'Gemena — Sud-Ubangi', 2, 'gps',
   ST_SetSRID(ST_MakePoint(19.773, 3.257), 4326),
-  ARRAY['CD92'], 900, NOW() - INTERVAL '2 days',
+  ARRAY['CD42'], 900, NOW() - INTERVAL '2 days',
   ARRAY['inondation','gemena','sud-ubangi']
 ),
 
@@ -158,11 +158,11 @@ INSERT INTO disaster_events (
   'ocha', 'CD61', 'Territoire de Rutshuru — Nord-Kivu', 2, 'territory',
   ST_SetSRID(ST_MakePoint(29.446, -1.193), 4326),
   ARRAY['CD61'], 95000, NOW() - INTERVAL '6 days',
-  ARRAY['deplacement','conflit','nord-kivu','rutshuru','m23']
+  ARRAY['deplacement','conflit','nord-kivu','rutshuru']
 ),
 (
   'Déplacements internes Shabunda — Sud-Kivu',
-  'Mouvement de population lié à l''insécurité dans le territoire de Shabunda. Accès humanitaire limité.',
+  'Mouvement de population lié à l''insécurité dans le territoire de Shabunda.',
   'mass_displacement', 'active', 'Severe', 'high',
   'ocha', 'CD62', 'Territoire de Shabunda — Sud-Kivu', 2, 'territory',
   ST_SetSRID(ST_MakePoint(27.329, -2.703), 4326),
@@ -173,18 +173,18 @@ INSERT INTO disaster_events (
   'Crise déplacements Djugu — Ituri',
   'Violences intercommunautaires dans le territoire de Djugu. Deuxième vague de déplacements en 3 mois.',
   'mass_displacement', 'active', 'Extreme', 'confirmed',
-  'ocha', 'CD63', 'Territoire de Djugu — Ituri', 2, 'territory',
+  'ocha', 'CD54', 'Territoire de Djugu — Ituri', 2, 'territory',
   ST_SetSRID(ST_MakePoint(30.083, 2.031), 4326),
-  ARRAY['CD63'], 67000, NOW() - INTERVAL '4 days',
+  ARRAY['CD54'], 67000, NOW() - INTERVAL '4 days',
   ARRAY['deplacement','ituri','djugu','violence-intercommunautaire']
 ),
 (
   'Déplacements Dungu — Haut-Uélé',
   'Crainte d''activité LRA dans la zone de Dungu. Populations se réfugiant vers le centre-ville.',
   'mass_displacement', 'active', 'Severe', 'high',
-  'ocha', 'CD64', 'Dungu — Haut-Uélé', 2, 'pcode',
+  'ocha', 'CD53', 'Dungu — Haut-Uélé', 2, 'pcode',
   ST_SetSRID(ST_MakePoint(28.561, 3.617), 4326),
-  ARRAY['CD64'], 12000, NOW() - INTERVAL '8 days',
+  ARRAY['CD53'], 12000, NOW() - INTERVAL '8 days',
   ARRAY['deplacement','haut-uele','dungu','lra']
 ),
 (
@@ -194,51 +194,51 @@ INSERT INTO disaster_events (
   'field_agent', 'CD74', 'Kalemie — Tanganyika', 2, 'pcode',
   ST_SetSRID(ST_MakePoint(29.191, -5.931), 4326),
   ARRAY['CD74'], 8000, NOW() - INTERVAL '13 days',
-  ARRAY['deplacement','tanganyika','kalemie','tensions-foncieres']
+  ARRAY['deplacement','tanganyika','kalemie']
 ),
 (
   'Déplacements Buta — Bas-Uélé',
   'Mouvements de population dans la périphérie de Buta liés à des affrontements mineurs.',
   'mass_displacement', 'validated', 'Minor', 'medium',
-  'field_agent', 'CD65', 'Buta — Bas-Uélé', 2, 'pcode',
+  'field_agent', 'CD52', 'Buta — Bas-Uélé', 2, 'pcode',
   ST_SetSRID(ST_MakePoint(24.731, 2.802), 4326),
-  ARRAY['CD65'], 3200, NOW() - INTERVAL '18 days',
+  ARRAY['CD52'], 3200, NOW() - INTERVAL '18 days',
   ARRAY['deplacement','bas-uele','buta']
 ),
 (
   'Déplacements Kindu — Maniema',
   'Populations fuyant les inondations combinées à l''insécurité dans le territoire de Kailo.',
   'mass_displacement', 'active', 'Moderate', 'high',
-  'ocha', 'CD20', 'Kindu — Maniema', 2, 'pcode',
+  'ocha', 'CD63', 'Kindu — Maniema', 2, 'pcode',
   ST_SetSRID(ST_MakePoint(25.931, -2.948), 4326),
-  ARRAY['CD20'], 6500, NOW() - INTERVAL '5 days',
+  ARRAY['CD63'], 6500, NOW() - INTERVAL '5 days',
   ARRAY['deplacement','maniema','kindu']
 ),
 (
   'Déplacements Kahemba — Kwango',
   'Populations déplacées suite à des raids transfrontaliers depuis l''Angola.',
   'mass_displacement', 'validated', 'Minor', 'medium',
-  'field_agent', 'CD12', 'Kahemba — Kwango', 2, 'territory',
+  'field_agent', 'CD31', 'Kahemba — Kwango', 2, 'territory',
   ST_SetSRID(ST_MakePoint(18.995, -7.269), 4326),
-  ARRAY['CD12'], 2100, NOW() - INTERVAL '20 days',
-  ARRAY['deplacement','kwango','kahemba','frontalier']
+  ARRAY['CD31'], 2100, NOW() - INTERVAL '20 days',
+  ARRAY['deplacement','kwango','kahemba']
 ),
 (
   'Déplacements Lodja — Sankuru',
   'Conflits fonciers entre éleveurs et agriculteurs dans le territoire de Lodja.',
   'mass_displacement', 'validated', 'Moderate', 'medium',
-  'official', 'CD19', 'Lodja — Sankuru', 2, 'territory',
+  'official', 'CD83', 'Lodja — Sankuru', 2, 'territory',
   ST_SetSRID(ST_MakePoint(23.599, -3.490), 4326),
-  ARRAY['CD19'], 5800, NOW() - INTERVAL '16 days',
-  ARRAY['deplacement','sankuru','lodja','conflits-fonciers']
+  ARRAY['CD83'], 5800, NOW() - INTERVAL '16 days',
+  ARRAY['deplacement','sankuru','lodja']
 ),
 (
   'Déplacements Lisala — Mongala',
-  'Déplacements mineurs liés à des tensions inter-villageoises dans le territoire de Bongandanga.',
+  'Déplacements liés à des tensions inter-villageoises dans le territoire de Bongandanga.',
   'mass_displacement', 'reported', 'Minor', 'low',
-  'citizen', 'CD93', 'Lisala — Mongala', 2, 'pcode',
+  'citizen', 'CD44', 'Lisala — Mongala', 2, 'pcode',
   ST_SetSRID(ST_MakePoint(21.514, 2.149), 4326),
-  ARRAY['CD93'], 1500, NOW() - INTERVAL '3 days',
+  ARRAY['CD44'], 1500, NOW() - INTERVAL '3 days',
   ARRAY['deplacement','mongala','lisala']
 ),
 
@@ -251,7 +251,7 @@ INSERT INTO disaster_events (
   'official', 'CD62', 'Zone de santé Fizi — Sud-Kivu', 3, 'gps',
   ST_SetSRID(ST_MakePoint(28.926, -4.298), 4326),
   ARRAY['CD62'], 3800, NOW() - INTERVAL '9 days',
-  ARRAY['cholera','epidemie','sud-kivu','fizi','msf']
+  ARRAY['cholera','epidemie','sud-kivu','fizi']
 ),
 (
   'Cluster Mpox — Masisi (Nord-Kivu)',
@@ -260,24 +260,24 @@ INSERT INTO disaster_events (
   'official', 'CD61', 'Masisi — Nord-Kivu', 2, 'gps',
   ST_SetSRID(ST_MakePoint(28.816, -1.398), 4326),
   ARRAY['CD61'], 890, NOW() - INTERVAL '7 days',
-  ARRAY['mpox','epidemie','nord-kivu','masisi','oms']
+  ARRAY['mpox','epidemie','nord-kivu','masisi']
 ),
 (
   'Épidémie rougeole — Irumu (Ituri)',
   'Augmentation des cas de rougeole chez les enfants de moins de 5 ans. Couverture vaccinale < 52%.',
   'health_epidemic', 'active', 'Moderate', 'confirmed',
-  'official', 'CD63', 'Irumu — Ituri', 2, 'gps',
+  'official', 'CD54', 'Irumu — Ituri', 2, 'gps',
   ST_SetSRID(ST_MakePoint(29.854, 1.447), 4326),
-  ARRAY['CD63'], 2200, NOW() - INTERVAL '14 days',
-  ARRAY['rougeole','epidemie','ituri','irumu','vaccination']
+  ARRAY['CD54'], 2200, NOW() - INTERVAL '14 days',
+  ARRAY['rougeole','epidemie','ituri','irumu']
 ),
 (
   'Choléra Ubundu — Tshopo',
   '54 cas, 3 décès. Contamination liée au fleuve Congo. Distribution de chlore en cours.',
   'health_epidemic', 'active', 'Moderate', 'high',
-  'official', 'CD66', 'Ubundu — Tshopo', 3, 'gps',
+  'official', 'CD51', 'Ubundu — Tshopo', 3, 'gps',
   ST_SetSRID(ST_MakePoint(25.470, 0.358), 4326),
-  ARRAY['CD66'], 1400, NOW() - INTERVAL '11 days',
+  ARRAY['CD51'], 1400, NOW() - INTERVAL '11 days',
   ARRAY['cholera','epidemie','tshopo','ubundu']
 ),
 (
@@ -296,24 +296,24 @@ INSERT INTO disaster_events (
   'official', 'CD10', 'Kinshasa — Commune Kisenso', 3, 'gps',
   ST_SetSRID(ST_MakePoint(15.421, -4.412), 4326),
   ARRAY['CD10'], 1850, NOW() - INTERVAL '4 days',
-  ARRAY['meningite','epidemie','kinshasa','kisenso','vaccination']
+  ARRAY['meningite','epidemie','kinshasa','kisenso']
 ),
 (
   'Choléra Idiofa — Kwilu',
   '18 cas, 1 décès. Puits contaminés après inondations. CTC mobile déployé par IRC.',
   'health_epidemic', 'validated', 'Minor', 'high',
-  'official', 'CD13', 'Idiofa — Kwilu', 3, 'gps',
+  'official', 'CD32', 'Idiofa — Kwilu', 3, 'gps',
   ST_SetSRID(ST_MakePoint(19.587, -4.958), 4326),
-  ARRAY['CD13'], 430, NOW() - INTERVAL '17 days',
+  ARRAY['CD32'], 430, NOW() - INTERVAL '17 days',
   ARRAY['cholera','epidemie','kwilu','idiofa']
 ),
 (
   'Rougeole Mbuji-Mayi — Kasaï-Oriental',
   'Recrudescence de la rougeole dans les zones péri-urbaines de Mbuji-Mayi. 312 cas en 2 semaines.',
   'health_epidemic', 'active', 'Moderate', 'confirmed',
-  'official', 'CD17', 'Mbuji-Mayi — Kasaï-Oriental', 2, 'gps',
+  'official', 'CD82', 'Mbuji-Mayi — Kasaï-Oriental', 2, 'gps',
   ST_SetSRID(ST_MakePoint(23.596, -6.173), 4326),
-  ARRAY['CD17'], 3100, NOW() - INTERVAL '8 days',
+  ARRAY['CD82'], 3100, NOW() - INTERVAL '8 days',
   ARRAY['rougeole','epidemie','kasai-oriental','mbuji-mayi']
 ),
 
@@ -335,43 +335,43 @@ INSERT INTO disaster_events (
   'ocha', 'CD62', 'Minova — Sud-Kivu', 3, 'gps',
   ST_SetSRID(ST_MakePoint(29.141, -1.764), 4326),
   ARRAY['CD62'], 0, NOW() - INTERVAL '5 days',
-  ARRAY['conflit','sud-kivu','minova','deplacement']
+  ARRAY['conflit','sud-kivu','minova']
 ),
 (
   'Insécurité Mahagi — Ituri',
   'Attaques de milices armées dans plusieurs villages du territoire de Mahagi. 4 civils tués.',
   'conflict', 'active', 'Severe', 'confirmed',
-  'ocha', 'CD63', 'Mahagi — Ituri', 2, 'territory',
+  'ocha', 'CD54', 'Mahagi — Ituri', 2, 'territory',
   ST_SetSRID(ST_MakePoint(30.990, 2.190), 4326),
-  ARRAY['CD63'], 0, NOW() - INTERVAL '3 days',
+  ARRAY['CD54'], 0, NOW() - INTERVAL '3 days',
   ARRAY['conflit','ituri','mahagi','milices']
 ),
 (
   'Attaque LRA — Région Faradje (Haut-Uélé)',
-  'Présumée attaque LRA sur un village agricole à 40 km de Faradje. Bilan provisoire : 2 morts, 7 blessés.',
+  'Présumée attaque LRA sur un village agricole à 40 km de Faradje. Bilan : 2 morts, 7 blessés.',
   'conflict', 'active', 'Severe', 'high',
-  'ocha', 'CD64', 'Faradje — Haut-Uélé', 2, 'territory',
+  'ocha', 'CD53', 'Faradje — Haut-Uélé', 2, 'territory',
   ST_SetSRID(ST_MakePoint(29.715, 3.736), 4326),
-  ARRAY['CD64'], 0, NOW() - INTERVAL '4 days',
+  ARRAY['CD53'], 0, NOW() - INTERVAL '4 days',
   ARRAY['conflit','haut-uele','faradje','lra']
 ),
 (
   'Affrontements Aketi — Bas-Uélé',
   'Tensions entre communautés dans le territoire d''Aketi. Forces de sécurité déployées.',
   'conflict', 'validated', 'Moderate', 'medium',
-  'field_agent', 'CD65', 'Aketi — Bas-Uélé', 2, 'territory',
+  'field_agent', 'CD52', 'Aketi — Bas-Uélé', 2, 'territory',
   ST_SetSRID(ST_MakePoint(23.779, 2.741), 4326),
-  ARRAY['CD65'], 0, NOW() - INTERVAL '10 days',
+  ARRAY['CD52'], 0, NOW() - INTERVAL '10 days',
   ARRAY['conflit','bas-uele','aketi']
 ),
 (
   'Tensions intercommunautaires Tshikapa — Kasaï',
   'Affrontements mineurs entre groupes rivaux à Tshikapa. Situation sous contrôle des autorités.',
   'conflict', 'validated', 'Minor', 'medium',
-  'field_agent', 'CD15', 'Tshikapa — Kasaï', 2, 'pcode',
+  'field_agent', 'CD92', 'Tshikapa — Kasaï', 2, 'pcode',
   ST_SetSRID(ST_MakePoint(20.794, -5.894), 4326),
-  ARRAY['CD15'], 0, NOW() - INTERVAL '16 days',
-  ARRAY['conflit','kasai','tshikapa','tensions']
+  ARRAY['CD92'], 0, NOW() - INTERVAL '16 days',
+  ARRAY['conflit','kasai','tshikapa']
 ),
 (
   'Insécurité Nyunzu — Tanganyika',
@@ -387,38 +387,38 @@ INSERT INTO disaster_events (
 
 (
   'Glissement de terrain Kalehe — Sud-Kivu',
-  'Glissement majeur sur les collines de Kalehe. 14 maisons détruites, 2 morts confirmés, 6 portés disparus.',
+  'Glissement majeur sur les collines de Kalehe. 14 maisons détruites, 2 morts confirmés.',
   'landslide', 'active', 'Extreme', 'confirmed',
   'field_agent', 'CD62', 'Kalehe — Sud-Kivu', 2, 'gps',
   ST_SetSRID(ST_MakePoint(28.897, -2.110), 4326),
   ARRAY['CD62'], 1200, NOW() - INTERVAL '1 day',
-  ARRAY['glissement','sud-kivu','kalehe','pluies']
+  ARRAY['glissement','sud-kivu','kalehe']
 ),
 (
   'Éboulement Butembo — Nord-Kivu',
-  'Glissement de terrain sur le flanc Est de Butembo suite aux pluies de la nuit. Route Butembo–Lubero coupée.',
+  'Glissement de terrain sur le flanc Est de Butembo suite aux pluies de la nuit.',
   'landslide', 'active', 'Severe', 'confirmed',
   'field_agent', 'CD61', 'Butembo — Nord-Kivu', 2, 'gps',
   ST_SetSRID(ST_MakePoint(29.291, 0.132), 4326),
   ARRAY['CD61'], 540, NOW() - INTERVAL '6 hours',
-  ARRAY['glissement','nord-kivu','butembo','route-coupee']
+  ARRAY['glissement','nord-kivu','butembo']
 ),
 (
-  'Glissement de terrain Shabunda — Maniema',
-  'Éboulement mineur dans les collines de Shabunda. Dégâts matériels limités.',
+  'Glissement de terrain Kalemie — Tanganyika',
+  'Éboulement mineur dans les collines de Kalemie. Dégâts matériels limités.',
   'landslide', 'validated', 'Moderate', 'medium',
-  'field_agent', 'CD20', 'Shabunda — Maniema', 2, 'gps',
-  ST_SetSRID(ST_MakePoint(27.334, -2.701), 4326),
-  ARRAY['CD20'], 280, NOW() - INTERVAL '18 days',
-  ARRAY['glissement','maniema','shabunda']
+  'field_agent', 'CD74', 'Kalemie — Tanganyika', 2, 'gps',
+  ST_SetSRID(ST_MakePoint(29.120, -5.940), 4326),
+  ARRAY['CD74'], 280, NOW() - INTERVAL '18 days',
+  ARRAY['glissement','tanganyika','kalemie']
 ),
 (
   'Éboulement mineur Djugu — Ituri',
   'Glissement de petite envergure suite aux intempéries. Route secondaire dégradée.',
   'landslide', 'reported', 'Minor', 'low',
-  'citizen', 'CD63', 'Djugu — Ituri', 2, 'gps',
+  'citizen', 'CD54', 'Djugu — Ituri', 2, 'gps',
   ST_SetSRID(ST_MakePoint(30.247, 2.012), 4326),
-  ARRAY['CD63'], 140, NOW() - INTERVAL '2 days',
+  ARRAY['CD54'], 140, NOW() - INTERVAL '2 days',
   ARRAY['glissement','ituri','djugu']
 ),
 (
@@ -428,7 +428,7 @@ INSERT INTO disaster_events (
   'field_agent', 'CD62', 'Walungu — Sud-Kivu', 3, 'gps',
   ST_SetSRID(ST_MakePoint(28.684, -2.589), 4326),
   ARRAY['CD62'], 390, NOW() - INTERVAL '9 days',
-  ARRAY['glissement','sud-kivu','walungu','kahuzi']
+  ARRAY['glissement','sud-kivu','walungu']
 ),
 
 -- ── ÉRUPTIONS VOLCANIQUES (3) ────────────────────────────────────────────────
@@ -440,16 +440,16 @@ INSERT INTO disaster_events (
   'official', 'CD61', 'Nyiragongo — Nord-Kivu', 2, 'gps',
   ST_SetSRID(ST_MakePoint(29.250, -1.515), 4326),
   ARRAY['CD61'], 120000, NOW() - INTERVAL '2 days',
-  ARRAY['volcan','nyiragongo','nord-kivu','goma','ovcg','so2']
+  ARRAY['volcan','nyiragongo','nord-kivu','goma']
 ),
 (
   'Nyamulagira — Coulée de lave secteur Kirolirwe (Nord-Kivu)',
-  'Nouvelle coulée de lave du Nyamulagira progressant vers le nord-est. Périmètre de sécurité établi 15 km.',
+  'Nouvelle coulée de lave du Nyamulagira progressant vers le nord-est. Périmètre de sécurité 15 km.',
   'volcanic_eruption', 'active', 'Severe', 'confirmed',
   'official', 'CD61', 'Nyamulagira — Nord-Kivu', 2, 'gps',
   ST_SetSRID(ST_MakePoint(29.198, -1.408), 4326),
   ARRAY['CD61'], 34000, NOW() - INTERVAL '5 days',
-  ARRAY['volcan','nyamulagira','nord-kivu','lave','ovcg']
+  ARRAY['volcan','nyamulagira','nord-kivu','lave']
 ),
 (
   'Activité volcanique Virunga — Zone de surveillance (Nord-Kivu)',
@@ -458,7 +458,7 @@ INSERT INTO disaster_events (
   'official', 'CD61', 'Parc Virunga — Nord-Kivu', 2, 'gps',
   ST_SetSRID(ST_MakePoint(29.325, -1.473), 4326),
   ARRAY['CD61'], 8500, NOW() - INTERVAL '11 days',
-  ARRAY['volcan','virunga','nord-kivu','surveillance']
+  ARRAY['volcan','virunga','nord-kivu']
 ),
 
 -- ── SÉCHERESSES (2) ──────────────────────────────────────────────────────────
@@ -467,19 +467,19 @@ INSERT INTO disaster_events (
   'Sécheresse prolongée — Kasaï',
   'Déficit pluviométrique de -68% sur 90 jours. Perte de récoltes estimée à 75% dans le territoire de Tshikapa.',
   'drought', 'active', 'Severe', 'confirmed',
-  'fews_net', 'CD15', 'Tshikapa — Kasaï', 2, 'province',
+  'fews_net', 'CD92', 'Tshikapa — Kasaï', 2, 'province',
   ST_SetSRID(ST_MakePoint(22.052, -5.396), 4326),
-  ARRAY['CD15'], 42000, NOW() - INTERVAL '30 days',
-  ARRAY['secheresse','kasai','tshikapa','agriculture','fews-net']
+  ARRAY['CD92'], 42000, NOW() - INTERVAL '30 days',
+  ARRAY['secheresse','kasai','tshikapa','fews-net']
 ),
 (
   'Sécheresse Kananga — Kasaï-Central',
   'Situation de sécheresse modérée dans le territoire de Dibaya. Alerte phase 2 IPC.',
   'drought', 'active', 'Moderate', 'confirmed',
-  'fews_net', 'CD16', 'Kananga — Kasaï-Central', 2, 'province',
+  'fews_net', 'CD91', 'Kananga — Kasaï-Central', 2, 'province',
   ST_SetSRID(ST_MakePoint(22.417, -5.896), 4326),
-  ARRAY['CD16'], 28000, NOW() - INTERVAL '25 days',
-  ARRAY['secheresse','kasai-central','kananga','ipc','fews-net']
+  ARRAY['CD91'], 28000, NOW() - INTERVAL '25 days',
+  ARRAY['secheresse','kasai-central','kananga','fews-net']
 )
 
 ON CONFLICT DO NOTHING;
