@@ -60,7 +60,14 @@ export async function createApp(): Promise<FastifyInstance> {
   })
 
   await fastify.register(fastifyCors, {
-    origin: config.NODE_ENV === 'development' ? true : ['https://sinaur-rdc.cd', 'https://app.sinaur-rdc.cd'],
+    origin: config.NODE_ENV === 'development'
+      ? true
+      : [
+          'https://sinaur-rdc.cd',
+          'https://app.sinaur-rdc.cd',
+          'https://command-center-production-3de3.up.railway.app',
+          'https://public-production-c035.up.railway.app',
+        ],
     credentials: true,
   })
 
