@@ -17,7 +17,7 @@ async function geoMode(): Promise<boolean> {
     SELECT udt_name FROM information_schema.columns
     WHERE table_name = 'admin_divisions' AND column_name = 'geometry'
   `;
-  geometryIsPostGIS = r?.udt_name === 'geometry';
+  geometryIsPostGIS = r?.udtName === 'geometry';
   return geometryIsPostGIS;
 }
 
