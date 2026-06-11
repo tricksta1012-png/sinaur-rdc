@@ -25,9 +25,14 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
   returned:  { label: 'Retourné', color: 'bg-cc-800 text-gray-400 border-cc-700'            },
 };
 
+function getTokenRole(accessToken: string | undefined): string {
+  if (!accessToken) return '';
+  try { return JSON.parse(atob(accessToken.split('.')[1])).role ?? ''; } catch { return ''; }
+}
+
 export function RegistrePage() {
-  const user    = useAuthStore(s => s.user);
-  const canSee  = ROLE_CAN_SEE_PII.includes(user?.role ?? '');
+  const tokens  = useAuthStore(s => s.tokens);
+  const canSee  = ROLE_CAN_SEE_PII.includes(getTokenRole(tokens?.accessToken));
   const qc      = useQueryClient();
   const [page, setPage]       = useState(1);
   const [search, setSearch]   = useState('');
