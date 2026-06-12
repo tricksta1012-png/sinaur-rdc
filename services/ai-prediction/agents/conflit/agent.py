@@ -5,6 +5,7 @@ Surveillance des conflits armés et prédiction des déplacements de populations
 Cadence : toutes les 2 heures.
 
 Sources :
+  - disaster_events table (Neon Postgres) — bootstrap au démarrage
   - Événements publiés par VeilleAgent (bus `veille.new_event`)
   - Données résiduelles ACLED via ReliefWeb (filtrées par type)
 
@@ -21,6 +22,7 @@ from typing import Any
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy import text
 
 from agents import bus
 from agents.conflit.sanitizer import access_level_for_role
@@ -68,6 +70,7 @@ class ConflitAgent:
             hours=2,
             id="conflit_analysis",
             name="Conflit:analyse",
+            next_run_time=datetime.now(timezone.utc),  # run immediately at startup
             misfire_grace_time=600,
             coalesce=True,
         )
@@ -78,12 +81,72 @@ class ConflitAgent:
             bus.subscribe("veille.new_event", self._handle_veille_event)
         )
 
-        logger.info("conflit_agent.started", interval_hours=2)
+        # Bootstrap from disaster_events table (conflict + mass_displacement, last 30 days)
+        await self._bootstrap_from_db()
+
+        logger.info("conflit_agent.started", interval_hours=2, events_loaded=len(_EVENT_STORE))
 
     async def stop(self) -> None:
         if self._scheduler.running:
             self._scheduler.shutdown(wait=False)
         logger.info("conflit_agent.stopped")
+
+    # ------------------------------------------------------------------
+    # Bootstrap
+    # ------------------------------------------------------------------
+
+    async def _bootstrap_from_db(self) -> None:
+        """
+        Populate _EVENT_STORE from disaster_events table at startup.
+        Queries conflict + mass_displacement events from the last 30 days.
+        Skips if store already has data (avoid double-loading on hot reload).
+        """
+        if _EVENT_STORE:
+            return
+        try:
+            from db import engine  # imported here to avoid circular at module level
+            severity_map = {"Extreme": 5, "Severe": 4, "Moderate": 3, "Minor": 2, "Unknown": 1}
+            async with engine.connect() as conn:
+                rows = await conn.execute(text("""
+                    SELECT
+                        id::text          AS external_id,
+                        start_date        AS event_date,
+                        hazard_type       AS event_type,
+                        location_name     AS province,
+                        location_pcode    AS p_code,
+                        severity,
+                        description       AS raw_notes,
+                        source_url
+                    FROM disaster_events
+                    WHERE hazard_type IN ('conflict', 'mass_displacement')
+                      AND status NOT IN ('rejected', 'resolved')
+                      AND deleted_at IS NULL
+                      AND start_date >= NOW() - INTERVAL '30 days'
+                    ORDER BY start_date DESC
+                    LIMIT 200
+                """))
+                for row in rows.mappings():
+                    sev_str = str(row["severity"]) if row["severity"] else "Unknown"
+                    sev = severity_map.get(sev_str, 1)
+                    _EVENT_STORE.append({
+                        "external_id":       row["external_id"],
+                        "source":            "disaster_events_db",
+                        "event_date":        row["event_date"].isoformat() if row["event_date"] else datetime.now(timezone.utc).isoformat(),
+                        "event_type":        str(row["event_type"]),
+                        "province":          row["province"] or "Unknown",
+                        "p_code":            row["p_code"],
+                        "severity":          sev,
+                        "displacement_risk": 0.65 if str(row["event_type"]) == "mass_displacement" else 0.45,
+                        "territoire":        None,
+                        "coordinates":       None,
+                        "fatalities_reported": None,
+                        "raw_notes":         row["raw_notes"],
+                        "source_url":        row["source_url"],
+                        "actor_names":       [],
+                    })
+            logger.info("conflit_agent.bootstrap_done", events_loaded=len(_EVENT_STORE))
+        except Exception as exc:
+            logger.warning("conflit_agent.bootstrap_failed", error=str(exc))
 
     # ------------------------------------------------------------------
     # Bus handler

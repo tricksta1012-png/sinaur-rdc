@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../lib/api.js';
 import { useRealtimeFeed } from '../hooks/useRealtimeFeed.js';
 
@@ -16,19 +17,26 @@ const HAZARD_COLOR: Record<string, string> = {
   earthquake: '#1e3a5f', fire: '#ea580c', other: '#4b5563',
 };
 
-function KpiCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
+function KpiCard({ label, value, sub, color, href }: { label: string; value: string | number; sub?: string; color: string; href?: string }) {
+  const navigate = useNavigate();
   return (
-    <div className={`cc-card p-4 border-l-4`} style={{ borderLeftColor: color }}>
+    <div
+      className={`cc-card p-4 border-l-4 ${href ? 'cursor-pointer hover:bg-cc-800 transition-colors group' : ''}`}
+      style={{ borderLeftColor: color }}
+      onClick={href ? () => navigate(href) : undefined}
+    >
       <div className="text-2xl font-bold font-mono text-white leading-none">
         {typeof value === 'number' ? value.toLocaleString('fr') : value}
       </div>
       <div className="text-xs text-gray-400 mt-1.5 font-medium">{label}</div>
       {sub && <div className="text-[11px] text-cc-600 mt-0.5">{sub}</div>}
+      {href && <div className="text-[10px] text-cc-600 group-hover:text-sinaur-400 mt-1 font-mono transition-colors">Voir →</div>}
     </div>
   );
 }
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const { connected } = useRealtimeFeed();
 
   const { data, isLoading } = useQuery({
@@ -86,19 +94,38 @@ export function DashboardPage() {
         </div>
       </div>
 
+      {/* Quick access bar */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        {[
+          { label: '🗺️ Carte opérationnelle', href: '/ops', color: 'border-sinaur-700 hover:bg-sinaur-900/30' },
+          { label: '🚨 Crises actives',        href: '/crises', color: 'border-red-800 hover:bg-red-900/20' },
+          { label: '⚔️ Surveillance conflits', href: '/conflit', color: 'border-orange-800 hover:bg-orange-900/20' },
+          { label: '🤖 Intelligence IA',       href: '/ai', color: 'border-purple-800 hover:bg-purple-900/20' },
+          { label: '📦 Stocks humanitaires',  href: '/stocks', color: 'border-cc-600 hover:bg-cc-800' },
+        ].map(l => (
+          <button
+            key={l.href}
+            onClick={() => navigate(l.href)}
+            className={`px-3 py-1.5 rounded-lg border text-xs font-mono text-gray-300 hover:text-white transition-colors ${l.color}`}
+          >
+            {l.label}
+          </button>
+        ))}
+      </div>
+
       {/* KPI Row 1 — événements */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <KpiCard label="Événements actifs"    value={counts.activeEvents   ?? '…'} color="#dc2626" />
-        <KpiCard label="Événements 24h"       value={counts.events24h      ?? '…'} color="#ea580c" />
-        <KpiCard label="Événements 7j"        value={counts.events7d       ?? '…'} color="#ca8a04" />
+        <KpiCard label="Événements actifs"    value={counts.activeEvents   ?? '…'} color="#dc2626" href="/ops" />
+        <KpiCard label="Événements 24h"       value={counts.events24h      ?? '…'} color="#ea580c" href="/ops" />
+        <KpiCard label="Événements 7j"        value={counts.events7d       ?? '…'} color="#ca8a04" href="/ops" />
         <KpiCard label="Personnes affectées"  value={counts.totalAffected  ?? '…'} sub="événements actifs" color="#7c3aed" />
       </div>
 
       {/* KPI Row 2 — crises & ressources */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <KpiCard label="Crises actives"      value={crisisStats.activeCrises   ?? '…'} color="#dc2626" />
-        <KpiCard label="Personnes déplacées" value={crisisStats.crisisDisplaced ?? '…'} color="#7c3aed" />
-        <KpiCard label="Stocks critiques"    value={data?.stockStats?.criticalStocks ?? '…'} color="#ea580c" />
+        <KpiCard label="Crises actives"      value={crisisStats.activeCrises   ?? '…'} color="#dc2626" href="/crises" />
+        <KpiCard label="Personnes déplacées" value={crisisStats.crisisDisplaced ?? '…'} color="#7c3aed" href="/crises" />
+        <KpiCard label="Stocks critiques"    value={data?.stockStats?.criticalStocks ?? '…'} color="#ea580c" href="/stocks" />
         <KpiCard label="Connexions actives"  value={counts.wsConnected ?? '…'} sub="opérateurs en ligne" color="#2563eb" />
       </div>
 
@@ -118,12 +145,16 @@ export function DashboardPage() {
                 const pct = Math.round((Number(h.count) / maxHazard) * 100);
                 const color = HAZARD_COLOR[h.hazardType] ?? '#4b5563';
                 return (
-                  <div key={h.hazardType}>
+                  <div
+                    key={h.hazardType}
+                    className="cursor-pointer group"
+                    onClick={() => navigate(`/ops?hazardType=${h.hazardType}`)}
+                  >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-gray-300">
+                      <span className="text-xs text-gray-300 group-hover:text-white transition-colors">
                         {HAZARD_FR[h.hazardType] ?? h.hazardType}
                       </span>
-                      <span className="text-xs font-mono text-gray-400">{h.count}</span>
+                      <span className="text-xs font-mono text-gray-400 group-hover:text-white transition-colors">{h.count} →</span>
                     </div>
                     <div className="h-1.5 bg-cc-700 rounded-full overflow-hidden">
                       <div
@@ -148,21 +179,25 @@ export function DashboardPage() {
           ) : (
             <div className="space-y-2">
               {topProvinces.slice(0, 7).map((p: any, i: number) => (
-                <div key={p.pcode} className="flex items-center gap-3">
+                <div
+                  key={p.pcode}
+                  className="flex items-center gap-3 cursor-pointer group"
+                  onClick={() => navigate('/ops')}
+                >
                   <span className="text-[10px] font-mono text-cc-600 w-4 text-right">{i + 1}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-300 truncate">{p.provinceName}</span>
+                      <span className="text-xs text-gray-300 group-hover:text-white truncate transition-colors">{p.provinceName}</span>
                       <div className="flex items-center gap-2 shrink-0 ml-2">
                         {p.severeEvents > 0 && (
                           <span className="text-[10px] text-red-400 font-mono">{p.severeEvents} sév.</span>
                         )}
-                        <span className="text-xs font-mono text-gray-400">{p.activeEvents}</span>
+                        <span className="text-xs font-mono text-gray-400 group-hover:text-white transition-colors">{p.activeEvents} →</span>
                       </div>
                     </div>
                     <div className="h-1 bg-cc-700 rounded-full overflow-hidden mt-1">
                       <div
-                        className="h-full rounded-full bg-sinaur-600"
+                        className="h-full rounded-full bg-sinaur-600 group-hover:bg-sinaur-400 transition-colors"
                         style={{ width: `${Math.min(100, (p.activeEvents / Math.max(1, topProvinces[0]?.activeEvents ?? 1)) * 100)}%` }}
                       />
                     </div>
@@ -216,21 +251,34 @@ export function DashboardPage() {
           ) : (
             <div className="space-y-1.5">
               {(recentEvents as any[]).slice(0, 7).map((e: any) => (
-                <div key={e.id} className="flex items-start gap-2 py-1.5 border-b border-cc-800 last:border-0">
+                <div
+                  key={e.id}
+                  className="flex items-start gap-2 py-1.5 border-b border-cc-800 last:border-0 cursor-pointer group hover:bg-cc-800/50 rounded px-1 -mx-1 transition-colors"
+                  onClick={() => navigate('/ops')}
+                >
                   <span
                     className="mt-1 w-2 h-2 rounded-full shrink-0"
                     style={{ backgroundColor: HAZARD_COLOR[e.hazardType] ?? '#4b5563' }}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="text-xs text-gray-200 truncate font-medium">{e.title}</div>
+                    <div className="text-xs text-gray-200 group-hover:text-white truncate font-medium transition-colors">{e.title}</div>
                     <div className="text-[10px] text-cc-600 mt-0.5">
                       {HAZARD_FR[e.hazardType] ?? e.hazardType} ·{' '}
                       <span className="font-mono">{e.locationPcode}</span>
                       {e.estimatedAffected ? ` · ${Number(e.estimatedAffected).toLocaleString('fr')} aff.` : ''}
                     </div>
                   </div>
+                  <span className="text-[10px] text-cc-700 group-hover:text-sinaur-400 shrink-0 mt-1 transition-colors">→</span>
                 </div>
               ))}
+              <div className="pt-1">
+                <button
+                  onClick={() => navigate('/ops')}
+                  className="text-[10px] text-sinaur-400 hover:text-sinaur-300 font-mono transition-colors"
+                >
+                  Voir tous sur la carte →
+                </button>
+              </div>
             </div>
           )}
         </div>

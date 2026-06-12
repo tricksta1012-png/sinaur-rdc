@@ -33,9 +33,6 @@ COPY redis_client.py ./redis_client.py
 COPY agents/ ./agents/
 COPY schemas/ ./schemas/
 
-# Keep existing src/ for backward compatibility
-COPY src/ ./src/
-
 # Model artifacts directory
 RUN mkdir -p /app/model_artifacts /app/model_store
 

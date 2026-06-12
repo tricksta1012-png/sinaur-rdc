@@ -201,9 +201,18 @@ function RiskDetailPanel({ risk, onClose }: { risk: any; onClose: () => void }) 
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 
+const RISK_TYPE_FILTER: { key: string; label: string; icon: string }[] = [
+  { key: 'ALL',          label: 'Tous',              icon: '🌐' },
+  { key: 'FLOOD',        label: 'Inondation',        icon: '🌊' },
+  { key: 'LANDSLIDE',    label: 'Glissement',        icon: '⛰️' },
+  { key: 'DISPLACEMENT', label: 'Déplacement',       icon: '🏃' },
+  { key: 'EPIDEMIC',     label: 'Épidémie',          icon: '🦠' },
+];
+
 function PredictionsTab() {
   const [horizon, setHorizon] = useState<7 | 30 | 90>(7);
   const [selected, setSelected] = useState<any | null>(null);
+  const [filterType, setFilterType] = useState<string>('ALL');
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -217,10 +226,11 @@ function PredictionsTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['ai-risks'] }); },
   });
 
-  const risks: any[] = data?.data ?? (Array.isArray(data) ? data : []);
+  const allRisks: any[] = data?.data ?? (Array.isArray(data) ? data : []);
   // Field names from Pydantic: p_code, risk_type, level (CRITIQUE/ELEVE/MODERE/FAIBLE)
-  const critical = risks.filter(r => r.level === 'CRITIQUE');
-  const high     = risks.filter(r => r.level === 'ELEVE');
+  const risks = filterType === 'ALL' ? allRisks : allRisks.filter(r => r.risk_type === filterType);
+  const critical = allRisks.filter(r => r.level === 'CRITIQUE');
+  const high     = allRisks.filter(r => r.level === 'ELEVE');
 
   const alertsQuery = useQuery({
     queryKey: ['ai-alerts-pending'],
@@ -264,6 +274,29 @@ function PredictionsTab() {
           </div>
         </div>
       )}
+
+      {/* Aléa filter */}
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-[10px] font-mono text-cc-500 uppercase">Aléa :</span>
+        {RISK_TYPE_FILTER.map(f => {
+          const count = f.key === 'ALL' ? allRisks.length : allRisks.filter(r => r.risk_type === f.key).length;
+          return (
+            <button
+              key={f.key}
+              onClick={() => { setFilterType(f.key); setSelected(null); }}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-mono border transition-colors ${
+                filterType === f.key
+                  ? 'bg-sinaur-800 border-sinaur-600 text-sinaur-200'
+                  : 'border-cc-700 text-cc-400 hover:text-gray-300 hover:border-cc-600'
+              }`}
+            >
+              <span>{f.icon}</span>
+              <span>{f.label}</span>
+              <span className={`ml-0.5 ${filterType === f.key ? 'text-sinaur-400' : 'text-cc-600'}`}>({count})</span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* Controls */}
       <div className="flex items-center gap-3">
@@ -830,7 +863,161 @@ function SignalementsTab() {
   );
 }
 
+const DISEASE_ICONS: Record<string, string> = {
+  cholera: '💧', mpox: '🐒', rougeole: '🔴', meningite: '🧠', ebola: '☣️',
+};
+const DISEASE_FR: Record<string, string> = {
+  cholera: 'Choléra', mpox: 'Mpox', rougeole: 'Rougeole',
+  meningite: 'Méningite', ebola: 'Ebola',
+};
+const DISEASE_RESPONSES: Record<string, string[]> = {
+  cholera: [
+    'Distribution de sachets de réhydratation orale (SRO)',
+    'Chloration des points d\'eau et désinfection des latrines',
+    'Déploiement des équipes de traitement oral du choléra (OTC)',
+    'Sensibilisation communautaire hygiènes mains/eau',
+  ],
+  mpox: [
+    'Isolement des cas confirmés et contacts',
+    'Vaccination anneau des contacts à haut risque',
+    'Port des EPI pour le personnel de santé',
+    'Notification OMS dans les 24 heures',
+  ],
+  rougeole: [
+    'Campagne de vaccination de riposte (6 mois–15 ans)',
+    'Supplémentation en vitamine A',
+    'Isolement des cas dans les 4 jours après l\'éruption',
+    'Renforcement surveillance dans les zones de déplacement',
+  ],
+  meningite: [
+    'Chimioprophylaxie des contacts proches (ciprofloxacine)',
+    'Vaccination méningococcique en urgence',
+    'Déclaration obligatoire dans les 24 heures',
+    'Investigation des sources d\'eau potentiellement contaminées',
+  ],
+  ebola: [
+    '⚠️ ALERTE CRITIQUE — Activation cellule de crise nationale',
+    'Isolement immédiat et identification des chaînes de transmission',
+    'Déploiement équipe d\'intervention rapide REDS',
+    'Notification OMS, UNICEF, MSF dans les 2 heures',
+    'Incinération sécurisée des déchets biologiques',
+  ],
+};
+
+function EpidemieClusterCard({ c, expanded, onToggle }: { c: any; expanded: boolean; onToggle: () => void }) {
+  const level = c.alert_level as string;
+  const daysActive = c.first_case_at
+    ? Math.ceil((Date.now() - new Date(c.first_case_at).getTime()) / 86400000)
+    : null;
+  const responses = DISEASE_RESPONSES[c.disease_id] ?? [];
+
+  return (
+    <div
+      className={`rounded-lg border transition-colors ${
+        level === 'CRITICAL' ? 'bg-red-950/40 border-red-800' :
+        level === 'HIGH' ? 'bg-orange-950/40 border-orange-800' :
+        'bg-cc-800 border-cc-700'
+      }`}
+    >
+      {/* Header — always visible */}
+      <div
+        className="px-3 py-2.5 flex items-center gap-3 cursor-pointer"
+        onClick={onToggle}
+      >
+        <span className="text-xl shrink-0">{DISEASE_ICONS[c.disease_id] ?? '🦠'}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-sm font-bold text-white">{DISEASE_FR[c.disease_id] ?? c.disease_id}</span>
+            {level === 'CRITICAL' && (
+              <span className="text-[9px] bg-red-800 text-red-200 px-1.5 py-px rounded-full font-bold animate-pulse">CRITIQUE</span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-[10px] text-gray-400">
+            <span>📍 {c.province}</span>
+            <span>👥 {c.size ?? c.case_count} cas</span>
+            <span>🗺️ {c.radius_km?.toFixed(1) ?? '?'}km</span>
+            {daysActive && <span>🗓️ {daysActive}j actif</span>}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+            level === 'CRITICAL' ? 'bg-red-900 text-red-200 border-red-700' :
+            level === 'HIGH'     ? 'bg-orange-900 text-orange-200 border-orange-700' :
+                                   'bg-yellow-900 text-yellow-200 border-yellow-700'
+          }`}>{level}</span>
+          <div className="text-cc-600 text-[10px]">{expanded ? '▲' : '▼'}</div>
+        </div>
+      </div>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="px-3 pb-3 space-y-3 border-t border-cc-700/50 pt-2">
+          {/* Score bar */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-cc-500 font-mono uppercase">Score de risque</span>
+              <span className="text-[10px] font-bold font-mono text-white">{Math.round(c.score ?? 0)}/100</span>
+            </div>
+            <div className="h-1.5 bg-cc-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${
+                  (c.score ?? 0) >= 80 ? 'bg-red-500' : (c.score ?? 0) >= 60 ? 'bg-orange-500' : 'bg-yellow-500'
+                }`}
+                style={{ width: `${Math.min(100, c.score ?? 0)}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Dates */}
+          <div className="grid grid-cols-2 gap-2 text-[10px]">
+            {c.first_case_at && (
+              <div>
+                <div className="text-cc-600 font-mono">Premier cas</div>
+                <div className="text-gray-300">{new Date(c.first_case_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+              </div>
+            )}
+            {c.last_case_at && (
+              <div>
+                <div className="text-cc-600 font-mono">Dernier cas</div>
+                <div className="text-gray-300">{new Date(c.last_case_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+              </div>
+            )}
+            {c.centroid_lat && (
+              <div>
+                <div className="text-cc-600 font-mono">Coordonnées</div>
+                <div className="text-gray-300 font-mono">{c.centroid_lat?.toFixed(3)}°, {c.centroid_lng?.toFixed(3)}°</div>
+              </div>
+            )}
+            <div>
+              <div className="text-cc-600 font-mono">Source signaux</div>
+              <div className="text-gray-300">{c.signal_ids?.length ?? 0} signalement{(c.signal_ids?.length ?? 0) !== 1 ? 's' : ''}</div>
+            </div>
+          </div>
+
+          {/* Response actions */}
+          {responses.length > 0 && (
+            <div>
+              <div className="text-[10px] font-mono text-green-500 uppercase mb-1.5">Actions de réponse recommandées</div>
+              <div className="space-y-1">
+                {responses.map((r, i) => (
+                  <div key={i} className="flex items-start gap-1.5 text-[10px] text-gray-300">
+                    <span className="text-green-600 shrink-0 mt-0.5">▶</span>
+                    <span>{r}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EpidemieTab() {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showAlerts, setShowAlerts] = useState(false);
+
   const { data: dashData, isLoading } = useQuery({
     queryKey: ['ai-epidemie-dashboard'],
     queryFn: () => apiClient.get('/ai/epidemie/dashboard').then(r => r.data),
@@ -842,52 +1029,125 @@ function EpidemieTab() {
     queryFn: () => apiClient.get('/ai/epidemie/clusters').then(r => r.data),
     staleTime: 60_000,
   });
-  const clusters: any[] = clustersData?.clusters ?? [];
-  const DISEASE_ICONS: Record<string, string> = {
-    cholera: '💧', mpox: '🐒', rougeole: '🔴', meningite: '🧠', ebola: '☣️',
-  };
+  const { data: alertsData } = useQuery({
+    queryKey: ['ai-epidemie-alerts'],
+    queryFn: () => apiClient.get('/ai/epidemie/alerts').then(r => r.data),
+    staleTime: 60_000,
+  });
+
+  const clusters: any[] = (clustersData?.clusters ?? []).sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0));
+  const alerts: any[] = alertsData?.alerts ?? [];
+  const criticalClusters = clusters.filter(c => c.alert_level === 'CRITICAL');
 
   return (
     <div className="space-y-4">
+      {/* KPIs */}
       {dashData && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           {[
-            { label: 'CLUSTERS ACTIFS',  value: dashData.active_clusters ?? 0,    cls: 'bg-red-950 border border-red-800' },
-            { label: 'ALERTES CAP',      value: dashData.active_alerts ?? 0,      cls: 'bg-orange-900/50 border border-orange-800' },
-            { label: 'MALADIES SUIVIES', value: dashData.diseases_monitored ?? 5, cls: 'bg-cc-800 border border-cc-600' },
+            { label: 'CLUSTERS ACTIFS',  value: dashData.active_clusters  ?? 0, cls: 'bg-red-950 border-red-800',    icon: '🦠' },
+            { label: 'CRITIQUES',        value: criticalClusters.length,          cls: 'bg-red-900/60 border-red-700',  icon: '⚠️' },
+            { label: 'ALERTES CAP',      value: dashData.active_alerts    ?? 0, cls: 'bg-orange-900/50 border-orange-800', icon: '🚨' },
+            { label: 'MALADIES SUIVIES', value: dashData.diseases_monitored ?? 5, cls: 'bg-cc-800 border-cc-600',     icon: '🔬' },
           ].map(k => (
-            <div key={k.label} className={`rounded-lg p-3 ${k.cls}`}>
-              <div className="text-[10px] font-mono text-gray-400 mb-1">{k.label}</div>
+            <div key={k.label} className={`rounded-lg p-3 border ${k.cls}`}>
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="text-base">{k.icon}</span>
+                <div className="text-[9px] font-mono text-gray-400 uppercase">{k.label}</div>
+              </div>
               <div className="text-2xl font-bold text-white">{k.value}</div>
             </div>
           ))}
         </div>
       )}
-      <div className="text-[10px] font-mono text-gray-500 uppercase">Clusters actifs</div>
-      {isLoading ? (
-        <div className="text-center text-gray-500 text-sm py-6">Chargement…</div>
-      ) : clusters.length === 0 ? (
-        <div className="text-center text-gray-500 text-sm py-6">Aucun cluster sanitaire détecté</div>
-      ) : (
-        <div className="space-y-1.5 max-h-72 overflow-y-auto">
-          {clusters.map((c: any, i: number) => (
-            <div key={i} className="bg-cc-800 rounded-lg px-3 py-2 flex items-center gap-3">
-              <span className="text-lg shrink-0">{DISEASE_ICONS[c.disease_id] ?? '🦠'}</span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-xs font-bold text-white capitalize">{c.disease_id}</span>
-                  <span className="text-[10px] text-gray-500">{c.province}</span>
-                </div>
-                <div className="text-[10px] text-gray-400">{c.case_count} cas — rayon {c.radius_km?.toFixed(1)}km</div>
-              </div>
-              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                c.alert_level === 'CRITICAL' ? 'bg-red-800 text-red-200' :
-                c.alert_level === 'HIGH' ? 'bg-orange-800 text-orange-200' : 'bg-yellow-800 text-yellow-200'
-              }`}>{c.alert_level}</span>
+
+      {/* Critical alert banner */}
+      {criticalClusters.length > 0 && (
+        <div className="bg-red-950/60 border border-red-700 rounded-lg p-3">
+          <div className="flex items-center gap-2 text-red-300 text-xs font-bold mb-2">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            {criticalClusters.length} foyer{criticalClusters.length > 1 ? 's' : ''} CRITIQUE{criticalClusters.length > 1 ? 'S' : ''} — Intervention immédiate requise
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {criticalClusters.map((c, i) => (
+              <span key={i} className="text-[10px] bg-red-900 text-red-200 px-2 py-0.5 rounded-full font-mono">
+                {DISEASE_ICONS[c.disease_id] ?? '🦠'} {DISEASE_FR[c.disease_id] ?? c.disease_id} — {c.province}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Clusters */}
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-mono text-gray-500 uppercase">
+          Foyers épidémiques ({clusters.length})
+        </div>
+        {alerts.length > 0 && (
+          <button
+            onClick={() => setShowAlerts(v => !v)}
+            className="text-[10px] font-mono text-orange-400 hover:text-orange-300 transition-colors"
+          >
+            {showAlerts ? '▲' : '▼'} {alerts.length} alerte{alerts.length !== 1 ? 's' : ''} CAP
+          </button>
+        )}
+      </div>
+
+      {/* CAP Alerts (collapsible) */}
+      {showAlerts && alerts.length > 0 && (
+        <div className="space-y-1.5 bg-orange-950/30 border border-orange-800 rounded-lg p-3">
+          <div className="text-[10px] font-mono text-orange-400 uppercase mb-2">Alertes CAP générées</div>
+          {alerts.slice(0, 6).map((a: any, i: number) => (
+            <div key={i} className="flex items-center gap-2 text-[11px] border-b border-orange-900/50 pb-1.5 last:border-0 last:pb-0">
+              <span>{DISEASE_ICONS[a.disease_id] ?? '🦠'}</span>
+              <span className="text-orange-200 font-bold uppercase">{a.alert_level}</span>
+              <span className="text-gray-300 flex-1 truncate">{DISEASE_FR[a.disease_id] ?? a.disease_id} — {a.province}</span>
+              <span className="text-gray-500 font-mono text-[10px] shrink-0">
+                {a.created_at ? new Date(a.created_at).toLocaleDateString('fr-FR') : '—'}
+              </span>
+              {a.validated && <span className="text-green-400 text-[10px] shrink-0">✓ Validé</span>}
             </div>
           ))}
         </div>
       )}
+
+      {isLoading ? (
+        <div className="text-center text-gray-500 text-sm py-6 animate-pulse">Chargement des données épidémiques…</div>
+      ) : clusters.length === 0 ? (
+        <div className="py-8 text-center space-y-2">
+          <div className="text-3xl opacity-40">🦠</div>
+          <div className="text-sm text-gray-500">Aucun cluster sanitaire détecté</div>
+          <div className="text-[11px] text-cc-600 max-w-sm mx-auto">
+            Les foyers sont détectés automatiquement dès réception de signalements (SMS, app, veille IA) correspondant aux profils des 5 maladies surveillées.
+          </div>
+          <div className="pt-2 flex flex-wrap justify-center gap-2">
+            {['cholera', 'mpox', 'rougeole', 'meningite', 'ebola'].map(d => (
+              <span key={d} className="text-[10px] bg-cc-800 text-cc-400 px-2 py-1 rounded-full font-mono">
+                {DISEASE_ICONS[d]} {DISEASE_FR[d]}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {clusters.map((c: any) => {
+            const id = c.cluster_id ?? String(Math.random());
+            return (
+              <EpidemieClusterCard
+                key={id}
+                c={c}
+                expanded={expandedId === id}
+                onToggle={() => setExpandedId(expandedId === id ? null : id)}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      {/* Surveillance note */}
+      <div className="text-[10px] text-cc-700 font-mono pt-1">
+        Surveillance continue · Détection DBSCAN · Cycle 30 min · Sources : App mobile, SMS USSD, Veille IA
+      </div>
     </div>
   );
 }
