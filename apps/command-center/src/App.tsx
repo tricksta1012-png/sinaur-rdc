@@ -12,6 +12,7 @@ import { RapportsPage } from './pages/RapportsPage.js';
 import { StocksPage } from './pages/StocksPage.js';
 import { AiPage } from './pages/AiPage.js';
 import { ConflitPage } from './pages/ConflitPage.js';
+import { IdpCheckpointPage } from './pages/IdpCheckpointPage.js';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="stocks"         element={<StocksPage />} />
         <Route path="ai"             element={<AiPage />} />
         <Route path="conflit"        element={<ConflitPage />} />
+        <Route path="idp"            element={<IdpCheckpointPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

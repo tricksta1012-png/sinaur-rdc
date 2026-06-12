@@ -78,4 +78,14 @@ export async function conflitRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.status(status).send(data);
     },
   );
+
+  // GET /conflit/data-sources — état des sources de données de conflit
+  fastify.get(
+    '/conflit/data-sources',
+    { preHandler: [requireAuth] },
+    async (_request, reply) => {
+      const { status, data } = await aiGet('/internal/conflit/data-sources');
+      return reply.status(status).send(data);
+    },
+  );
 }

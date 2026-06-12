@@ -1,26 +1,43 @@
 import { Outlet, NavLink } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/auth.js';
 import { useRealtimeFeed } from '../hooks/useRealtimeFeed.js';
 import { AlertTicker } from './AlertTicker.js';
+import i18n from '../i18n.js';
 
-const NAV = [
-  { to: '/dashboard',     icon: '📊',  label: 'Tableau de bord'     },
-  { to: '/ops',           icon: '🖥️',  label: 'Salle des opérations' },
-  { to: '/crises',        icon: '🚨',  label: 'Gestion des crises'   },
-  { to: '/registre',      icon: '👥',  label: 'Registre sinistrés'  },
-  { to: '/distributions', icon: '📤',  label: 'Distributions'        },
-  { to: '/stocks',        icon: '📦',  label: 'Stocks humanitaires'  },
-  { to: '/coordination',  icon: '🤝',  label: 'Coordination'         },
-  { to: '/rapports',      icon: '📄',  label: 'Rapports SitRep'      },
-  { to: '/ai',            icon: '🤖',  label: 'Intelligence Artif.'  },
-  { to: '/conflit',       icon: '⚔️',  label: 'Surveillance Conflits' },
-];
+const LANGS = [
+  { code: 'fr', label: 'FR' },
+  { code: 'sw', label: 'SW' },
+  { code: 'ln', label: 'LN' },
+] as const;
+
+type LangCode = 'fr' | 'sw' | 'ln';
+
+function switchLanguage(lang: LangCode) {
+  i18n.changeLanguage(lang);
+  localStorage.setItem('sinaur_lang', lang);
+}
 
 export function CCLayout() {
+  const { t, i18n: i18nInstance } = useTranslation();
   const logout = useAuthStore(s => s.logout);
   const { events, connected } = useRealtimeFeed();
 
   const alerts = events.filter(e => e.type === 'NEW_ALERT').slice(0, 10);
+
+  const NAV = [
+    { to: '/dashboard',     icon: '📊',  label: t('nav_dashboard')    },
+    { to: '/ops',           icon: '🖥️',  label: t('nav_ops')           },
+    { to: '/crises',        icon: '🚨',  label: t('nav_crises')        },
+    { to: '/registre',      icon: '👥',  label: t('nav_registry')      },
+    { to: '/distributions', icon: '📤',  label: t('nav_distributions') },
+    { to: '/stocks',        icon: '📦',  label: t('nav_stocks')        },
+    { to: '/coordination',  icon: '🤝',  label: t('nav_coordination')  },
+    { to: '/rapports',      icon: '📄',  label: t('nav_reports')       },
+    { to: '/ai',            icon: '🤖',  label: t('nav_ai')            },
+    { to: '/conflit',       icon: '⚔️',  label: t('nav_conflit')       },
+    { to: '/idp',           icon: '🏕️',  label: t('nav_idp')           },
+  ];
 
   return (
     <div className="flex h-screen overflow-hidden bg-cc-950">
@@ -42,7 +59,9 @@ export function CCLayout() {
         <div className="px-4 py-2 border-b border-cc-700">
           <div className="flex items-center gap-1.5">
             <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
-            <span className="text-xs text-cc-600 font-mono">{connected ? 'EN DIRECT' : 'DÉCONNECTÉ'}</span>
+            <span className="text-xs text-cc-600 font-mono">
+              {connected ? t('live') : t('offline')}
+            </span>
           </div>
         </div>
 
@@ -67,12 +86,30 @@ export function CCLayout() {
         </nav>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-cc-700">
+        <div className="px-4 py-3 border-t border-cc-700 space-y-2">
+          {/* Language switcher */}
+          <div className="flex items-center gap-1">
+            {LANGS.map(({ code, label }) => (
+              <button
+                key={code}
+                onClick={() => switchLanguage(code)}
+                className={`flex-1 text-center text-xs font-mono py-1 rounded transition-colors ${
+                  i18nInstance.language === code
+                    ? 'bg-sinaur-700 text-white'
+                    : 'text-cc-600 hover:text-gray-300 hover:bg-cc-800'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Logout */}
           <button
             onClick={logout}
             className="w-full text-left text-xs text-cc-600 hover:text-gray-300 transition-colors py-1 font-mono"
           >
-            ⏻ DÉCONNEXION
+            ⏻ {t('logout')}
           </button>
         </div>
       </aside>

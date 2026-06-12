@@ -9,13 +9,17 @@ from datetime import datetime, timezone
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from agents.veille.connectors.acled import AcledConnector
 from agents.veille.connectors.base import AbstractConnector
 from agents.veille.connectors.fews_net import FewsNetConnector
+from agents.veille.connectors.firms import FirmsConnector
 from agents.veille.connectors.mettelsat import MettelSatConnector
 from agents.veille.connectors.ocha_hdx import OchaHdxConnector
 from agents.veille.connectors.open_meteo import OpenMeteoConnector
 from agents.veille.connectors.reliefweb import ReliefWebConnector
+from agents.veille.connectors.reliefweb_conflict import ReliefWebConflictConnector
 from agents.veille.deduplicator import Deduplicator
+from config import settings
 from schemas.events import CanonicalEvent
 
 logger = structlog.get_logger(__name__)
@@ -36,13 +40,19 @@ class VeilleAgent:
     def __init__(self) -> None:
         self._scheduler = AsyncIOScheduler(timezone="UTC")
         self._deduplicator = Deduplicator()
-        self._connectors: list[AbstractConnector] = [
+        connectors: list[AbstractConnector] = [
             ReliefWebConnector(),
             OpenMeteoConnector(),
             FewsNetConnector(),
             OchaHdxConnector(),
             MettelSatConnector(),
+            FirmsConnector(),
+            ReliefWebConflictConnector(),
         ]
+        # ACLED only enabled when credentials are configured
+        if settings.acled_api_key:
+            connectors.append(AcledConnector())
+        self._connectors = connectors
 
     async def start(self) -> None:
         """Register all connector jobs and start the scheduler."""

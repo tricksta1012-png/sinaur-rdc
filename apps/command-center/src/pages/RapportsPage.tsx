@@ -78,6 +78,112 @@ function PrintableSitRep({ sitrep, crisis }: { sitrep: any; crisis: any }) {
   );
 }
 
+type ExportStatus = { type: 'success' | 'error' | 'loading'; text: string } | null;
+
+function ExportPublishBar() {
+  const [hxlStatus, setHxlStatus]   = useState<ExportStatus>(null);
+  const [rwStatus,  setRwStatus]    = useState<ExportStatus>(null);
+  const [hdxStatus, setHdxStatus]   = useState<ExportStatus>(null);
+
+  async function handleHxl() {
+    setHxlStatus({ type: 'loading', text: 'Téléchargement en cours…' });
+    try {
+      const res = await apiClient.get('/ai/reporting/hxl/latest', { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sinaur-sitrep-${new Date().toISOString().slice(0, 10)}.hxl.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setHxlStatus({ type: 'success', text: 'Fichier HXL téléchargé.' });
+    } catch {
+      setHxlStatus({ type: 'error', text: 'Échec du téléchargement HXL.' });
+    } finally {
+      setTimeout(() => setHxlStatus(null), 4000);
+    }
+  }
+
+  async function handleReliefWeb() {
+    setRwStatus({ type: 'loading', text: 'Publication en cours…' });
+    try {
+      await apiClient.post('/reports/publish/reliefweb', { format: 'situation_report' });
+      setRwStatus({ type: 'success', text: 'Publié sur ReliefWeb avec succès.' });
+    } catch {
+      setRwStatus({ type: 'error', text: 'Échec de la publication ReliefWeb.' });
+    } finally {
+      setTimeout(() => setRwStatus(null), 4000);
+    }
+  }
+
+  async function handleHdx() {
+    setHdxStatus({ type: 'loading', text: 'Export vers HDX en cours…' });
+    try {
+      await apiClient.post('/reports/publish/hdx', {});
+      setHdxStatus({ type: 'success', text: 'Exporté vers HDX avec succès.' });
+    } catch {
+      setHdxStatus({ type: 'error', text: 'Échec de l\'export HDX.' });
+    } finally {
+      setTimeout(() => setHdxStatus(null), 4000);
+    }
+  }
+
+  function StatusBubble({ status }: { status: ExportStatus }) {
+    if (!status) return null;
+    const colors =
+      status.type === 'success' ? 'bg-green-900/40 text-green-400 border-green-800' :
+      status.type === 'error'   ? 'bg-red-900/40 text-red-400 border-red-800' :
+                                  'bg-cc-800 text-cc-400 border-cc-700';
+    return (
+      <span className={`ml-2 text-[10px] font-mono px-2 py-0.5 rounded border ${colors}`}>
+        {status.text}
+      </span>
+    );
+  }
+
+  return (
+    <div className="border-b border-cc-700 bg-cc-900 px-4 py-3 shrink-0">
+      <div className="text-xs font-mono text-cc-500 uppercase tracking-wider mb-2">
+        Export &amp; Publication
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center">
+          <button
+            onClick={handleHxl}
+            disabled={hxlStatus?.type === 'loading'}
+            className="cc-btn-ghost text-xs disabled:opacity-60"
+          >
+            ⬆ Exporter HXL
+          </button>
+          <StatusBubble status={hxlStatus} />
+        </div>
+        <div className="flex items-center">
+          <button
+            onClick={handleReliefWeb}
+            disabled={rwStatus?.type === 'loading'}
+            className="cc-btn-ghost text-xs disabled:opacity-60"
+          >
+            🌐 Publier sur ReliefWeb
+          </button>
+          <StatusBubble status={rwStatus} />
+        </div>
+        <div className="flex items-center">
+          <button
+            onClick={handleHdx}
+            disabled={hdxStatus?.type === 'loading'}
+            className="cc-btn-ghost text-xs disabled:opacity-60"
+          >
+            📊 Exporter vers HDX
+          </button>
+          <StatusBubble status={hdxStatus} />
+        </div>
+      </div>
+      <p className="text-[10px] text-cc-700 mt-2 font-mono">
+        La publication vers ReliefWeb et HDX nécessite une validation préalable
+      </p>
+    </div>
+  );
+}
+
 export function RapportsPage() {
   const qc = useQueryClient();
   const [crisisId, setCrisisId] = useState('');
@@ -130,7 +236,12 @@ export function RapportsPage() {
   const selectedCrisis = crises?.find((c: any) => c.id === crisisId);
 
   return (
-    <div className="h-full flex overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Export & Publish bar */}
+      <ExportPublishBar />
+
+      {/* Body */}
+      <div className="flex-1 flex overflow-hidden">
       {/* Left panel */}
       <div className="w-72 shrink-0 border-r border-cc-700 flex flex-col">
         <div className="p-4 border-b border-cc-700 space-y-3 shrink-0">
@@ -325,6 +436,7 @@ export function RapportsPage() {
           </div>
         </div>
       )}
+      </div>{/* end body flex */}
     </div>
   );
 }

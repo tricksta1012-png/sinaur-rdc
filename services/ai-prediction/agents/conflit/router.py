@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Header, HTTPException, status
 
-from agents.conflit.agent import conflit_agent
+from agents.conflit.agent import _EVENT_STORE, conflit_agent
 from agents.conflit.data.armed_actors_rdc import ARMED_ACTORS_RDC
 from agents.conflit.sanitizer import access_level_for_role, sanitize_conflict_event
 from agents.conflit.schemas.conflict import (
@@ -148,6 +148,57 @@ async def get_operational_map(
         "predictions": predictions,
         "classification": "RESTRICTED",
         "_disclaimer": _DISCLAIMER_PUBLIC,
+    }
+
+
+@router.get("/data-sources")
+async def conflit_data_sources():
+    """
+    Returns information about conflict data sources and their status.
+    Includes setup instructions for obtaining data feeds from major providers.
+    """
+    return {
+        "sources": [
+            {
+                "name": "ACLED (Armed Conflict Location & Event Data)",
+                "status": "requires_api_key",
+                "endpoint": "https://api.acleddata.com/acled/read",
+                "instructions": (
+                    "Register at https://acleddata.com/register/ for free academic/NGO access. "
+                    "Set ACLED_API_KEY and ACLED_ACCESS_EMAIL in environment variables."
+                ),
+                "coverage": "Daily updates, all conflict event types, geocoded to village level",
+                "priority": "HIGH",
+            },
+            {
+                "name": "OCHA ReliefWeb (Conflict Reports)",
+                "status": "active",
+                "source_id": "reliefweb_conflict",
+                "coverage": "3-hour cycle, conflict-tagged reports for COD",
+                "priority": "MEDIUM",
+            },
+            {
+                "name": "MONUSCO Situation Reports",
+                "status": "requires_integration",
+                "instructions": (
+                    "MONUSCO publishes SitReps at https://monusco.unmissions.org "
+                    "— contact for data sharing agreement"
+                ),
+                "priority": "HIGH",
+            },
+            {
+                "name": "Disaster Events DB (bootstrap)",
+                "status": "active",
+                "coverage": "All conflict/displacement events entered by operators in the last 30 days",
+                "priority": "ACTIVE",
+            },
+        ],
+        "recommendation": (
+            "For operational conflict data, the highest priority is obtaining an ACLED API key "
+            "(free for humanitarian organizations). ACLED covers RDC in near-real-time with "
+            "actor resolution."
+        ),
+        "current_events_count": len(_EVENT_STORE),
     }
 
 

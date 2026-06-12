@@ -2,6 +2,29 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../lib/api.js';
 import { useRealtimeFeed } from '../hooks/useRealtimeFeed.js';
+import { useAuthStore } from '../stores/auth.js';
+
+const PROVINCES_DRC: Record<string, string> = {
+  'CD10': 'Kinshasa', 'CD20': 'Kongo-Central', 'CD21': 'Kwango',
+  'CD22': 'Kwilu', 'CD23': 'Maï-Ndombe', 'CD41': 'Équateur',
+  'CD42': 'Sud-Ubangi', 'CD43': 'Nord-Ubangi', 'CD44': 'Mongala',
+  'CD45': 'Tshuapa', 'CD51': 'Tshopo', 'CD52': 'Bas-Uélé',
+  'CD53': 'Haut-Uélé', 'CD54': 'Ituri', 'CD61': 'Nord-Kivu',
+  'CD62': 'Sud-Kivu', 'CD63': 'Maniema', 'CD71': 'Haut-Katanga',
+  'CD72': 'Lualaba', 'CD73': 'Haut-Lomami', 'CD74': 'Tanganyika',
+  'CD81': 'Lomami', 'CD82': 'Kasaï-Oriental', 'CD83': 'Kasaï',
+  'CD84': 'Kasaï-Central', 'CD85': 'Sankuru',
+};
+
+function decodeJwtScope(token: string): string[] {
+  try {
+    const payload = token.split('.')[1];
+    const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    return Array.isArray(decoded.scope) ? decoded.scope : [];
+  } catch {
+    return [];
+  }
+}
 
 const HAZARD_FR: Record<string, string> = {
   flood: 'Inondation', landslide: 'Glissement', mass_displacement: 'Déplacement',
@@ -38,6 +61,8 @@ function KpiCard({ label, value, sub, color, href }: { label: string; value: str
 export function DashboardPage() {
   const navigate = useNavigate();
   const { connected } = useRealtimeFeed();
+  const tokens = useAuthStore(s => s.tokens);
+  const scope = tokens?.accessToken ? decodeJwtScope(tokens.accessToken) : [];
 
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard-stats'],
@@ -93,6 +118,22 @@ export function DashboardPage() {
           Mis à jour : {new Date().toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' })}
         </div>
       </div>
+
+      {/* Provincial scope banner */}
+      {scope.length > 0 && (
+        <div className="bg-amber-900/30 border border-amber-700 rounded-lg px-4 py-2 mb-4 flex items-center gap-2">
+          <span>🏛️</span>
+          <div className="text-sm text-amber-300">
+            <span className="font-semibold">Vue provinciale</span>
+            {' — '}
+            {scope.map(pc => PROVINCES_DRC[pc] ?? pc).join(', ')}
+            {' | '}
+            <span className="text-amber-400/80 text-xs">
+              Vos données sont filtrées sur votre périmètre géographique
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Quick access bar */}
       <div className="flex flex-wrap gap-2 mb-6">

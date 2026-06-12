@@ -87,4 +87,25 @@ export async function reportingRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.status(status).send(data);
     },
   );
+
+  // POST /reports/publish/hdx — export vers Humanitarian Data Exchange
+  fastify.post(
+    '/reports/publish/hdx',
+    { preHandler: [requireAuth, requireRole('national_decision_maker', 'system_admin')] },
+    async (_request, reply) => {
+      const { status, data } = await aiPost('/internal/reporting/publish/hdx', {});
+      return reply.status(status).send(data);
+    },
+  );
+
+  // POST /reports/publish/reliefweb — publication vers ReliefWeb
+  fastify.post(
+    '/reports/publish/reliefweb',
+    { preHandler: [requireAuth, requireRole('national_decision_maker', 'system_admin')] },
+    async (request, reply) => {
+      const body = z.object({ format: z.string().optional() }).parse(request.body ?? {});
+      const { status, data } = await aiPost('/internal/reporting/publish/reliefweb', body);
+      return reply.status(status).send(data);
+    },
+  );
 }

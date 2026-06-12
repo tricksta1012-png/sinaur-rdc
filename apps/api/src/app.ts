@@ -39,6 +39,7 @@ import { logistiqueRoutes } from './routes/logistique.js'
 import { epidemieRoutes } from './routes/epidemie.js'
 import { agentsStatusRoutes } from './routes/agents-status.js'
 import { conflitRoutes } from './routes/conflit.js'
+import { idpCheckpointRoutes } from './routes/idp-checkpoints.js'
 import { logSecurityEvent } from './auth/security.js'
 import { aiHealthCheck } from './services/aiClient.js'
 import { registerClient } from './websocket/broadcast.js'
@@ -157,6 +158,7 @@ export async function createApp(): Promise<FastifyInstance> {
   await fastify.register(epidemieRoutes)
   await fastify.register(agentsStatusRoutes)
   await fastify.register(conflitRoutes)
+  await fastify.register(idpCheckpointRoutes)
 
   fastify.get('/ws', { websocket: true }, (socket, request) => {
     let scope: string[] = []
