@@ -5,6 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { apiClient } from '../lib/api.js';
+import { useAuthStore } from '../stores/auth.js';
 
 const MAP_STYLE = {
   version: 8 as const,
@@ -72,6 +73,40 @@ const PROV_NAMES: Record<string, string> = {
 };
 
 // Severity 1–5 color scale (blue→red)
+const DRC_BOUNDS_C: [[number, number], [number, number]] = [[12.2, -13.5], [31.3, 5.4]];
+
+const PROVINCE_BOUNDS_C: Record<string, [[number, number], [number, number]]> = {
+  CD10:[[15.0,-4.65],[16.1,-4.15]], CD20:[[13.0,-5.8],[16.5,-4.0]],
+  CD21:[[16.5,-7.0],[19.0,-4.5]],  CD22:[[16.5,-7.0],[19.5,-4.0]],
+  CD23:[[17.0,-4.5],[20.5,-1.5]],  CD41:[[17.0,-2.5],[23.0,2.5]],
+  CD42:[[18.0,2.0],[22.0,5.5]],   CD43:[[20.0,3.0],[24.5,5.5]],
+  CD44:[[19.0,0.5],[23.0,4.0]],   CD45:[[20.0,-3.0],[25.0,1.0]],
+  CD51:[[23.0,-2.0],[28.0,2.0]],  CD52:[[22.5,0.5],[27.0,4.5]],
+  CD53:[[27.0,1.0],[31.0,5.5]],   CD54:[[27.5,0.0],[31.5,3.5]],
+  CD61:[[26.8,-3.5],[30.2,2.5]],  CD62:[[26.5,-5.5],[29.5,-1.0]],
+  CD63:[[25.5,-5.0],[29.0,-1.0]], CD71:[[25.5,-13.5],[29.5,-8.0]],
+  CD72:[[22.5,-12.5],[26.0,-8.0]],CD73:[[24.0,-11.0],[27.5,-7.0]],
+  CD74:[[27.5,-8.5],[31.5,-4.5]], CD81:[[23.0,-9.0],[26.5,-6.0]],
+  CD82:[[23.5,-8.5],[27.0,-5.0]], CD83:[[20.5,-7.5],[24.0,-4.0]],
+  CD84:[[21.5,-8.5],[25.0,-5.5]], CD85:[[23.5,-5.5],[27.0,-2.5]],
+};
+
+const PROVINCE_NAMES_C: Record<string, string> = {
+  CD10:'Kinshasa', CD20:'Kongo-Central', CD21:'Kwango', CD22:'Kwilu', CD23:'Maï-Ndombe',
+  CD41:'Équateur', CD42:'Sud-Ubangi', CD43:'Nord-Ubangi', CD44:'Mongala', CD45:'Tshuapa',
+  CD51:'Tshopo', CD52:'Bas-Uélé', CD53:'Haut-Uélé', CD54:'Ituri',
+  CD61:'Nord-Kivu', CD62:'Sud-Kivu', CD63:'Maniema',
+  CD71:'Haut-Katanga', CD72:'Lualaba', CD73:'Haut-Lomami', CD74:'Tanganyika',
+  CD81:'Lomami', CD82:'Kasaï-Oriental', CD83:'Kasaï', CD84:'Kasaï-Central', CD85:'Sankuru',
+};
+
+function decodeScope(token: string): string[] {
+  try {
+    const p = JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    return Array.isArray(p.scope) ? p.scope : [];
+  } catch { return []; }
+}
+
 const SEV_COLOR: Record<number, string> = {
   1: '#3b82f6', 2: '#22c55e', 3: '#eab308', 4: '#f97316', 5: '#ef4444',
 };
@@ -133,13 +168,31 @@ function getCentroid(e: ConflictEvent): [number, number] | null {
 
 export function ConflitPage() {
   const mapRef = useRef<MapRef>(null);
+  const { tokens } = useAuthStore();
   const [horizon, setHorizon] = useState<HorizonDays>(14);
   const [showCorridors, setShowCorridors] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  const userScope = useMemo((): string[] => {
+    if (!tokens?.accessToken) return [];
+    return decodeScope(tokens.accessToken);
+  }, [tokens?.accessToken]);
+
+  const provinceBounds = userScope.length > 0 ? (PROVINCE_BOUNDS_C[userScope[0]] ?? null) : null;
+  const provinceName   = userScope.length > 0 ? (PROVINCE_NAMES_C[userScope[0]] ?? userScope[0]) : null;
+
+  const resetView = useCallback(() => {
+    const map = mapRef.current?.getMap();
+    const bounds = provinceBounds ?? DRC_BOUNDS_C;
+    map?.fitBounds(bounds as any, { padding: 40, duration: 800 });
+  }, [provinceBounds]);
+
   const { data: eventsData, isLoading } = useQuery({
-    queryKey: ['conflit-events', horizon],
-    queryFn: () => apiClient.get(`/conflit/events?since_days=${horizon}`).then(r => r.data),
+    queryKey: ['conflit-events', horizon, userScope[0]],
+    queryFn: () => {
+      const params = new URLSearchParams({ since_days: String(horizon) });
+      return apiClient.get(`/conflit/events?${params}`).then(r => r.data);
+    },
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
   });
@@ -150,7 +203,10 @@ export function ConflitPage() {
     staleTime: 10 * 60_000,
   });
 
-  const events: ConflictEvent[] = eventsData?.events ?? [];
+  const allEvents: ConflictEvent[] = eventsData?.events ?? [];
+  const events: ConflictEvent[] = userScope.length > 0
+    ? allEvents.filter(e => !e.p_code || userScope.includes(e.p_code))
+    : allEvents;
   const predictions: DisplacementPrediction[] = predictionsData?.predictions ?? [];
 
   // Province tension circles GeoJSON
@@ -439,10 +495,26 @@ export function ConflitPage() {
 
       {/* ── Map ───────────────────────────────────────────────── */}
       <div className="flex-1 relative">
+        {/* Province scope banner */}
+        {provinceName && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 bg-amber-900/90 border border-amber-700 text-amber-200 text-[10px] font-mono px-3 py-1 rounded-lg backdrop-blur-sm pointer-events-none whitespace-nowrap">
+            🏛️ Vue provinciale — {provinceName}
+          </div>
+        )}
+
+        {/* Reset view button */}
+        <button
+          onClick={resetView}
+          title={provinceBounds ? `Recentrer sur ${provinceName}` : 'Vue complète RDC'}
+          className="absolute top-2 right-2 z-20 px-2.5 py-1 rounded-lg text-[10px] font-mono border border-cc-700 bg-cc-900/92 text-cc-400 hover:text-white hover:border-cc-500 transition-colors backdrop-blur-sm"
+        >
+          {provinceBounds ? `🏛️ ${provinceName}` : '🌍 Vue RDC'}
+        </button>
+
         <MapGL
           ref={mapRef}
           initialViewState={{
-            bounds: [[12.2, -13.5], [31.3, 5.4]],
+            bounds: provinceBounds ?? DRC_BOUNDS_C,
             fitBoundsOptions: { padding: 40 },
           }}
           style={{ width: '100%', height: '100%' }}

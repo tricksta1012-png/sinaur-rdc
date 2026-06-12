@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { sql } from '../db.js';
 import { requireAuth, requireRole, writeAuditLog } from '../auth/jwt.js';
@@ -232,7 +232,7 @@ export async function eventRoutes(fastify: FastifyInstance): Promise<void> {
   // PATCH /events/:id/validate — validation par un validateur ou admin
   fastify.patch(
     '/events/:id/validate',
-    { preHandler: [requireAuth, requireRole('local_validator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('local_validator', 'provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const { status, notes } = z.object({

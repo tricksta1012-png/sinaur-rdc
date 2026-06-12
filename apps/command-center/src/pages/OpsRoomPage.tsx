@@ -5,6 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { apiClient } from '../lib/api.js';
 import { useRealtimeFeed } from '../hooks/useRealtimeFeed.js';
 import { LiveFeed } from '../components/LiveFeed.js';
+import { useAuthStore } from '../stores/auth.js';
 
 const MAP_STYLE = {
   version: 8 as const,
@@ -58,6 +59,40 @@ const HAZARD_ICON: Record<string, string> = {
   health_epidemic: '🦠', volcanic_eruption: '🌋', drought: '☀️',
   fire: '🔥', conflict: '⚔️', earthquake: '📳', other: '⚠️',
 };
+
+const DRC_BOUNDS: [[number, number], [number, number]] = [[12.2, -13.5], [31.3, 5.4]];
+
+const PROVINCE_BOUNDS: Record<string, [[number, number], [number, number]]> = {
+  CD10: [[15.0, -4.65], [16.1, -4.15]], CD20: [[13.0, -5.8], [16.5, -4.0]],
+  CD21: [[16.5, -7.0], [19.0, -4.5]],  CD22: [[16.5, -7.0], [19.5, -4.0]],
+  CD23: [[17.0, -4.5], [20.5, -1.5]],  CD41: [[17.0, -2.5], [23.0, 2.5]],
+  CD42: [[18.0, 2.0],  [22.0, 5.5]],   CD43: [[20.0, 3.0],  [24.5, 5.5]],
+  CD44: [[19.0, 0.5],  [23.0, 4.0]],   CD45: [[20.0, -3.0], [25.0, 1.0]],
+  CD51: [[23.0, -2.0], [28.0, 2.0]],   CD52: [[22.5, 0.5],  [27.0, 4.5]],
+  CD53: [[27.0, 1.0],  [31.0, 5.5]],   CD54: [[27.5, 0.0],  [31.5, 3.5]],
+  CD61: [[26.8, -3.5], [30.2, 2.5]],   CD62: [[26.5, -5.5], [29.5, -1.0]],
+  CD63: [[25.5, -5.0], [29.0, -1.0]],  CD71: [[25.5, -13.5],[29.5, -8.0]],
+  CD72: [[22.5, -12.5],[26.0, -8.0]],  CD73: [[24.0, -11.0],[27.5, -7.0]],
+  CD74: [[27.5, -8.5], [31.5, -4.5]],  CD81: [[23.0, -9.0], [26.5, -6.0]],
+  CD82: [[23.5, -8.5], [27.0, -5.0]],  CD83: [[20.5, -7.5], [24.0, -4.0]],
+  CD84: [[21.5, -8.5], [25.0, -5.5]],  CD85: [[23.5, -5.5], [27.0, -2.5]],
+};
+
+const PROVINCE_NAMES: Record<string, string> = {
+  CD10:'Kinshasa', CD20:'Kongo-Central', CD21:'Kwango', CD22:'Kwilu', CD23:'Maï-Ndombe',
+  CD41:'Équateur', CD42:'Sud-Ubangi', CD43:'Nord-Ubangi', CD44:'Mongala', CD45:'Tshuapa',
+  CD51:'Tshopo', CD52:'Bas-Uélé', CD53:'Haut-Uélé', CD54:'Ituri',
+  CD61:'Nord-Kivu', CD62:'Sud-Kivu', CD63:'Maniema',
+  CD71:'Haut-Katanga', CD72:'Lualaba', CD73:'Haut-Lomami', CD74:'Tanganyika',
+  CD81:'Lomami', CD82:'Kasaï-Oriental', CD83:'Kasaï', CD84:'Kasaï-Central', CD85:'Sankuru',
+};
+
+function decodeJwtScope(token: string): string[] {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return Array.isArray(payload.scope) ? payload.scope : [];
+  } catch { return []; }
+}
 
 const SOURCE_FR: Record<string, string> = {
   official: 'Source officielle', field_agent: 'Agent terrain', ngo: 'ONG',
@@ -361,15 +396,25 @@ function EventDetailPanel({ event, onClose }: { event: SelectedEvent; onClose: (
 
 export function OpsRoomPage() {
   const { events, connected, clearFeed } = useRealtimeFeed();
+  const { tokens } = useAuthStore();
   const [selectedEvent, setSelectedEvent] = useState<SelectedEvent | null>(null);
   const [wsLiveIds, setWsLiveIds] = useState<Set<string>>(new Set());
   const mapRef = useRef<MapRef>(null);
   const [clusterHover, setClusterHover] = useState<{ x: number; y: number; count: number } | null>(null);
+  const [riskHover, setRiskHover] = useState<{ x: number; y: number; level: string; score: number; province?: string } | null>(null);
   const [filterHazard, setFilterHazard]   = useState('');
   const [filterPeriod, setFilterPeriod]   = useState('');
   const [filterSeverity, setFilterSeverity] = useState('');
   const [showRiskLayer, setShowRiskLayer] = useState(false);
   const [riskHorizon, setRiskHorizon]     = useState<7 | 30 | 90>(7);
+
+  const userScope = useMemo((): string[] => {
+    if (!tokens?.accessToken) return [];
+    return decodeJwtScope(tokens.accessToken);
+  }, [tokens?.accessToken]);
+
+  const provinceBounds = userScope.length > 0 ? (PROVINCE_BOUNDS[userScope[0]] ?? null) : null;
+  const provinceName   = userScope.length > 0 ? (PROVINCE_NAMES[userScope[0]] ?? userScope[0]) : null;
 
   const mapQueryParams = useMemo(() => {
     const p = new URLSearchParams({ limit: '200' });
@@ -378,8 +423,9 @@ export function OpsRoomPage() {
     if (filterPeriod === '24h') p.set('dateFrom', new Date(Date.now() - 86_400_000).toISOString());
     if (filterPeriod === '7j')  p.set('dateFrom', new Date(Date.now() - 7 * 86_400_000).toISOString());
     if (filterPeriod === '30j') p.set('dateFrom', new Date(Date.now() - 30 * 86_400_000).toISOString());
+    if (userScope.length === 1) p.set('province', userScope[0]);
     return p.toString();
-  }, [filterHazard, filterSeverity, filterPeriod]);
+  }, [filterHazard, filterSeverity, filterPeriod, userScope]);
 
   const hasActiveFilters = !!(filterHazard || filterPeriod || filterSeverity);
 
@@ -496,12 +542,29 @@ export function OpsRoomPage() {
 
   const onMouseMove = useCallback((e: MapLayerMouseEvent) => {
     const f = e.features?.[0];
-    if (f?.properties?.point_count) {
+    if (f?.layer?.id === 'risk-circles') {
+      setClusterHover(null);
+      setRiskHover({
+        x: e.point.x,
+        y: e.point.y,
+        level: f.properties?.level ?? '?',
+        score: Math.round(f.properties?.score ?? 0),
+        province: f.properties?.province ?? f.properties?.pcode,
+      });
+    } else if (f?.properties?.point_count) {
+      setRiskHover(null);
       setClusterHover({ x: e.point.x, y: e.point.y, count: f.properties.point_count as number });
     } else {
       setClusterHover(null);
+      setRiskHover(null);
     }
   }, []);
+
+  const resetView = useCallback(() => {
+    const map = mapRef.current?.getMap();
+    const bounds = provinceBounds ?? DRC_BOUNDS;
+    map?.fitBounds(bounds as any, { padding: provinceBounds ? 40 : 40, duration: 800 });
+  }, [provinceBounds]);
 
   const eventCount = mapGeoJSON?.features?.length ?? 0;
 
@@ -605,6 +668,15 @@ export function OpsRoomPage() {
             </div>
           )}
 
+          {/* Reset view */}
+          <button
+            onClick={resetView}
+            title={provinceBounds ? `Recentrer sur ${provinceName}` : 'Vue complète RDC'}
+            className="px-2 py-1 rounded-lg text-xs font-mono backdrop-blur-sm border border-cc-700 bg-cc-900/92 text-cc-400 hover:text-white hover:border-cc-500 transition-colors"
+          >
+            {provinceBounds ? `🏛️ ${provinceName}` : '🌍 RDC'}
+          </button>
+
           {/* Result count */}
           <div className="ml-auto text-[10px] font-mono text-cc-500 bg-cc-900/80 border border-cc-700 px-2 py-1 rounded-lg backdrop-blur-sm">
             {eventCount} événement{eventCount !== 1 ? 's' : ''}
@@ -614,15 +686,15 @@ export function OpsRoomPage() {
         <MapGL
           ref={mapRef}
           initialViewState={{
-            bounds: [[12.2, -13.5], [31.3, 5.4]],
+            bounds: provinceBounds ?? DRC_BOUNDS,
             fitBoundsOptions: { padding: 40 },
           }}
           style={{ width: '100%', height: '100%' }}
           mapStyle={MAP_STYLE}
-          interactiveLayerIds={['event-unclustered', 'cluster-circle']}
+          interactiveLayerIds={['event-unclustered', 'cluster-circle', 'risk-circles']}
           onClick={onMapClick}
           onMouseMove={onMouseMove}
-          onMouseLeave={() => setClusterHover(null)}
+          onMouseLeave={() => { setClusterHover(null); setRiskHover(null); }}
         >
           {provinceGeoJSON.features.length > 0 && (
             <Source id="provinces" type="geojson" data={provinceGeoJSON}>
@@ -731,6 +803,13 @@ export function OpsRoomPage() {
           )}
         </MapGL>
 
+        {/* Province scope banner */}
+        {provinceName && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-amber-900/90 border border-amber-700 text-amber-200 text-[10px] font-mono px-3 py-1 rounded-lg backdrop-blur-sm pointer-events-none whitespace-nowrap">
+            🏛️ Vue provinciale — {provinceName} · Données filtrées sur votre périmètre
+          </div>
+        )}
+
         {/* Cluster hover tooltip */}
         {clusterHover && (
           <div
@@ -738,6 +817,23 @@ export function OpsRoomPage() {
             style={{ left: clusterHover.x + 12, top: clusterHover.y - 36 }}
           >
             {clusterHover.count} événements · cliquer pour zoomer
+          </div>
+        )}
+
+        {/* Risk hover tooltip */}
+        {riskHover && (
+          <div
+            className="absolute pointer-events-none z-30 bg-purple-950/95 border border-purple-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono shadow-lg min-w-[140px]"
+            style={{ left: riskHover.x + 14, top: riskHover.y - 48 }}
+          >
+            {riskHover.province && <div className="text-purple-300 text-[10px] mb-0.5">{riskHover.province}</div>}
+            <div className="flex items-center gap-2">
+              <span className="font-bold" style={{ color: riskHover.level === 'CRITIQUE' ? '#dc2626' : riskHover.level === 'ELEVE' ? '#ea580c' : riskHover.level === 'MODERE' ? '#ca8a04' : '#2563eb' }}>
+                {riskHover.level}
+              </span>
+              <span className="text-gray-400">{riskHover.score}%</span>
+            </div>
+            <div className="text-[9px] text-purple-400 mt-0.5">Prédiction IA — validation requise</div>
           </div>
         )}
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Routes proxy vers l'Agent 5 — Signalements Citoyens (service ai-prediction).
  *
  * RBAC :
@@ -15,7 +15,7 @@ export async function signalementsRoutes(fastify: FastifyInstance): Promise<void
   // POST /ai/signalements/process — traitement NLP d'un signalement entrant
   fastify.post(
     '/ai/signalements/process',
-    { preHandler: [requireAuth, requireRole('field_agent', 'local_validator', 'territory_admin', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('field_agent', 'local_validator', 'provincial_coordinator', 'territory_admin', 'system_admin')] },
     async (request, reply) => {
       const body = z.object({
         text: z.string().min(1),

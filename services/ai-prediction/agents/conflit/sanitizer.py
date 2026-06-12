@@ -12,6 +12,7 @@ _ROLE_ACCESS: dict[str, DataClassification] = {
     "field_agent":               DataClassification.INTERNAL,
     "local_validator":           DataClassification.INTERNAL,
     "territory_admin":           DataClassification.INTERNAL,
+    "provincial_coordinator":    DataClassification.INTERNAL,
     "humanitarian_partner":      DataClassification.RESTRICTED,
     "national_decision_maker":   DataClassification.RESTRICTED,
     "system_admin":              DataClassification.CONFIDENTIAL,

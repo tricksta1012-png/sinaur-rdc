@@ -202,6 +202,14 @@ async def conflit_data_sources():
     }
 
 
+@router.post("/reload")
+async def reload_events():
+    """Force re-bootstrap from disaster_events DB. Clears store first."""
+    _EVENT_STORE.clear()
+    await conflit_agent._bootstrap_from_db()
+    return {"events_loaded": len(_EVENT_STORE), "ok": True}
+
+
 @router.post("/actors/resolve")
 async def resolve_actor_endpoint(
     body: dict,

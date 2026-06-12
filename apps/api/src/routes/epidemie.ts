@@ -14,7 +14,7 @@ export async function epidemieRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /ai/epidemie/clusters — clusters épidémiques actifs
   fastify.get(
     '/ai/epidemie/clusters',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (request, reply) => {
       const { disease, province } = z.object({
         disease: z.string().optional(),
@@ -32,7 +32,7 @@ export async function epidemieRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /ai/epidemie/map — GeoJSON carte épidémique
   fastify.get(
     '/ai/epidemie/map',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (request, reply) => {
       const { disease } = z.object({
         disease: z.string().optional(),
@@ -48,7 +48,7 @@ export async function epidemieRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /ai/epidemie/alerts — alertes épidémiques actives
   fastify.get(
     '/ai/epidemie/alerts',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (request, reply) => {
       const { level } = z.object({
         level: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
@@ -64,7 +64,7 @@ export async function epidemieRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /ai/epidemie/history/:disease — historique d'une maladie
   fastify.get(
     '/ai/epidemie/history/:disease',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (request, reply) => {
       const { disease } = request.params as { disease: string };
       const { weeks } = z.object({
@@ -79,7 +79,7 @@ export async function epidemieRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /ai/epidemie/dashboard — tableau de bord épidémique global
   fastify.get(
     '/ai/epidemie/dashboard',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (_request, reply) => {
       const { status, data } = await aiGet('/internal/epidemie/dashboard');
       return reply.status(status).send(data);

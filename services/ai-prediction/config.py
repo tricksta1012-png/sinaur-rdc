@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     acled_api_key: str = ""
     acled_access_email: str = ""
 
+    # URL of the Fastify API service (used by conflit agent to bootstrap events)
+    api_service_url: str = "https://api-production-65ad.up.railway.app"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

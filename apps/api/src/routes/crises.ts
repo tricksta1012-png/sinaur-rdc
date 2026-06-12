@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Gestion des crises humanitaires — numéros GLIDE, SitReps.
  * Accès : admin, national_decision_maker, territory_admin, humanitarian_partner.
  */
@@ -76,7 +76,7 @@ export async function crisisRoutes(fastify: FastifyInstance) {
   // ── Liste des crises ────────────────────────────────────────────────────
 
   fastify.get('/crises', {
-    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'territory_admin', 'humanitarian_partner')],
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin', 'humanitarian_partner')],
   }, async (request) => {
     const q = request.query as Record<string, string>
     const status = q.status ?? null
@@ -113,7 +113,7 @@ export async function crisisRoutes(fastify: FastifyInstance) {
   // ── Créer une crise ─────────────────────────────────────────────────────
 
   fastify.post('/crises', {
-    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'territory_admin')],
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin')],
   }, async (request, reply) => {
     const user = request.jwtUser
     const body = CreateCrisisSchema.parse(request.body)
@@ -151,7 +151,7 @@ export async function crisisRoutes(fastify: FastifyInstance) {
   // ── Détail d'une crise ──────────────────────────────────────────────────
 
   fastify.get('/crises/:id', {
-    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'territory_admin', 'humanitarian_partner')],
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin', 'humanitarian_partner')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string }
 
@@ -189,7 +189,7 @@ export async function crisisRoutes(fastify: FastifyInstance) {
   // ── Mettre à jour une crise ─────────────────────────────────────────────
 
   fastify.patch('/crises/:id', {
-    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'territory_admin')],
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin')],
   }, async (request, reply) => {
     const user = request.jwtUser
     const { id } = request.params as { id: string }
@@ -220,7 +220,7 @@ export async function crisisRoutes(fastify: FastifyInstance) {
   // ── SitReps ─────────────────────────────────────────────────────────────
 
   fastify.post('/crises/:id/sitreps', {
-    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'territory_admin', 'humanitarian_partner')],
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin', 'humanitarian_partner')],
   }, async (request, reply) => {
     const user = request.jwtUser
     const { id } = request.params as { id: string }
@@ -249,7 +249,7 @@ export async function crisisRoutes(fastify: FastifyInstance) {
   })
 
   fastify.get('/crises/:id/sitreps/:reportId', {
-    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'territory_admin', 'humanitarian_partner')],
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin', 'humanitarian_partner')],
   }, async (request, reply) => {
     const { id, reportId } = request.params as { id: string; reportId: string }
 
@@ -267,7 +267,7 @@ export async function crisisRoutes(fastify: FastifyInstance) {
   })
 
   fastify.patch('/crises/:id/sitreps/:reportId', {
-    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'territory_admin')],
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin')],
   }, async (request, reply) => {
     const user = request.jwtUser
     const { id, reportId } = request.params as { id: string; reportId: string }

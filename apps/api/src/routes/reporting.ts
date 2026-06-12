@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Routes proxy vers l'Agent 6 — Reporting & HXL (service ai-prediction).
  *
  * RBAC :
@@ -67,7 +67,7 @@ export async function reportingRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /ai/reporting/hxl/latest — dernier export HXL (OCHA)
   fastify.get(
     '/ai/reporting/hxl/latest',
-    { preHandler: [requireAuth, requireRole('humanitarian_partner', 'territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('humanitarian_partner', 'provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (_request, reply) => {
       const { status, data } = await aiGet('/internal/reporting/hxl/latest');
       return reply.status(status).send(data);

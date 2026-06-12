@@ -30,7 +30,7 @@ export async function logistiqueRoutes(fastify: FastifyInstance): Promise<void> 
   // GET /ai/logistique/recommendations?status=
   fastify.get(
     '/ai/logistique/recommendations',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (request, reply) => {
       const { status: recStatus } = z.object({
         status: z.enum(['PENDING', 'ACCEPTED', 'REJECTED']).optional(),
@@ -46,7 +46,7 @@ export async function logistiqueRoutes(fastify: FastifyInstance): Promise<void> 
   // POST /ai/logistique/recommendations/:id/accept
   fastify.post(
     '/ai/logistique/recommendations/:id/accept',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = (request as any).jwtUser;
@@ -62,7 +62,7 @@ export async function logistiqueRoutes(fastify: FastifyInstance): Promise<void> 
   // POST /ai/logistique/recommendations/:id/reject
   fastify.post(
     '/ai/logistique/recommendations/:id/reject',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = (request as any).jwtUser;
@@ -84,7 +84,7 @@ export async function logistiqueRoutes(fastify: FastifyInstance): Promise<void> 
   // GET /ai/logistique/routes — GeoJSON des routes PENDING (entrepôt → sinistre)
   fastify.get(
     '/ai/logistique/routes',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (_request, reply) => {
       const { status, data } = await aiGet('/internal/logistique/routes');
       return reply.status(status).send(data);

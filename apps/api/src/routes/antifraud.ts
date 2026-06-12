@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Routes proxy vers l'Agent 3 — Anti-Fraude & Déduplication (service ai-prediction).
  * La vérification de dossier est appelée automatiquement lors de l'inscription
  * au Registre des Sinistrés (voir routes/registry.ts).
@@ -14,7 +14,7 @@ export async function antifraudRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /ai/antifraud/check — vérifier un dossier sinistré (appelé par le registre)
   fastify.post(
     '/ai/antifraud/check',
-    { preHandler: [requireAuth, requireRole('field_agent', 'local_validator', 'territory_admin', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('field_agent', 'local_validator', 'provincial_coordinator', 'territory_admin', 'system_admin')] },
     async (request, reply) => {
       const body = z.object({
         dossier: z.object({
@@ -43,7 +43,7 @@ export async function antifraudRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /ai/antifraud/queue — file des dossiers en attente de revue humaine
   fastify.get(
     '/ai/antifraud/queue',
-    { preHandler: [requireAuth, requireRole('local_validator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('local_validator', 'provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (_request, reply) => {
       const { status, data } = await aiGet('/internal/antifraud/queue');
       return reply.status(status).send(data);
@@ -63,7 +63,7 @@ export async function antifraudRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /ai/antifraud/duplicates — liste des doublons détectés
   fastify.get(
     '/ai/antifraud/duplicates',
-    { preHandler: [requireAuth, requireRole('local_validator', 'territory_admin', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('local_validator', 'provincial_coordinator', 'territory_admin', 'system_admin')] },
     async (_request, reply) => {
       const { status, data } = await aiGet('/internal/antifraud/duplicates');
       return reply.status(status).send(data);
@@ -73,7 +73,7 @@ export async function antifraudRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /ai/antifraud/duplicates/:id/resolve — résoudre manuellement un doublon
   fastify.post(
     '/ai/antifraud/duplicates/:id/resolve',
-    { preHandler: [requireAuth, requireRole('local_validator', 'territory_admin', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('local_validator', 'provincial_coordinator', 'territory_admin', 'system_admin')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const body = z.object({

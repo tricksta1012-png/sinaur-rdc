@@ -15,7 +15,7 @@ export async function anomalieStocksRoutes(fastify: FastifyInstance): Promise<vo
   // GET /ai/anomalie-stocks/alerts?statut=&province=
   fastify.get(
     '/ai/anomalie-stocks/alerts',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (request, reply) => {
       const { statut, province } = z.object({
         statut: z.string().optional(),
@@ -33,7 +33,7 @@ export async function anomalieStocksRoutes(fastify: FastifyInstance): Promise<vo
   // GET /ai/anomalie-stocks/stats/:entrepotId
   fastify.get(
     '/ai/anomalie-stocks/stats/:entrepotId',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (request, reply) => {
       const { entrepotId } = request.params as { entrepotId: string };
       const { status, data } = await aiGet(`/internal/anomalie-stocks/stats/${entrepotId}`);
@@ -44,7 +44,7 @@ export async function anomalieStocksRoutes(fastify: FastifyInstance): Promise<vo
   // POST /ai/anomalie-stocks/alerts/:id/resolve
   fastify.post(
     '/ai/anomalie-stocks/alerts/:id/resolve',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'system_admin')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const body = z.object({
@@ -63,7 +63,7 @@ export async function anomalieStocksRoutes(fastify: FastifyInstance): Promise<vo
   // GET /ai/anomalie-stocks/dashboard
   fastify.get(
     '/ai/anomalie-stocks/dashboard',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (_request, reply) => {
       const { status, data } = await aiGet('/internal/anomalie-stocks/dashboard');
       return reply.status(status).send(data);

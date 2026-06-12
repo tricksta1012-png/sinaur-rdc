@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { sql } from '../db.js';
 import { requireAuth, requireRole } from '../auth/jwt.js';
@@ -8,11 +8,14 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /dashboard/stats — indicateurs nationaux
   fastify.get(
     '/dashboard/stats',
-    { preHandler: [requireAuth, requireRole('field_agent', 'local_validator', 'territory_admin', 'humanitarian_partner', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('field_agent', 'local_validator', 'provincial_coordinator', 'territory_admin', 'humanitarian_partner', 'national_decision_maker', 'system_admin')] },
     async (request, reply) => {
       const user = request.jwtUser;
       const scopeFilter = user.scope.length > 0
         ? sql`AND (e.location_pcode = ANY(${user.scope}) OR e.affected_pcodes && ${user.scope}::text[])`
+        : sql``;
+      const scopeFilterPlain = user.scope.length > 0
+        ? sql`AND (location_pcode = ANY(${user.scope}) OR affected_pcodes && ${user.scope}::text[])`
         : sql``;
 
       const [counts] = await sql`
@@ -30,7 +33,7 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
       const hazardBreakdown = await sql`
         SELECT hazard_type, COUNT(*) AS count
         FROM disaster_events
-        WHERE status = 'active' AND deleted_at IS NULL ${scopeFilter}
+        WHERE status = 'active' AND deleted_at IS NULL ${scopeFilterPlain}
         GROUP BY hazard_type ORDER BY count DESC
       `;
 
@@ -162,7 +165,7 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /dashboard/export.csv — export CSV avec tags HXL
   fastify.get(
     '/dashboard/export.csv',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'humanitarian_partner', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'humanitarian_partner', 'national_decision_maker', 'system_admin')] },
     async (request, reply) => {
       const { dateFrom, dateTo, province } = z.object({
         dateFrom: z.string().optional(),

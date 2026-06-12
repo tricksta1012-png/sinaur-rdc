@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tâches de coordination inter-agences — kanban par crise.
  */
 import type { FastifyInstance } from 'fastify'
@@ -29,7 +29,7 @@ const UpdateTaskSchema = z.object({
 export async function taskRoutes(fastify: FastifyInstance) {
 
   fastify.get('/crises/:crisisId/tasks', {
-    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'territory_admin', 'humanitarian_partner')],
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin', 'humanitarian_partner')],
   }, async (request) => {
     const { crisisId } = request.params as { crisisId: string }
 
@@ -44,7 +44,7 @@ export async function taskRoutes(fastify: FastifyInstance) {
   })
 
   fastify.post('/crises/:crisisId/tasks', {
-    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'territory_admin', 'humanitarian_partner')],
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin', 'humanitarian_partner')],
   }, async (request, reply) => {
     const user = request.jwtUser
     const { crisisId } = request.params as { crisisId: string }
@@ -74,7 +74,7 @@ export async function taskRoutes(fastify: FastifyInstance) {
   })
 
   fastify.patch('/tasks/:id', {
-    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'territory_admin', 'humanitarian_partner')],
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin', 'humanitarian_partner')],
   }, async (request, reply) => {
     const user = request.jwtUser
     const { id } = request.params as { id: string }
@@ -101,7 +101,7 @@ export async function taskRoutes(fastify: FastifyInstance) {
   })
 
   fastify.delete('/tasks/:id', {
-    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'territory_admin')],
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin')],
   }, async (request, reply) => {
     const user = request.jwtUser
     const { id } = request.params as { id: string }

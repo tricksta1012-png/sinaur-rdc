@@ -22,7 +22,6 @@ from typing import Any
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import text
 
 from agents import bus
 from agents.conflit.sanitizer import access_level_for_role
@@ -97,55 +96,84 @@ class ConflitAgent:
 
     async def _bootstrap_from_db(self) -> None:
         """
-        Populate _EVENT_STORE from disaster_events table at startup.
-        Queries conflict + mass_displacement events from the last 30 days.
-        Skips if store already has data (avoid double-loading on hot reload).
+        Populate _EVENT_STORE by calling the Fastify API's /events endpoint.
+        This avoids direct DB access and always reads from the same Neon database
+        that the API service uses, regardless of the DATABASE_URL env var.
         """
         if _EVENT_STORE:
             return
         try:
-            from db import engine  # imported here to avoid circular at module level
+            from config import settings
+            import httpx
+
             severity_map = {"Extreme": 5, "Severe": 4, "Moderate": 3, "Minor": 2, "Unknown": 1}
-            async with engine.connect() as conn:
-                rows = await conn.execute(text("""
-                    SELECT
-                        id::text          AS external_id,
-                        start_date        AS event_date,
-                        hazard_type       AS event_type,
-                        location_name     AS province,
-                        location_pcode    AS p_code,
-                        severity,
-                        description       AS raw_notes,
-                        source_url
-                    FROM disaster_events
-                    WHERE hazard_type IN ('conflict', 'mass_displacement')
-                      AND status NOT IN ('rejected', 'resolved')
-                      AND deleted_at IS NULL
-                      AND start_date >= NOW() - INTERVAL '30 days'
-                    ORDER BY start_date DESC
-                    LIMIT 200
-                """))
-                for row in rows.mappings():
-                    sev_str = str(row["severity"]) if row["severity"] else "Unknown"
-                    sev = severity_map.get(sev_str, 1)
-                    _EVENT_STORE.append({
-                        "external_id":       row["external_id"],
-                        "source":            "disaster_events_db",
-                        "event_date":        row["event_date"].isoformat() if row["event_date"] else datetime.now(timezone.utc).isoformat(),
-                        "event_type":        str(row["event_type"]),
-                        "province":          row["province"] or "Unknown",
-                        "p_code":            row["p_code"],
-                        "severity":          sev,
-                        "displacement_risk": 0.65 if str(row["event_type"]) == "mass_displacement" else 0.45,
-                        "territoire":        None,
-                        "coordinates":       None,
-                        "fatalities_reported": None,
-                        "raw_notes":         row["raw_notes"],
-                        "source_url":        row["source_url"],
-                        "actor_names":       [],
-                    })
+            pcode_to_province = {
+                "CD10": "Kinshasa", "CD20": "Kongo-Central", "CD21": "Kwango",
+                "CD22": "Kwilu", "CD23": "Maï-Ndombe", "CD41": "Équateur",
+                "CD42": "Sud-Ubangi", "CD43": "Nord-Ubangi", "CD44": "Mongala",
+                "CD45": "Tshuapa", "CD51": "Tshopo", "CD52": "Bas-Uélé",
+                "CD53": "Haut-Uélé", "CD54": "Ituri", "CD61": "Nord-Kivu",
+                "CD62": "Sud-Kivu", "CD63": "Maniema", "CD71": "Haut-Katanga",
+                "CD72": "Lualaba", "CD73": "Haut-Lomami", "CD74": "Tanganyika",
+                "CD81": "Lomami", "CD82": "Kasaï-Oriental", "CD83": "Kasaï",
+                "CD84": "Kasaï-Central", "CD85": "Sankuru",
+            }
+
+            api_url = settings.api_service_url.rstrip("/")
+            rows_list: list[dict] = []
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                for hazard_type in ["conflict", "mass_displacement"]:
+                    page = 1
+                    while True:
+                        resp = await client.get(
+                            f"{api_url}/events",
+                            params={"hazardType": hazard_type, "limit": 100, "page": page},
+                        )
+                        resp.raise_for_status()
+                        data = resp.json()
+                        events = data.get("data", [])
+                        if not events:
+                            break
+                        rows_list.extend(events)
+                        pagination = data.get("pagination", {})
+                        if page >= pagination.get("totalPages", 1):
+                            break
+                        page += 1
+
+            print(f"[conflit] bootstrap API returned {len(rows_list)} rows", flush=True)
+
+            for row in rows_list:
+                if row.get("status") in ("rejected", "resolved"):
+                    continue
+                sev_str = str(row.get("severity") or "Unknown")
+                sev = severity_map.get(sev_str, 1)
+                p_code = row.get("locationPcode") or ""
+                province = pcode_to_province.get(p_code, p_code or "Unknown")
+                event_date = row.get("startDate") or row.get("createdAt") or datetime.now(timezone.utc).isoformat()
+                _EVENT_STORE.append({
+                    "external_id":         str(row.get("id") or uuid.uuid4()),
+                    "source":              row.get("source", "api"),
+                    "event_date":          event_date,
+                    "event_type":          str(row.get("hazardType") or "conflict"),
+                    "province":            province,
+                    "p_code":              p_code,
+                    "severity":            sev,
+                    "displacement_risk":   0.65 if row.get("hazardType") == "mass_displacement" else 0.45,
+                    "territoire":          row.get("locationName"),
+                    "coordinates":         None,
+                    "fatalities_reported": None,
+                    "raw_notes":           row.get("description"),
+                    "source_url":          None,
+                    "actor_names":         [],
+                })
+
+            print(f"[conflit] bootstrap_done events_loaded={len(_EVENT_STORE)}", flush=True)
             logger.info("conflit_agent.bootstrap_done", events_loaded=len(_EVENT_STORE))
         except Exception as exc:
+            import traceback
+            print(f"[conflit] bootstrap_FAILED error={exc}", flush=True)
+            print(traceback.format_exc(), flush=True)
             logger.warning("conflit_agent.bootstrap_failed", error=str(exc))
 
     # ------------------------------------------------------------------

@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev gcc build-essential libxml2-dev libxslt1-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY services/ai-prediction/requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # Stage 2: Runtime image
@@ -25,13 +25,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
 
-# Copy new top-level service files
-COPY main.py ./main.py
-COPY config.py ./config.py
-COPY db.py ./db.py
-COPY redis_client.py ./redis_client.py
-COPY agents/ ./agents/
-COPY schemas/ ./schemas/
+# Copy service files (paths relative to monorepo root build context)
+COPY services/ai-prediction/main.py ./main.py
+COPY services/ai-prediction/config.py ./config.py
+COPY services/ai-prediction/db.py ./db.py
+COPY services/ai-prediction/redis_client.py ./redis_client.py
+COPY services/ai-prediction/agents/ ./agents/
+COPY services/ai-prediction/schemas/ ./schemas/
 
 # Model artifacts directory
 RUN mkdir -p /app/model_artifacts /app/model_store

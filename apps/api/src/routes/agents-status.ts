@@ -9,7 +9,7 @@ import { aiGet } from '../services/aiClient.js';
 export async function agentsStatusRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/ai/agents/status',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (_request, reply) => {
       const { status, data } = await aiGet('/internal/agents/status');
       return reply.status(status).send(data);

@@ -49,7 +49,7 @@ export async function predictionRoutes(fastify: FastifyInstance): Promise<void> 
   // GET /predictions/alerts/pending — alertes CAP en attente de validation humaine
   fastify.get(
     '/predictions/alerts/pending',
-    { preHandler: [requireAuth, requireRole('territory_admin', 'national_decision_maker', 'system_admin')] },
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
     async (_request, reply) => {
       const { status, data } = await aiGet('/internal/prediction/alerts/pending');
       return reply.status(status).send(data);

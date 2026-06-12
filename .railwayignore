@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.claude
+coverage
+**/coverage
+.turbo
+**/.turbo
+**/__pycache__
+**/*.pyc
+**/*.pyo
+apps/
+db/
+mobile/
