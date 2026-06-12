@@ -20,16 +20,18 @@ export interface AiResponse<T = unknown> {
 export async function aiGet<T = unknown>(
   path: string,
   params?: Record<string, string | number | boolean>,
+  headers?: Record<string, string>,
 ): Promise<AiResponse<T>> {
-  const res = await ai.get<T>(path, { params } as AxiosRequestConfig);
+  const res = await ai.get<T>(path, { params, headers } as AxiosRequestConfig);
   return { status: res.status, data: res.data };
 }
 
 export async function aiPost<T = unknown>(
   path: string,
   body?: unknown,
+  headers?: Record<string, string>,
 ): Promise<AiResponse<T>> {
-  const res = await ai.post<T>(path, body);
+  const res = await ai.post<T>(path, body, { headers } as AxiosRequestConfig);
   return { status: res.status, data: res.data };
 }
 
