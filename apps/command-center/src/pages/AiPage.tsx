@@ -2,17 +2,57 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../lib/api.js';
 
-type Tab = 'status' | 'predictions' | 'veille' | 'antifraud' | 'stocks' | 'signalements' | 'epidemie' | 'logistique' | 'reporting';
+type Tab = 'status' | 'predictions' | 'veille' | 'renseignements' | 'antifraud' | 'stocks' | 'signalements' | 'epidemie' | 'logistique' | 'reporting';
 
-const LEVEL_BADGE: Record<string, string> = {
-  critical: 'bg-red-900 text-white',
-  high:     'bg-red-600 text-white',
-  medium:   'bg-yellow-500 text-black',
-  low:      'bg-green-700 text-white',
+// ── Risk ─────────────────────────────────────────────────────────────────────
+
+const LEVEL_BADGE: Record<string, { cls: string; label: string }> = {
+  CRITIQUE: { cls: 'bg-red-900 text-white border border-red-700',    label: 'CRITIQUE' },
+  ELEVE:    { cls: 'bg-red-700 text-white border border-red-600',    label: 'ÉLEVÉ'    },
+  MODERE:   { cls: 'bg-yellow-700 text-black border border-yellow-600', label: 'MODÉRÉ' },
+  FAIBLE:   { cls: 'bg-green-800 text-green-200 border border-green-700', label: 'FAIBLE' },
 };
+
+const RISK_TYPE_ICON: Record<string, string> = {
+  FLOOD: '🌊', LANDSLIDE: '⛰️', DISPLACEMENT: '🏃', EPIDEMIC: '🦠',
+};
+const RISK_TYPE_FR: Record<string, string> = {
+  FLOOD: 'Inondation', LANDSLIDE: 'Glissement de terrain', DISPLACEMENT: 'Déplacement', EPIDEMIC: 'Épidémie',
+};
+
+const ACTION_RECOMMENDATIONS: Record<string, Record<string, string[]>> = {
+  FLOOD: {
+    CRITIQUE: ['Évacuation immédiate des zones inondables', 'Pré-positionnement des équipes de secours', 'Alerte immédiate des populations riveraines', 'Coordination avec les autorités locales et la protection civile'],
+    ELEVE:    ['Surveillance accrue des niveaux des cours d\'eau', 'Pré-alerte des populations en zones à risque', 'Vérification des digues, barrages et drains'],
+    MODERE:   ['Suivi météorologique renforcé', 'Inventaire des ressources d\'urgence disponibles', 'Sensibilisation communautaire préventive'],
+    FAIBLE:   ['Veille hydrologique continue', 'Mise à jour des plans de contingence inondation'],
+  },
+  LANDSLIDE: {
+    CRITIQUE: ['Évacuation d\'urgence des zones instables', 'Fermeture des routes et axes dangereux', 'Déploiement des équipes de recherche et sauvetage'],
+    ELEVE:    ['Surveillance géotechnique renforcée', 'Alerte des populations vivant sur les pentes instables'],
+    MODERE:   ['Inspection des terrains et talus à risque', 'Sensibilisation aux signes précurseurs de glissement'],
+    FAIBLE:   ['Cartographie des zones à risque', 'Suivi des précipitations cumulées'],
+  },
+  DISPLACEMENT: {
+    CRITIQUE: ['Ouverture de sites d\'accueil d\'urgence', 'Distribution de kits non-alimentaires (NFI)', 'Coordination immédiate avec UNHCR/IOM/UNICEF', 'Enregistrement et protection des personnes déplacées'],
+    ELEVE:    ['Préparation des capacités d\'accueil', 'Mobilisation des partenaires humanitaires', 'Monitoring des flux de déplacement'],
+    MODERE:   ['Évaluation des besoins humanitaires potentiels', 'Pré-positionnement des stocks humanitaires'],
+    FAIBLE:   ['Analyse des facteurs de déplacement', 'Renforcement des mécanismes d\'alerte précoce communautaires'],
+  },
+  EPIDEMIC: {
+    CRITIQUE: ['Déploiement immédiat des équipes de Réponse Rapide', 'Mise en place des mesures de quarantaine', 'Activation du centre de crise santé', 'Notification OMS, UNICEF et MSF'],
+    ELEVE:    ['Renforcement de la surveillance épidémiologique', 'Pré-positionnement des stocks médicaux d\'urgence', 'Formation des équipes de santé communautaire'],
+    MODERE:   ['Investigation des cas suspects', 'Campagne de sensibilisation à l\'hygiène et à la prévention'],
+    FAIBLE:   ['Surveillance renforcée des signaux sanitaires', 'Vérification et maintien des stocks de vaccins'],
+  },
+};
+
+// ── Hazard helpers (shared across tabs) ─────────────────────────────────────
+
 const HAZARD_ICONS: Record<string, string> = {
   flood: '🌊', landslide: '⛰️', mass_displacement: '🏃', humanitarian_crisis: '🆘',
-  health_epidemic: '🦠', drought: '☀️', fire: '🔥', conflict: '⚔️', earthquake: '📳', other: '⚠️',
+  health_epidemic: '🦠', volcanic_eruption: '🌋', drought: '☀️', fire: '🔥',
+  conflict: '⚔️', earthquake: '📳', other: '⚠️',
 };
 const SOURCE_LABELS: Record<string, string> = {
   reliefweb: 'ReliefWeb', fews_net: 'FEWS NET', gdacs: 'GDACS',
@@ -22,8 +62,148 @@ const CONNECTOR_STATUS: Record<string, string> = {
   ok: 'bg-green-500', degraded: 'bg-yellow-400', down: 'bg-red-500', no_data: 'bg-gray-500',
 };
 
+// ── Intelligence categories for "Renseignements" tab ─────────────────────────
+
+const INTEL_CATEGORIES: { key: string; label: string; icon: string; hazards: string[] }[] = [
+  { key: 'military',     label: 'Activité militaire',         icon: '⚔️',  hazards: ['conflict'] },
+  { key: 'displacement', label: 'Déplacements de population', icon: '🏃',  hazards: ['mass_displacement'] },
+  { key: 'security',     label: 'Incidents sécuritaires',     icon: '🔒',  hazards: ['conflict', 'other'] },
+  { key: 'infra',        label: 'Dommages infrastructures',   icon: '🏗️',  hazards: ['earthquake', 'volcanic_eruption', 'fire'] },
+  { key: 'humanitarian', label: 'Besoins humanitaires',       icon: '🆘',  hazards: ['humanitarian_crisis', 'drought'] },
+  { key: 'environment',  label: 'Risques environnementaux',   icon: '🌍',  hazards: ['flood', 'landslide', 'health_epidemic'] },
+];
+
+function getCategoryForEvent(e: any): string {
+  const h = e.hazard_type ?? '';
+  for (const cat of INTEL_CATEGORIES) {
+    if (cat.hazards.includes(h)) return cat.key;
+  }
+  return 'environment';
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function FactorBar({ name, contribution, direction }: { name: string; contribution: number; direction: string }) {
+  const pct = Math.min(100, Math.abs(contribution) * 100);
+  return (
+    <div className="flex items-center gap-2 text-[10px]">
+      <span className={`w-3 shrink-0 font-bold ${direction === '+' ? 'text-red-400' : 'text-green-400'}`}>{direction}</span>
+      <span className="text-cc-400 w-28 shrink-0 truncate" title={name}>{name}</span>
+      <div className="flex-1 h-1.5 bg-cc-700 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full ${direction === '+' ? 'bg-red-500' : 'bg-green-500'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className={`w-8 text-right font-mono ${direction === '+' ? 'text-red-300' : 'text-green-300'}`}>
+        {pct.toFixed(0)}%
+      </span>
+    </div>
+  );
+}
+
+function RiskDetailPanel({ risk, onClose }: { risk: any; onClose: () => void }) {
+  const level = risk.level ?? 'FAIBLE';
+  const badge = LEVEL_BADGE[level] ?? LEVEL_BADGE.FAIBLE;
+  const actions = ACTION_RECOMMENDATIONS[risk.risk_type]?.[level] ?? [];
+  const factors: any[] = risk.factors ?? [];
+  const confidence = risk.confidence ?? null;
+
+  return (
+    <div className="mt-3 bg-cc-800 rounded-xl border border-cc-600 p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-lg">{RISK_TYPE_ICON[risk.risk_type] ?? '⚠️'}</span>
+            <span className="font-bold text-white text-sm">{risk.province ?? risk.p_code}</span>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${badge.cls}`}>{badge.label}</span>
+          </div>
+          <div className="text-[10px] text-cc-500 font-mono">
+            {RISK_TYPE_FR[risk.risk_type] ?? risk.risk_type} · Horizon {risk.horizon_days}j · v{risk.model_version ?? '?'}
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-3xl font-bold text-white">{Math.round(risk.score)}</div>
+          <div className="text-[10px] text-cc-500 font-mono">/100</div>
+        </div>
+      </div>
+
+      {/* Confidence */}
+      {confidence !== null && (
+        <div>
+          <div className="text-[10px] font-mono text-cc-500 uppercase mb-1.5">Niveau de confiance</div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-2 bg-cc-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${confidence >= 0.7 ? 'bg-green-500' : confidence >= 0.5 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                style={{ width: `${Math.round(confidence * 100)}%` }}
+              />
+            </div>
+            <span className={`text-sm font-bold ${confidence >= 0.7 ? 'text-green-400' : confidence >= 0.5 ? 'text-yellow-400' : 'text-red-400'}`}>
+              {Math.round(confidence * 100)}%
+            </span>
+          </div>
+          <div className="text-[9px] text-cc-600 font-mono mt-0.5">
+            {confidence >= 0.7 ? 'Confiance élevée — données suffisantes' :
+             confidence >= 0.5 ? 'Confiance modérée — données partielles' :
+             'Confiance faible — données insuffisantes, résultat indicatif'}
+          </div>
+        </div>
+      )}
+
+      {/* Contributing factors */}
+      {factors.length > 0 && (
+        <div>
+          <div className="text-[10px] font-mono text-cc-500 uppercase mb-2">Facteurs contributifs</div>
+          <div className="space-y-1.5">
+            {factors
+              .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
+              .slice(0, 8)
+              .map((f, i) => (
+                <FactorBar key={i} name={f.name} contribution={f.contribution} direction={f.direction ?? (f.contribution >= 0 ? '+' : '-')} />
+              ))
+            }
+          </div>
+          {factors.length === 0 && (
+            <div className="text-[10px] text-cc-600 italic">Aucun facteur détaillé disponible pour ce calcul</div>
+          )}
+        </div>
+      )}
+
+      {/* Action recommendations */}
+      {actions.length > 0 && (
+        <div>
+          <div className="text-[10px] font-mono text-cc-500 uppercase mb-2">Actions recommandées</div>
+          <div className="space-y-1">
+            {actions.map((a, i) => (
+              <div key={i} className="flex items-start gap-2 text-[11px] text-gray-300">
+                <span className="text-sinaur-500 shrink-0 font-bold mt-px">{i + 1}.</span>
+                <span>{a}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 text-[9px] text-cc-600 italic border-t border-cc-700 pt-1.5">
+            ⚠ Ces recommandations sont générées automatiquement par l'IA. Toute décision opérationnelle requiert validation humaine.
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={onClose}
+        className="w-full text-center text-[10px] font-mono text-cc-500 hover:text-gray-300 transition-colors pt-1"
+      >
+        ▲ Fermer le détail
+      </button>
+    </div>
+  );
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+
 function PredictionsTab() {
   const [horizon, setHorizon] = useState<7 | 30 | 90>(7);
+  const [selected, setSelected] = useState<any | null>(null);
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -37,33 +217,61 @@ function PredictionsTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['ai-risks'] }); },
   });
 
-  const risks: any[] = data?.data ?? [];
-  const critical = risks.filter(r => r.level === 'critical');
-  const high = risks.filter(r => r.level === 'high');
+  const risks: any[] = data?.data ?? (Array.isArray(data) ? data : []);
+  // Field names from Pydantic: p_code, risk_type, level (CRITIQUE/ELEVE/MODERE/FAIBLE)
+  const critical = risks.filter(r => r.level === 'CRITIQUE');
+  const high     = risks.filter(r => r.level === 'ELEVE');
+
+  const alertsQuery = useQuery({
+    queryKey: ['ai-alerts-pending'],
+    queryFn: () => apiClient.get('/predictions/alerts/pending').then(r => r.data),
+    staleTime: 60_000,
+  });
+  const pendingAlerts: any[] = Array.isArray(alertsQuery.data) ? alertsQuery.data : [];
 
   return (
     <div className="space-y-4">
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'CRITIQUE', value: critical.length, cls: 'bg-red-900 border-red-700' },
-          { label: 'ÉLEVÉ',    value: high.length,     cls: 'bg-red-800 border-red-600' },
-          { label: 'TOTAL',    value: risks.length,    cls: 'bg-cc-800 border-cc-600'   },
+          { label: 'CRITIQUE', value: critical.length, cls: 'bg-red-950 border border-red-800' },
+          { label: 'ÉLEVÉ',    value: high.length,     cls: 'bg-red-900/50 border border-red-800' },
+          { label: 'TOTAL',    value: risks.length,    cls: 'bg-cc-800 border border-cc-600' },
         ].map(k => (
-          <div key={k.label} className={`rounded-lg border p-3 ${k.cls}`}>
-            <div className="text-xs font-mono text-gray-400 mb-1">{k.label}</div>
+          <div key={k.label} className={`rounded-lg p-3 ${k.cls}`}>
+            <div className="text-[10px] font-mono text-gray-400 mb-1">{k.label}</div>
             <div className="text-2xl font-bold text-white">{k.value}</div>
           </div>
         ))}
       </div>
 
-      {/* Contrôles */}
+      {/* Pending CAP alerts */}
+      {pendingAlerts.length > 0 && (
+        <div className="bg-red-950/40 border border-red-800 rounded-lg p-3">
+          <div className="text-[10px] font-mono text-red-400 uppercase mb-2 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+            {pendingAlerts.length} alerte{pendingAlerts.length > 1 ? 's' : ''} CAP en attente de validation
+          </div>
+          <div className="space-y-1">
+            {pendingAlerts.slice(0, 3).map((a: any, i: number) => (
+              <div key={i} className="flex items-center gap-2 text-[11px] text-gray-300">
+                <span className="text-red-400 font-mono shrink-0">{a.risk_level}</span>
+                <span className="truncate">{a.province ?? a.p_code}</span>
+                <span className="text-cc-500 shrink-0">{a.risk_type}</span>
+                <span className="text-white font-bold shrink-0">{Math.round(a.score ?? 0)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Controls */}
       <div className="flex items-center gap-3">
         <div className="flex gap-1 bg-cc-800 rounded-lg p-1">
           {([7, 30, 90] as const).map(h => (
             <button
               key={h}
-              onClick={() => setHorizon(h)}
+              onClick={() => { setHorizon(h); setSelected(null); }}
               className={`px-3 py-1 rounded text-xs font-mono transition-colors ${
                 horizon === h ? 'bg-sinaur-700 text-white' : 'text-gray-400 hover:text-gray-200'
               }`}
@@ -71,6 +279,9 @@ function PredictionsTab() {
               {h}J
             </button>
           ))}
+        </div>
+        <div className="text-[10px] text-cc-500 font-mono">
+          {horizon === 7 ? 'Horizon court terme' : horizon === 30 ? 'Horizon moyen terme' : 'Horizon long terme'}
         </div>
         <button
           onClick={() => refresh.mutate()}
@@ -81,7 +292,12 @@ function PredictionsTab() {
         </button>
       </div>
 
-      {/* Tableau */}
+      {/* Selected risk detail */}
+      {selected && (
+        <RiskDetailPanel risk={selected} onClose={() => setSelected(null)} />
+      )}
+
+      {/* Table */}
       {isLoading ? (
         <div className="text-center text-gray-500 text-sm py-8">Chargement…</div>
       ) : risks.length === 0 ? (
@@ -90,41 +306,57 @@ function PredictionsTab() {
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-cc-700 text-gray-500 font-mono uppercase">
+              <tr className="border-b border-cc-700 text-gray-500 font-mono uppercase text-[10px]">
                 <th className="pb-2 text-left">Province</th>
                 <th className="pb-2 text-left">Aléa</th>
                 <th className="pb-2 text-right">Score</th>
                 <th className="pb-2 text-center">Niveau</th>
+                <th className="pb-2 text-center">Conf.</th>
               </tr>
             </thead>
             <tbody>
-              {risks.slice(0, 30).map((r, i) => (
-                <tr key={i} className="border-b border-cc-800 hover:bg-cc-800 transition-colors">
-                  <td className="py-2 font-mono text-gray-300">{r.pcode}</td>
-                  <td className="py-2 text-gray-300">
-                    <span className="mr-1">{HAZARD_ICONS[r.hazard_type] ?? '⚠️'}</span>
-                    {r.hazard_type}
-                  </td>
-                  <td className="py-2 text-right">
-                    <div className="inline-flex items-center gap-1.5">
-                      <div
-                        className="h-1.5 rounded-full bg-sinaur-600"
-                        style={{ width: `${Math.round(r.score / 5)}px`, maxWidth: '40px', minWidth: '2px' }}
-                      />
-                      <span className="text-white font-bold">{r.score}</span>
-                    </div>
-                  </td>
-                  <td className="py-2 text-center">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${LEVEL_BADGE[r.level] ?? 'bg-gray-700 text-gray-300'}`}>
-                      {r.level?.toUpperCase()}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {risks.slice(0, 40).map((r, i) => {
+                const badge = LEVEL_BADGE[r.level] ?? LEVEL_BADGE.FAIBLE;
+                const isSelected = selected?.p_code === r.p_code && selected?.risk_type === r.risk_type;
+                return (
+                  <tr
+                    key={i}
+                    onClick={() => setSelected(isSelected ? null : r)}
+                    className={`border-b border-cc-800 cursor-pointer transition-colors ${
+                      isSelected ? 'bg-cc-700' : 'hover:bg-cc-800'
+                    }`}
+                  >
+                    <td className="py-2 font-mono text-gray-300">{r.province ?? r.p_code}</td>
+                    <td className="py-2 text-gray-300">
+                      <span className="mr-1">{RISK_TYPE_ICON[r.risk_type] ?? '⚠️'}</span>
+                      <span className="text-[10px]">{RISK_TYPE_FR[r.risk_type] ?? r.risk_type}</span>
+                    </td>
+                    <td className="py-2 text-right">
+                      <div className="inline-flex items-center gap-1.5">
+                        <div
+                          className={`h-1.5 rounded-full ${r.level === 'CRITIQUE' ? 'bg-red-500' : r.level === 'ELEVE' ? 'bg-orange-400' : r.level === 'MODERE' ? 'bg-yellow-500' : 'bg-green-500'}`}
+                          style={{ width: `${Math.round((r.score ?? 0) / 5)}px`, maxWidth: '40px', minWidth: '2px' }}
+                        />
+                        <span className="text-white font-bold">{Math.round(r.score ?? 0)}</span>
+                      </div>
+                    </td>
+                    <td className="py-2 text-center">
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${badge.cls}`}>
+                        {badge.label}
+                      </span>
+                    </td>
+                    <td className="py-2 text-center text-cc-400 font-mono text-[10px]">
+                      {r.confidence != null ? `${Math.round(r.confidence * 100)}%` : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-          {risks.length > 30 && (
-            <p className="text-center text-xs text-gray-600 mt-2">+{risks.length - 30} entrées supplémentaires</p>
+          {risks.length > 40 && (
+            <p className="text-center text-xs text-gray-600 mt-2 font-mono">
+              +{risks.length - 40} autres provinces · filtrer par type pour affiner
+            </p>
           )}
         </div>
       )}
@@ -146,46 +378,39 @@ function VeilleTab() {
     refetchInterval: 30_000,
   });
 
-  // API returns array directly, not {events:[...]}
   const events: any[] = Array.isArray(data) ? data : (data?.events ?? []);
   const connectors: any[] = healthData?.connectors ?? [];
 
   return (
     <div className="space-y-4">
-      {/* Connecteurs */}
       {connectors.length > 0 && (
         <div>
-          <div className="text-xs font-mono text-gray-500 uppercase mb-2">Connecteurs d'ingestion</div>
+          <div className="text-[10px] font-mono text-gray-500 uppercase mb-2">Connecteurs d'ingestion</div>
           <div className="grid grid-cols-5 gap-2">
             {connectors.map(c => {
               const srcId = c.source_id ?? c.source ?? String(Math.random());
               const status = c.status ?? (c.circuit_open ? 'down' : 'ok');
               return (
-              <div key={srcId} className="bg-cc-800 rounded-lg p-2 text-center">
-                <div className="flex items-center justify-center gap-1 mb-1">
-                  <span className={`w-2 h-2 rounded-full ${CONNECTOR_STATUS[status] ?? 'bg-gray-500'}`} />
-                  <span className={`text-[10px] font-mono font-bold ${status === 'ok' ? 'text-green-400' : status === 'degraded' ? 'text-yellow-400' : 'text-red-400'}`}>
-                    {status.toUpperCase()}
-                  </span>
+                <div key={srcId} className="bg-cc-800 rounded-lg p-2 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <span className={`w-2 h-2 rounded-full ${CONNECTOR_STATUS[status] ?? 'bg-gray-500'}`} />
+                    <span className={`text-[10px] font-mono font-bold ${status === 'ok' ? 'text-green-400' : status === 'degraded' ? 'text-yellow-400' : 'text-red-400'}`}>
+                      {status.toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-gray-400">{SOURCE_LABELS[srcId] ?? srcId}</div>
+                  <div className="text-xs font-bold text-white">{c.events_48h ?? c.event_store_size ?? '—'}</div>
+                  <div className="text-[9px] text-gray-600">evt / 48h</div>
                 </div>
-                <div className="text-[10px] text-gray-400">{SOURCE_LABELS[srcId] ?? srcId}</div>
-                <div className="text-xs font-bold text-white">{c.events_48h ?? c.event_store_size ?? '—'}</div>
-                <div className="text-[9px] text-gray-600">evt / 48h</div>
-              </div>
               );
             })}
           </div>
         </div>
       )}
 
-      {/* Événements collectés */}
       <div className="flex items-center justify-between">
-        <div className="text-xs font-mono text-gray-500 uppercase">
-          Signaux récents ({events.length})
-        </div>
-        <button onClick={() => refetch()} className="text-xs text-gray-500 hover:text-gray-300 font-mono">
-          ↺ Actualiser
-        </button>
+        <div className="text-[10px] font-mono text-gray-500 uppercase">Signaux récents ({events.length})</div>
+        <button onClick={() => refetch()} className="text-[10px] text-gray-500 hover:text-gray-300 font-mono">↺ Actualiser</button>
       </div>
 
       {isLoading ? (
@@ -201,7 +426,7 @@ function VeilleTab() {
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className="text-[10px] font-mono text-gray-500">{SOURCE_LABELS[e.source] ?? e.source}</span>
                   <span className="text-[10px] font-mono text-gray-600">{e.location_pcode}</span>
-                  {e.is_duplicate && <span className="text-[10px] text-yellow-500">DOUBLON</span>}
+                  {e.is_duplicate && <span className="text-[10px] text-yellow-500 font-bold">DOUBLON</span>}
                 </div>
                 <p className="text-xs text-gray-200 truncate">{e.title}</p>
               </div>
@@ -212,6 +437,159 @@ function VeilleTab() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function RenseignementsTab() {
+  const [activeCat, setActiveCat] = useState<string>('all');
+  const [submitting, setSubmitting] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState<Set<string>>(new Set());
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['ai-veille-intel'],
+    queryFn: () => apiClient.get('/ai/veille/events?limit=80').then(r => r.data),
+    staleTime: 120_000,
+  });
+
+  const events: any[] = Array.isArray(data) ? data : (data?.events ?? []);
+
+  const filteredEvents = activeCat === 'all'
+    ? events
+    : events.filter(e => getCategoryForEvent(e) === activeCat);
+
+  async function suggestAsCrisis(e: any) {
+    const key = e.id ?? e.external_id ?? String(Math.random());
+    setSubmitting(key);
+    try {
+      await apiClient.post('/events', {
+        title: e.title ?? 'Signal veille',
+        description: e.description ?? e.body ?? '',
+        hazardType: e.hazard_type ?? 'other',
+        severity: e.severity ?? 'Unknown',
+        locationPcode: e.location_pcode ?? e.p_code ?? 'CD',
+        locationName: e.location_name ?? e.province ?? 'Non précisé',
+        locationLevel: 1,
+        locationAccuracy: 'pcode',
+        source: e.source ?? 'reliefweb',
+        status: 'under_review',
+        confidence: 'probable',
+      });
+      setSubmitted(prev => new Set([...prev, key]));
+    } catch { /* show error state */ } finally {
+      setSubmitting(null);
+    }
+  }
+
+  const countByCat = INTEL_CATEGORIES.reduce<Record<string, number>>((acc, cat) => {
+    acc[cat.key] = events.filter(e => getCategoryForEvent(e) === cat.key).length;
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-white">Renseignements & Suggestions</h3>
+          <p className="text-[10px] text-cc-500 mt-0.5">
+            Signaux collectés par les agents IA, classifiés et proposés pour création dans la base de crises.
+          </p>
+        </div>
+        <button onClick={() => refetch()} className="text-[10px] text-gray-500 hover:text-gray-300 font-mono">↺</button>
+      </div>
+
+      {/* Category filters */}
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          onClick={() => setActiveCat('all')}
+          className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-mono transition-colors ${
+            activeCat === 'all' ? 'bg-sinaur-800 text-sinaur-300 border border-sinaur-700' : 'bg-cc-800 text-cc-400 hover:text-gray-300'
+          }`}
+        >
+          Tous <span className="text-cc-500">({events.length})</span>
+        </button>
+        {INTEL_CATEGORIES.map(cat => (
+          <button
+            key={cat.key}
+            onClick={() => setActiveCat(cat.key)}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-mono transition-colors ${
+              activeCat === cat.key ? 'bg-sinaur-800 text-sinaur-300 border border-sinaur-700' : 'bg-cc-800 text-cc-400 hover:text-gray-300'
+            }`}
+          >
+            <span>{cat.icon}</span>
+            <span>{cat.label}</span>
+            <span className="text-cc-600">({countByCat[cat.key] ?? 0})</span>
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="text-center text-gray-500 text-sm py-8">Chargement des renseignements…</div>
+      ) : filteredEvents.length === 0 ? (
+        <div className="text-center text-gray-500 text-sm py-8">Aucun signal dans cette catégorie</div>
+      ) : (
+        <div className="space-y-2 max-h-[520px] overflow-y-auto">
+          {filteredEvents.map((e, i) => {
+            const cat = INTEL_CATEGORIES.find(c => c.key === getCategoryForEvent(e));
+            const key = e.id ?? e.external_id ?? String(i);
+            const isSubmitted = submitted.has(key);
+            const isSubmittingThis = submitting === key;
+
+            return (
+              <div key={i} className="bg-cc-800 rounded-xl border border-cc-700 p-3 space-y-2">
+                {/* Top row */}
+                <div className="flex items-start gap-2">
+                  <span className="text-base shrink-0 mt-0.5">{cat?.icon ?? HAZARD_ICONS[e.hazard_type] ?? '⚠️'}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                      <span className="text-[10px] bg-cc-700 text-cc-400 px-1.5 py-px rounded font-mono">
+                        {cat?.label ?? 'Autre'}
+                      </span>
+                      <span className="text-[10px] text-gray-500 font-mono">{SOURCE_LABELS[e.source] ?? e.source}</span>
+                      {e.location_pcode && (
+                        <span className="text-[10px] font-mono text-cc-500">📍 {e.location_pcode}</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-200 leading-snug">{e.title}</p>
+                  </div>
+                  <div className="text-[10px] text-cc-600 shrink-0 whitespace-nowrap">
+                    {e.fetched_at ? new Date(e.fetched_at).toLocaleDateString('fr-FR') : '—'}
+                  </div>
+                </div>
+
+                {/* Description preview */}
+                {(e.description || e.body) && (
+                  <p className="text-[10px] text-cc-400 line-clamp-2 pl-7">
+                    {e.description ?? e.body}
+                  </p>
+                )}
+
+                {/* Action */}
+                <div className="flex justify-end pt-0.5">
+                  {isSubmitted ? (
+                    <span className="text-[10px] text-green-400 font-mono flex items-center gap-1">
+                      ✓ Ajouté à la base d'événements
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => suggestAsCrisis(e)}
+                      disabled={!!isSubmittingThis}
+                      className="text-[10px] font-mono px-3 py-1 bg-sinaur-900 hover:bg-sinaur-800 text-sinaur-400 hover:text-sinaur-300 border border-sinaur-800 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {isSubmittingThis ? '⟳ Création…' : '+ Créer un événement'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="text-[9px] text-cc-700 italic border-t border-cc-800 pt-2">
+        Les signaux ci-dessus proviennent des connecteurs de veille (ReliefWeb, GDACS, FEWS NET, etc.) et sont proposés
+        pour enrichir la base de données des événements. Chaque entrée doit être validée par un opérateur avant publication.
+      </div>
     </div>
   );
 }
@@ -234,67 +612,55 @@ function AntifraudTab() {
 
   return (
     <div className="space-y-4">
-      {/* Stats */}
       {stats.events && (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-cc-800 rounded-lg p-3 col-span-2">
-            <div className="text-xs font-mono text-gray-500 uppercase mb-2">30 derniers jours</div>
-            <div className="grid grid-cols-4 gap-4 text-center">
-              <div>
-                <div className="text-xl font-bold text-white">{stats.events.total.toLocaleString()}</div>
-                <div className="text-[10px] text-gray-500">Événements</div>
-              </div>
-              <div>
-                <div className="text-xl font-bold text-yellow-400">{stats.moderation_queue?.pending ?? 0}</div>
-                <div className="text-[10px] text-gray-500">En attente</div>
-              </div>
-              <div>
-                <div className="text-xl font-bold text-red-400">{stats.events.rejected}</div>
-                <div className="text-[10px] text-gray-500">Rejetés</div>
-              </div>
-              <div>
-                <div className="text-xl font-bold text-orange-400">{stats.events.rejection_rate_pct}%</div>
-                <div className="text-[10px] text-gray-500">Taux rejet</div>
-              </div>
+        <div className="bg-cc-800 rounded-lg p-3">
+          <div className="text-[10px] font-mono text-gray-500 uppercase mb-2">30 derniers jours</div>
+          <div className="grid grid-cols-4 gap-4 text-center">
+            <div>
+              <div className="text-xl font-bold text-white">{stats.events.total.toLocaleString()}</div>
+              <div className="text-[10px] text-gray-500">Événements</div>
+            </div>
+            <div>
+              <div className="text-xl font-bold text-yellow-400">{stats.moderation_queue?.pending ?? 0}</div>
+              <div className="text-[10px] text-gray-500">En attente</div>
+            </div>
+            <div>
+              <div className="text-xl font-bold text-red-400">{stats.events.rejected}</div>
+              <div className="text-[10px] text-gray-500">Rejetés</div>
+            </div>
+            <div>
+              <div className="text-xl font-bold text-orange-400">{stats.events.rejection_rate_pct}%</div>
+              <div className="text-[10px] text-gray-500">Taux rejet</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* File de modération */}
-      <div>
-        <div className="text-xs font-mono text-gray-500 uppercase mb-2">
-          File de modération ({queue.length} en attente)
-        </div>
-        {queueLoading ? (
-          <div className="text-center text-gray-500 text-sm py-6">Chargement…</div>
-        ) : queue.length === 0 ? (
-          <div className="text-center text-gray-500 text-sm py-6">File vide — aucun dossier en attente</div>
-        ) : (
-          <div className="space-y-1.5 max-h-72 overflow-y-auto">
-            {queue.map((item, i) => (
-              <div key={i} className="bg-cc-800 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-xs text-gray-200 truncate">{item.notes ?? `Dossier ${item.id?.slice(0, 8) ?? i}`}</div>
-                  <div className="text-[10px] text-gray-600 font-mono">
-                    {item.created_at ? new Date(item.created_at).toLocaleDateString('fr-FR') : '—'}
-                  </div>
+      <div className="text-[10px] font-mono text-gray-500 uppercase">File de modération ({queue.length})</div>
+      {queueLoading ? (
+        <div className="text-center text-gray-500 text-sm py-6">Chargement…</div>
+      ) : queue.length === 0 ? (
+        <div className="text-center text-gray-500 text-sm py-6">File vide — aucun dossier en attente</div>
+      ) : (
+        <div className="space-y-1.5 max-h-72 overflow-y-auto">
+          {queue.map((item, i) => (
+            <div key={i} className="bg-cc-800 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs text-gray-200 truncate">{item.notes ?? `Dossier ${item.id?.slice(0, 8) ?? i}`}</div>
+                <div className="text-[10px] text-gray-600 font-mono">
+                  {item.created_at ? new Date(item.created_at).toLocaleDateString('fr-FR') : '—'}
                 </div>
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
-                  item.priority >= 5 ? 'bg-red-800 text-red-200' : 'bg-yellow-800 text-yellow-200'
-                }`}>
-                  P{item.priority ?? '?'}
-                </span>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                item.priority >= 5 ? 'bg-red-800 text-red-200' : 'bg-yellow-800 text-yellow-200'
+              }`}>P{item.priority ?? '?'}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
-
-// ── Tab 4–8 : nouveaux agents ─────────────────────────────────────────────────
 
 const AGENT_STATUS_COLORS: Record<string, string> = {
   ok: 'bg-green-500', degraded: 'bg-yellow-400', error: 'bg-red-500',
@@ -313,12 +679,10 @@ function AgentsStatusTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="text-xs font-mono text-gray-500 uppercase">
+        <div className="text-[10px] font-mono text-gray-500 uppercase">
           {agents.length} agents — {data?.response_ms != null ? `${data.response_ms}ms` : '…'}
         </div>
-        <button onClick={() => refetch()} className="text-xs text-gray-500 hover:text-gray-300 font-mono">
-          ↺ Actualiser
-        </button>
+        <button onClick={() => refetch()} className="text-[10px] text-gray-500 hover:text-gray-300 font-mono">↺ Actualiser</button>
       </div>
 
       {isLoading ? (
@@ -332,9 +696,8 @@ function AgentsStatusTab() {
                 <span className="text-xs font-bold text-white leading-tight">{a.name}</span>
                 <span className={`ml-auto text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${
                   a.status === 'ok' ? 'bg-green-900 text-green-300' :
-                  a.status === 'degraded' ? 'bg-yellow-900 text-yellow-300' :
-                  'bg-red-900 text-red-300'
-                }`}>{a.status.toUpperCase()}</span>
+                  a.status === 'degraded' ? 'bg-yellow-900 text-yellow-300' : 'bg-red-900 text-red-300'
+                }`}>{a.status?.toUpperCase()}</span>
               </div>
               <p className="text-[10px] text-gray-500 leading-tight">{a.description}</p>
               {Object.keys(a.metrics ?? {}).length > 0 && (
@@ -360,13 +723,11 @@ function StocksTab() {
     queryFn: () => apiClient.get('/ai/anomalie-stocks/dashboard').then(r => r.data),
     staleTime: 30_000,
   });
-
   const { data: alertsData } = useQuery({
     queryKey: ['ai-stocks-alerts'],
     queryFn: () => apiClient.get('/ai/anomalie-stocks/alerts').then(r => r.data),
     staleTime: 20_000,
   });
-
   const alerts: any[] = alertsData?.alerts ?? [];
 
   return (
@@ -374,19 +735,18 @@ function StocksTab() {
       {data && (
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: 'CRITIQUE', value: data.by_level?.CRITICAL ?? 0, cls: 'bg-red-900 border-red-700' },
-            { label: 'ÉLEVÉ',    value: data.by_level?.HIGH ?? 0,     cls: 'bg-red-800 border-red-600' },
-            { label: 'NON TRAITÉS', value: data.unresolved ?? 0,      cls: 'bg-cc-800 border-cc-600' },
+            { label: 'CRITIQUE',    value: data.by_level?.CRITICAL ?? 0, cls: 'bg-red-900 border border-red-800' },
+            { label: 'ÉLEVÉ',       value: data.by_level?.HIGH ?? 0,     cls: 'bg-red-900/50 border border-red-800' },
+            { label: 'NON TRAITÉS', value: data.unresolved ?? 0,          cls: 'bg-cc-800 border border-cc-600' },
           ].map(k => (
-            <div key={k.label} className={`rounded-lg border p-3 ${k.cls}`}>
-              <div className="text-xs font-mono text-gray-400 mb-1">{k.label}</div>
+            <div key={k.label} className={`rounded-lg p-3 ${k.cls}`}>
+              <div className="text-[10px] font-mono text-gray-400 mb-1">{k.label}</div>
               <div className="text-2xl font-bold text-white">{k.value}</div>
             </div>
           ))}
         </div>
       )}
-
-      <div className="text-xs font-mono text-gray-500 uppercase">Anomalies récentes</div>
+      <div className="text-[10px] font-mono text-gray-500 uppercase">Anomalies récentes</div>
       {isLoading ? (
         <div className="text-center text-gray-500 text-sm py-6">Chargement…</div>
       ) : alerts.length === 0 ? (
@@ -395,7 +755,7 @@ function StocksTab() {
         <div className="space-y-1.5 max-h-72 overflow-y-auto">
           {alerts.slice(0, 20).map((a: any, i: number) => (
             <div key={i} className="bg-cc-800 rounded-lg px-3 py-2 flex items-center gap-3">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${a.level === 'CRITICAL' ? 'bg-red-500' : a.level === 'HIGH' ? 'bg-orange-400' : 'bg-yellow-400'}`} />
+              <span className={`w-2 h-2 rounded-full shrink-0 ${a.level === 'CRITICAL' ? 'bg-red-500 animate-pulse' : a.level === 'HIGH' ? 'bg-orange-400' : 'bg-yellow-400'}`} />
               <div className="min-w-0 flex-1">
                 <div className="text-xs text-gray-200 truncate">{a.pattern_id ?? 'Anomalie'} — {a.entrepot_id}</div>
                 <div className="text-[10px] text-gray-500 font-mono">{a.province ?? ''}</div>
@@ -415,13 +775,11 @@ function SignalementsTab() {
     queryFn: () => apiClient.get('/ai/signalements/stats').then(r => r.data),
     staleTime: 30_000,
   });
-
   const { data: priorityData, isLoading } = useQuery({
     queryKey: ['ai-signalements-priority'],
     queryFn: () => apiClient.get('/ai/signalements/priority').then(r => r.data),
     staleTime: 20_000,
   });
-
   const priority: any[] = priorityData?.queue ?? [];
   const stats = statsData ?? {};
 
@@ -430,20 +788,19 @@ function SignalementsTab() {
       {stats.total != null && (
         <div className="grid grid-cols-4 gap-3">
           {[
-            { label: 'TOTAL', value: stats.total ?? 0 },
-            { label: 'CLUSTERS', value: stats.cluster_count ?? 0 },
+            { label: 'TOTAL',         value: stats.total ?? 0 },
+            { label: 'CLUSTERS',      value: stats.cluster_count ?? 0 },
             { label: 'FIABILITÉ MOY.', value: stats.avg_reliability ? `${Math.round(stats.avg_reliability * 100)}%` : '—' },
-            { label: 'À TRAITER', value: stats.high_priority ?? 0 },
+            { label: 'À TRAITER',     value: stats.high_priority ?? 0 },
           ].map(k => (
             <div key={k.label} className="bg-cc-800 rounded-lg p-3">
-              <div className="text-xs font-mono text-gray-400 mb-1">{k.label}</div>
+              <div className="text-[10px] font-mono text-gray-400 mb-1">{k.label}</div>
               <div className="text-xl font-bold text-white">{k.value}</div>
             </div>
           ))}
         </div>
       )}
-
-      <div className="text-xs font-mono text-gray-500 uppercase">File de priorité</div>
+      <div className="text-[10px] font-mono text-gray-500 uppercase">File de priorité</div>
       {isLoading ? (
         <div className="text-center text-gray-500 text-sm py-6">Chargement…</div>
       ) : priority.length === 0 ? (
@@ -480,15 +837,12 @@ function EpidemieTab() {
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
-
   const { data: clustersData } = useQuery({
     queryKey: ['ai-epidemie-clusters'],
     queryFn: () => apiClient.get('/ai/epidemie/clusters').then(r => r.data),
     staleTime: 60_000,
   });
-
   const clusters: any[] = clustersData?.clusters ?? [];
-
   const DISEASE_ICONS: Record<string, string> = {
     cholera: '💧', mpox: '🐒', rougeole: '🔴', meningite: '🧠', ebola: '☣️',
   };
@@ -498,19 +852,18 @@ function EpidemieTab() {
       {dashData && (
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: 'CLUSTERS ACTIFS', value: dashData.active_clusters ?? 0, cls: 'bg-red-900 border-red-700' },
-            { label: 'ALERTES CAP',     value: dashData.active_alerts ?? 0,   cls: 'bg-orange-900 border-orange-700' },
-            { label: 'MALADIES SUIVIES',value: dashData.diseases_monitored ?? 5, cls: 'bg-cc-800 border-cc-600' },
+            { label: 'CLUSTERS ACTIFS',  value: dashData.active_clusters ?? 0,    cls: 'bg-red-950 border border-red-800' },
+            { label: 'ALERTES CAP',      value: dashData.active_alerts ?? 0,      cls: 'bg-orange-900/50 border border-orange-800' },
+            { label: 'MALADIES SUIVIES', value: dashData.diseases_monitored ?? 5, cls: 'bg-cc-800 border border-cc-600' },
           ].map(k => (
-            <div key={k.label} className={`rounded-lg border p-3 ${k.cls}`}>
-              <div className="text-xs font-mono text-gray-400 mb-1">{k.label}</div>
+            <div key={k.label} className={`rounded-lg p-3 ${k.cls}`}>
+              <div className="text-[10px] font-mono text-gray-400 mb-1">{k.label}</div>
               <div className="text-2xl font-bold text-white">{k.value}</div>
             </div>
           ))}
         </div>
       )}
-
-      <div className="text-xs font-mono text-gray-500 uppercase">Clusters actifs</div>
+      <div className="text-[10px] font-mono text-gray-500 uppercase">Clusters actifs</div>
       {isLoading ? (
         <div className="text-center text-gray-500 text-sm py-6">Chargement…</div>
       ) : clusters.length === 0 ? (
@@ -545,19 +898,16 @@ function LogistiqueTab() {
     queryFn: () => apiClient.get('/ai/logistique/recommendations').then(r => r.data),
     staleTime: 60_000,
   });
-
   const recs: any[] = data?.recommendations ?? [];
   const pending = recs.filter((r: any) => r.status === 'PENDING');
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="text-xs font-mono text-gray-500 uppercase">
+        <div className="text-[10px] font-mono text-gray-500 uppercase">
           {pending.length} recommandation{pending.length !== 1 ? 's' : ''} en attente de validation
         </div>
-        <button onClick={() => refetch()} className="text-xs text-gray-500 hover:text-gray-300 font-mono">
-          ↺ Actualiser
-        </button>
+        <button onClick={() => refetch()} className="text-[10px] text-gray-500 hover:text-gray-300 font-mono">↺</button>
       </div>
       {isLoading ? (
         <div className="text-center text-gray-500 text-sm py-6">Chargement…</div>
@@ -592,14 +942,11 @@ function ReportingTab() {
     queryFn: () => apiClient.get('/ai/reporting/reports').then(r => r.data),
     staleTime: 60_000,
   });
-
   const reports: any[] = data?.reports ?? [];
 
   return (
     <div className="space-y-4">
-      <div className="text-xs font-mono text-gray-500 uppercase">
-        Rapports générés ({reports.length})
-      </div>
+      <div className="text-[10px] font-mono text-gray-500 uppercase">Rapports générés ({reports.length})</div>
       {isLoading ? (
         <div className="text-center text-gray-500 text-sm py-6">Chargement…</div>
       ) : reports.length === 0 ? (
@@ -617,10 +964,7 @@ function ReportingTab() {
                   {r.generated_at ? new Date(r.generated_at).toLocaleDateString('fr-FR') : '—'}
                 </div>
               </div>
-              <a
-                href={`/ai/reporting/reports/${r.id}`}
-                className="text-[10px] text-sinaur-400 hover:text-sinaur-300 font-mono shrink-0"
-              >
+              <a href={`/ai/reporting/reports/${r.id}`} className="text-[10px] text-sinaur-400 hover:text-sinaur-300 font-mono shrink-0">
                 Voir →
               </a>
             </div>
@@ -628,11 +972,8 @@ function ReportingTab() {
         </div>
       )}
       <div className="pt-1">
-        <a
-          href="/ai/reporting/hxl/latest"
-          target="_blank"
-          className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 font-mono transition-colors"
-        >
+        <a href="/ai/reporting/hxl/latest" target="_blank"
+          className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 font-mono transition-colors">
           ⬇ Export HXL (CSV)
         </a>
       </div>
@@ -643,15 +984,16 @@ function ReportingTab() {
 // ── Navigation ────────────────────────────────────────────────────────────────
 
 const TABS: { key: Tab; icon: string; label: string }[] = [
-  { key: 'status',       icon: '🖥️',  label: 'Tableau de bord' },
-  { key: 'predictions',  icon: '📊',  label: 'Prédictions'     },
-  { key: 'veille',       icon: '🔭',  label: 'Veille'          },
-  { key: 'antifraud',    icon: '🛡️',  label: 'Anti-Fraude'     },
-  { key: 'stocks',       icon: '📦',  label: 'Stocks'          },
-  { key: 'signalements', icon: '📡',  label: 'Signalements'    },
-  { key: 'epidemie',     icon: '🦠',  label: 'Épidémie'        },
-  { key: 'logistique',   icon: '🚚',  label: 'Logistique'      },
-  { key: 'reporting',    icon: '📄',  label: 'Reporting'       },
+  { key: 'status',          icon: '🖥️',  label: 'Tableau de bord'   },
+  { key: 'predictions',     icon: '📊',  label: 'Prédictions'       },
+  { key: 'renseignements',  icon: '🔍',  label: 'Renseignements'    },
+  { key: 'veille',          icon: '🔭',  label: 'Veille'            },
+  { key: 'antifraud',       icon: '🛡️',  label: 'Anti-Fraude'       },
+  { key: 'stocks',          icon: '📦',  label: 'Stocks'            },
+  { key: 'signalements',    icon: '📡',  label: 'Signalements'      },
+  { key: 'epidemie',        icon: '🦠',  label: 'Épidémie'          },
+  { key: 'logistique',      icon: '🚚',  label: 'Logistique'        },
+  { key: 'reporting',       icon: '📄',  label: 'Reporting'         },
 ];
 
 export function AiPage() {
@@ -659,16 +1001,14 @@ export function AiPage() {
 
   return (
     <div className="p-6 space-y-4 h-full overflow-y-auto">
-      {/* Header */}
       <div className="flex items-center gap-3">
         <span className="text-2xl">🤖</span>
         <div>
           <h1 className="text-white font-bold text-lg leading-tight">Intelligence Artificielle</h1>
-          <p className="text-cc-600 text-xs font-mono">8 AGENTS ACTIFS — SINAUR-RDC AI</p>
+          <p className="text-cc-600 text-xs font-mono">9 AGENTS ACTIFS — SINAUR-RDC AI PLATFORM</p>
         </div>
       </div>
 
-      {/* Tabs — scrollable */}
       <div className="overflow-x-auto">
         <div className="flex gap-1 bg-cc-800 rounded-lg p-1 w-fit">
           {TABS.map(t => (
@@ -676,9 +1016,7 @@ export function AiPage() {
               key={t.key}
               onClick={() => setTab(t.key)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded text-xs font-medium transition-colors whitespace-nowrap ${
-                tab === t.key
-                  ? 'bg-cc-700 text-white shadow-sm'
-                  : 'text-gray-500 hover:text-gray-300'
+                tab === t.key ? 'bg-cc-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'
               }`}
             >
               <span>{t.icon}</span>
@@ -688,17 +1026,17 @@ export function AiPage() {
         </div>
       </div>
 
-      {/* Contenu */}
       <div className="bg-cc-900 rounded-xl border border-cc-700 p-4">
-        {tab === 'status'       && <AgentsStatusTab />}
-        {tab === 'predictions'  && <PredictionsTab />}
-        {tab === 'veille'       && <VeilleTab />}
-        {tab === 'antifraud'    && <AntifraudTab />}
-        {tab === 'stocks'       && <StocksTab />}
-        {tab === 'signalements' && <SignalementsTab />}
-        {tab === 'epidemie'     && <EpidemieTab />}
-        {tab === 'logistique'   && <LogistiqueTab />}
-        {tab === 'reporting'    && <ReportingTab />}
+        {tab === 'status'         && <AgentsStatusTab />}
+        {tab === 'predictions'    && <PredictionsTab />}
+        {tab === 'renseignements' && <RenseignementsTab />}
+        {tab === 'veille'         && <VeilleTab />}
+        {tab === 'antifraud'      && <AntifraudTab />}
+        {tab === 'stocks'         && <StocksTab />}
+        {tab === 'signalements'   && <SignalementsTab />}
+        {tab === 'epidemie'       && <EpidemieTab />}
+        {tab === 'logistique'     && <LogistiqueTab />}
+        {tab === 'reporting'      && <ReportingTab />}
       </div>
     </div>
   );

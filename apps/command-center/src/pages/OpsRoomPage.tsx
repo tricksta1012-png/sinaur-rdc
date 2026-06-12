@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState, useMemo, useEffect } from 'react';
-import MapGL, { Source, Layer, type MapLayerMouseEvent } from 'react-map-gl/maplibre';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import MapGL, { Source, Layer, type MapLayerMouseEvent, type MapRef } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { apiClient } from '../lib/api.js';
 import { useRealtimeFeed } from '../hooks/useRealtimeFeed.js';
@@ -84,6 +84,9 @@ function isLikelyEnglish(text: string): boolean {
 function DescriptionBlock({ text, eventTitle }: { text: string; eventTitle: string }) {
   const [translated, setTranslated] = useState<string | null>(null);
   const [translating, setTranslating] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const displayText = translated ?? text;
+  const isLong = displayText.length > 280;
   const needsTranslation = isLikelyEnglish(text);
 
   const translate = async () => {
@@ -104,29 +107,39 @@ function DescriptionBlock({ text, eventTitle }: { text: string; eventTitle: stri
     <div className="border-t border-cc-800 pt-2 mt-1">
       <div className="flex items-center justify-between mb-1">
         <div className="text-[10px] font-mono text-cc-500 uppercase">Description</div>
-        {needsTranslation && !translated && (
-          <button
-            onClick={translate}
-            disabled={translating}
-            className="text-[10px] text-sinaur-400 hover:text-sinaur-300 font-mono disabled:opacity-50 flex items-center gap-1"
-          >
-            {translating ? '⟳ Traduction…' : '🌐 Traduire'}
-          </button>
-        )}
-        {translated && (
-          <button onClick={() => setTranslated(null)} className="text-[10px] text-cc-500 hover:text-cc-400 font-mono">
-            Voir original
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {needsTranslation && !translated && (
+            <button
+              onClick={translate}
+              disabled={translating}
+              className="text-[10px] text-sinaur-400 hover:text-sinaur-300 font-mono disabled:opacity-50 flex items-center gap-1"
+            >
+              {translating ? '⟳ Traduction…' : '🌐 Traduire'}
+            </button>
+          )}
+          {translated && (
+            <button onClick={() => setTranslated(null)} className="text-[10px] text-cc-500 hover:text-cc-400 font-mono">
+              Original
+            </button>
+          )}
+        </div>
       </div>
       {needsTranslation && !translated && (
         <span className="inline-flex items-center gap-1 text-[9px] text-yellow-600 font-mono mb-1">
           <span>⚠</span> Texte source en anglais
         </span>
       )}
-      <p className="text-gray-300 leading-relaxed line-clamp-5 text-[11px]">
-        {translated ?? text}
+      <p className={`text-gray-300 leading-relaxed text-[11px] transition-all ${expanded ? '' : 'line-clamp-4'}`}>
+        {displayText}
       </p>
+      {isLong && (
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="mt-1.5 text-[10px] text-sinaur-400 hover:text-sinaur-300 font-mono flex items-center gap-1 transition-colors"
+        >
+          {expanded ? '▲ Réduire' : `▼ Lire la suite (${displayText.length} car.)`}
+        </button>
+      )}
     </div>
   );
 }
@@ -200,7 +213,7 @@ function EventDetailPanel({ event, onClose }: { event: SelectedEvent; onClose: (
   const st  = STATUS_FR[event.status] ?? { label: event.status, color: 'bg-cc-800 text-gray-400 border-cc-700' };
 
   return (
-    <div className="absolute top-14 left-3 w-72 z-20 bg-cc-950/97 border border-cc-700 rounded-xl shadow-2xl overflow-hidden backdrop-blur-sm">
+    <div className="absolute top-28 left-3 w-72 z-20 bg-cc-950/97 border border-cc-700 rounded-xl shadow-2xl overflow-hidden backdrop-blur-sm">
       {/* Satellite view */}
       <SatelliteMosaic lng={event.lng} lat={event.lat} />
 
@@ -350,6 +363,25 @@ export function OpsRoomPage() {
   const { events, connected, clearFeed } = useRealtimeFeed();
   const [selectedEvent, setSelectedEvent] = useState<SelectedEvent | null>(null);
   const [wsLiveIds, setWsLiveIds] = useState<Set<string>>(new Set());
+  const mapRef = useRef<MapRef>(null);
+  const [clusterHover, setClusterHover] = useState<{ x: number; y: number; count: number } | null>(null);
+  const [filterHazard, setFilterHazard]   = useState('');
+  const [filterPeriod, setFilterPeriod]   = useState('');
+  const [filterSeverity, setFilterSeverity] = useState('');
+  const [showRiskLayer, setShowRiskLayer] = useState(false);
+  const [riskHorizon, setRiskHorizon]     = useState<7 | 30 | 90>(7);
+
+  const mapQueryParams = useMemo(() => {
+    const p = new URLSearchParams({ limit: '200' });
+    if (filterHazard)   p.set('hazardType', filterHazard);
+    if (filterSeverity) p.set('severity', filterSeverity);
+    if (filterPeriod === '24h') p.set('dateFrom', new Date(Date.now() - 86_400_000).toISOString());
+    if (filterPeriod === '7j')  p.set('dateFrom', new Date(Date.now() - 7 * 86_400_000).toISOString());
+    if (filterPeriod === '30j') p.set('dateFrom', new Date(Date.now() - 30 * 86_400_000).toISOString());
+    return p.toString();
+  }, [filterHazard, filterSeverity, filterPeriod]);
+
+  const hasActiveFilters = !!(filterHazard || filterPeriod || filterSeverity);
 
   const { data: statsData } = useQuery({
     queryKey: ['cc-stats'],
@@ -359,8 +391,8 @@ export function OpsRoomPage() {
   });
 
   const { data: mapGeoJSON } = useQuery({
-    queryKey: ['cc-events-map'],
-    queryFn: () => apiClient.get('/events/map?limit=200').then(r => r.data),
+    queryKey: ['cc-events-map', mapQueryParams],
+    queryFn: () => apiClient.get(`/events/map?${mapQueryParams}`).then(r => r.data),
     staleTime: 30_000,
     refetchInterval: 30_000,
   });
@@ -375,6 +407,13 @@ export function OpsRoomPage() {
     queryKey: ['cc-crises-active'],
     queryFn: () => apiClient.get('/crises?status=active&limit=10').then(r => r.data.data),
     staleTime: 30_000,
+  });
+
+  const { data: riskMapData } = useQuery({
+    queryKey: ['risk-map', riskHorizon],
+    queryFn: () => apiClient.get(`/predictions/risk-map/${riskHorizon}`).then(r => r.data),
+    enabled: showRiskLayer,
+    staleTime: 5 * 60_000,
   });
 
   useEffect(() => {
@@ -421,10 +460,24 @@ export function OpsRoomPage() {
     };
   }, [divisionsGeo, mapGeoJSON]);
 
-  const onMapClick = (e: MapLayerMouseEvent) => {
+  const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     const f = e.features?.[0];
     if (!f) { setSelectedEvent(null); return; }
     const p = f.properties as any;
+
+    // Cluster click → zoom in to expansion zoom
+    if (p.cluster_id !== undefined) {
+      const map = mapRef.current?.getMap();
+      const source = map?.getSource('events') as any;
+      if (source?.getClusterExpansionZoom) {
+        source.getClusterExpansionZoom(p.cluster_id, (err: Error | null, zoom: number) => {
+          if (err) return;
+          map?.easeTo({ center: [e.lngLat.lng, e.lngLat.lat], zoom: zoom + 0.5, duration: 500 });
+        });
+      }
+      return;
+    }
+
     setSelectedEvent({
       id:                 p.id ?? '',
       lng:                e.lngLat.lng,
@@ -439,7 +492,16 @@ export function OpsRoomPage() {
       startDate:          p.startDate ?? '',
       source:             p.source ?? 'other',
     });
-  };
+  }, []);
+
+  const onMouseMove = useCallback((e: MapLayerMouseEvent) => {
+    const f = e.features?.[0];
+    if (f?.properties?.point_count) {
+      setClusterHover({ x: e.point.x, y: e.point.y, count: f.properties.point_count as number });
+    } else {
+      setClusterHover(null);
+    }
+  }, []);
 
   const eventCount = mapGeoJSON?.features?.length ?? 0;
 
@@ -463,12 +525,104 @@ export function OpsRoomPage() {
           ))}
         </div>
 
+        {/* Filter bar */}
+        <div className="absolute top-14 left-3 right-3 z-10 flex gap-2 flex-wrap items-center">
+          {/* Hazard type */}
+          <select
+            value={filterHazard}
+            onChange={e => setFilterHazard(e.target.value)}
+            className="bg-cc-900/92 border border-cc-700 rounded-lg px-2 py-1 text-xs text-gray-300 backdrop-blur-sm focus:outline-none focus:border-sinaur-600"
+          >
+            <option value="">Tous les aléas</option>
+            {Object.entries(HAZARD_FR).map(([k, v]) => (
+              <option key={k} value={k}>{HAZARD_ICON[k]} {v}</option>
+            ))}
+          </select>
+
+          {/* Severity */}
+          <select
+            value={filterSeverity}
+            onChange={e => setFilterSeverity(e.target.value)}
+            className="bg-cc-900/92 border border-cc-700 rounded-lg px-2 py-1 text-xs text-gray-300 backdrop-blur-sm focus:outline-none focus:border-sinaur-600"
+          >
+            <option value="">Toutes sévérités</option>
+            {Object.entries(SEVERITY_FR).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+
+          {/* Time period */}
+          <div className="flex gap-1">
+            {([['', 'Tout'], ['24h', '24h'], ['7j', '7j'], ['30j', '30j']] as [string, string][]).map(([v, l]) => (
+              <button
+                key={v}
+                onClick={() => setFilterPeriod(v)}
+                className={`px-2 py-1 rounded-lg text-xs font-mono backdrop-blur-sm border transition-colors ${
+                  filterPeriod === v
+                    ? 'bg-sinaur-700 border-sinaur-500 text-white'
+                    : 'bg-cc-900/92 border-cc-700 text-gray-400 hover:border-cc-500 hover:text-gray-200'
+                }`}
+              >{l}</button>
+            ))}
+          </div>
+
+          {/* Reset */}
+          {hasActiveFilters && (
+            <button
+              onClick={() => { setFilterHazard(''); setFilterPeriod(''); setFilterSeverity(''); }}
+              className="px-2 py-1 rounded-lg text-xs font-mono backdrop-blur-sm border border-cc-700 bg-cc-900/92 text-cc-500 hover:text-gray-200 hover:border-cc-500 transition-colors"
+            >✕ Réinitialiser</button>
+          )}
+
+          {/* Risk layer toggle */}
+          <button
+            onClick={() => setShowRiskLayer(v => !v)}
+            className={`px-2 py-1 rounded-lg text-xs font-mono backdrop-blur-sm border transition-colors flex items-center gap-1 ${
+              showRiskLayer
+                ? 'bg-purple-900/80 border-purple-600 text-purple-200'
+                : 'bg-cc-900/92 border-cc-700 text-gray-400 hover:border-cc-500 hover:text-gray-200'
+            }`}
+          >
+            🎯 Risques{showRiskLayer ? ' ●' : ''}
+          </button>
+
+          {/* Risk horizon pills (only when layer is on) */}
+          {showRiskLayer && (
+            <div className="flex gap-1">
+              {([7, 30, 90] as const).map(h => (
+                <button
+                  key={h}
+                  onClick={() => setRiskHorizon(h)}
+                  className={`px-1.5 py-1 rounded text-[10px] font-mono border transition-colors ${
+                    riskHorizon === h
+                      ? 'bg-purple-800 border-purple-600 text-white'
+                      : 'bg-cc-900/92 border-cc-700 text-cc-500 hover:text-gray-300'
+                  }`}
+                >
+                  {h}j
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Result count */}
+          <div className="ml-auto text-[10px] font-mono text-cc-500 bg-cc-900/80 border border-cc-700 px-2 py-1 rounded-lg backdrop-blur-sm">
+            {eventCount} événement{eventCount !== 1 ? 's' : ''}
+          </div>
+        </div>
+
         <MapGL
-          initialViewState={{ longitude: 24.0, latitude: -4.0, zoom: 5.2 }}
+          ref={mapRef}
+          initialViewState={{
+            bounds: [[12.2, -13.5], [31.3, 5.4]],
+            fitBoundsOptions: { padding: 40 },
+          }}
           style={{ width: '100%', height: '100%' }}
           mapStyle={MAP_STYLE}
-          interactiveLayerIds={['event-unclustered']}
+          interactiveLayerIds={['event-unclustered', 'cluster-circle']}
           onClick={onMapClick}
+          onMouseMove={onMouseMove}
+          onMouseLeave={() => setClusterHover(null)}
         >
           {provinceGeoJSON.features.length > 0 && (
             <Source id="provinces" type="geojson" data={provinceGeoJSON}>
@@ -520,7 +674,72 @@ export function OpsRoomPage() {
                 }} />
             </Source>
           )}
+
+          {/* Predictive risk heatmap layer */}
+          {showRiskLayer && riskMapData && (
+            <Source id="risk-heatmap" type="geojson" data={riskMapData}>
+              <Layer
+                id="risk-heat"
+                type="heatmap"
+                maxzoom={8}
+                paint={{
+                  'heatmap-weight': ['interpolate', ['linear'], ['get', 'score'], 0, 0, 100, 1],
+                  'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 4, 1, 8, 2],
+                  'heatmap-color': [
+                    'interpolate', ['linear'], ['heatmap-density'],
+                    0,    'rgba(0,0,0,0)',
+                    0.25, 'rgba(37,99,235,0.6)',
+                    0.5,  'rgba(202,138,4,0.7)',
+                    0.75, 'rgba(234,88,12,0.8)',
+                    1,    'rgba(220,38,38,0.9)',
+                  ],
+                  'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 4, 30, 8, 50],
+                  'heatmap-opacity': 0.7,
+                }}
+              />
+              <Layer
+                id="risk-circles"
+                type="circle"
+                minzoom={7}
+                paint={{
+                  'circle-color': [
+                    'match', ['get', 'level'],
+                    'CRITIQUE', '#dc2626',
+                    'ELEVE',    '#ea580c',
+                    'MODERE',   '#ca8a04',
+                    'FAIBLE',   '#2563eb',
+                    '#6b7280',
+                  ],
+                  'circle-radius': ['interpolate', ['linear'], ['get', 'score'], 0, 8, 100, 18],
+                  'circle-opacity': 0.8,
+                  'circle-stroke-width': 1.5,
+                  'circle-stroke-color': '#ffffff',
+                }}
+              />
+              <Layer
+                id="risk-labels"
+                type="symbol"
+                minzoom={8}
+                layout={{
+                  'text-field': ['concat', ['to-string', ['round', ['get', 'score']]], '%'],
+                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                  'text-size': 10,
+                }}
+                paint={{ 'text-color': '#ffffff' }}
+              />
+            </Source>
+          )}
         </MapGL>
+
+        {/* Cluster hover tooltip */}
+        {clusterHover && (
+          <div
+            className="absolute pointer-events-none z-30 bg-cc-900/95 border border-cc-700 rounded-lg px-2.5 py-1 text-xs text-white font-mono shadow-lg"
+            style={{ left: clusterHover.x + 12, top: clusterHover.y - 36 }}
+          >
+            {clusterHover.count} événements · cliquer pour zoomer
+          </div>
+        )}
 
         {/* Event detail panel */}
         {selectedEvent && (
@@ -542,6 +761,28 @@ export function OpsRoomPage() {
             {eventCount} événement{eventCount !== 1 ? 's' : ''}
           </div>
         </div>
+
+        {/* Risk layer legend + disclaimer */}
+        {showRiskLayer && (
+          <>
+            <div className="absolute bottom-4 left-28 bg-purple-950/95 border border-purple-800 rounded-lg px-3 py-2 backdrop-blur-sm">
+              <div className="text-[10px] font-mono text-purple-400 mb-1.5 uppercase tracking-wider">
+                🎯 Risque IA — {riskHorizon}j
+              </div>
+              <div className="space-y-1">
+                {[['CRITIQUE', '#dc2626', 'Critique'], ['ELEVE', '#ea580c', 'Élevé'], ['MODERE', '#ca8a04', 'Modéré'], ['FAIBLE', '#2563eb', 'Faible']] .map(([, c, l]) => (
+                  <div key={l} className="flex items-center gap-2 text-[10px] text-gray-300">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: c }} />
+                    {l}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-20 bg-yellow-900/90 border border-yellow-700 text-yellow-200 text-[9px] font-mono px-4 py-1.5 rounded-lg backdrop-blur-sm whitespace-nowrap">
+              ⚠️ Données prédictives IA — Validation humaine requise avant toute décision opérationnelle
+            </div>
+          </>
+        )}
 
         {activeCrises && activeCrises.length > 0 && (
           <div className="absolute bottom-4 right-1 w-64 bg-cc-900/95 border border-cc-700 rounded-xl p-3 backdrop-blur-sm">

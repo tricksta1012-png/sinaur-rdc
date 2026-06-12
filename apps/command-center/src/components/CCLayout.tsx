@@ -13,6 +13,7 @@ const NAV = [
   { to: '/coordination',  icon: '🤝',  label: 'Coordination'         },
   { to: '/rapports',      icon: '📄',  label: 'Rapports SitRep'      },
   { to: '/ai',            icon: '🤖',  label: 'Intelligence Artif.'  },
+  { to: '/conflit',       icon: '⚔️',  label: 'Surveillance Conflits' },
 ];
 
 export function CCLayout() {

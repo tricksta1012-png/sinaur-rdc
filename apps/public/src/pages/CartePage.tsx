@@ -12,6 +12,26 @@ const SEVERITY_COLOR: Record<string, string> = {
   Unknown:  '#6b7280',
 };
 
+const SEVERITY_FR: Record<string, string> = {
+  Extreme: 'Extrême', Severe: 'Sévère', Moderate: 'Modérée',
+  Minor: 'Mineure', Unknown: 'Inconnue',
+};
+
+const MAP_STYLE = {
+  version: 8 as const,
+  sources: {
+    osm: {
+      type: 'raster' as const,
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    },
+  },
+  layers: [
+    { id: 'osm-tiles', type: 'raster' as const, source: 'osm' },
+  ],
+};
+
 interface PopupInfo {
   longitude: number
   latitude: number
@@ -53,10 +73,10 @@ export function CartePage() {
       {/* Légende */}
       <div className="bg-white border-b border-gray-200 px-4 py-2 flex flex-wrap items-center gap-4 text-xs text-gray-600">
         <span className="font-medium">Légende :</span>
-        {Object.entries(SEVERITY_COLOR).map(([label, color]) => (
-          <span key={label} className="flex items-center gap-1.5">
+        {Object.entries(SEVERITY_COLOR).map(([key, color]) => (
+          <span key={key} className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-full inline-block" style={{ background: color }} />
-            {label}
+            {SEVERITY_FR[key] ?? key}
           </span>
         ))}
         <span className="ml-auto text-gray-400">Alertes actives : {alerts?.length ?? 0}</span>
@@ -66,12 +86,11 @@ export function CartePage() {
       <div className="flex-1 relative">
         <Map
           initialViewState={{
-            longitude: 24.0,
-            latitude:  -4.0,
-            zoom:      5.2,
+            bounds: [[12.2, -13.5], [31.3, 5.4]],
+            fitBoundsOptions: { padding: 20 },
           }}
           style={{ width: '100%', height: '100%' }}
-          mapStyle="https://demotiles.maplibre.org/style.json"
+          mapStyle={MAP_STYLE}
           interactiveLayerIds={['provinces-fill']}
           onClick={onMapClick}
         >

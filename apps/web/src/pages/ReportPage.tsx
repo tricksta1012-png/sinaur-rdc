@@ -36,6 +36,13 @@ const HAZARD_OPTIONS = [
   { value: 'other',              label: '⚠️',  name: 'Autre' },
 ] as const;
 
+const SEVERITY_OPTIONS = [
+  { value: 'Minor',    label: 'Mineure',  color: '#2563eb', desc: 'Quelques personnes' },
+  { value: 'Moderate', label: 'Modérée',  color: '#ca8a04', desc: 'Dizaines de personnes' },
+  { value: 'Severe',   label: 'Sévère',   color: '#ea580c', desc: 'Centaines de personnes' },
+  { value: 'Extreme',  label: 'Extrême',  color: '#dc2626', desc: 'Milliers de personnes' },
+] as const;
+
 type SubmitResult = 'online_success' | 'offline_queued' | 'duplicate';
 
 export function ReportPage() {
@@ -56,7 +63,8 @@ export function ReportPage() {
     defaultValues: { severity: 'Unknown', description: '' },
   });
 
-  const selectedHazard = watch('hazardType');
+  const selectedHazard   = watch('hazardType');
+  const selectedSeverity = watch('severity');
 
   // Géolocalisation GPS
   const locateMe = () => {
@@ -245,30 +253,43 @@ export function ReportPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Gravité estimée</label>
-            <select
-              {...register('severity')}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 bg-white text-sm"
-            >
-              <option value="Unknown">Je ne sais pas</option>
-              <option value="Minor">Mineure — quelques personnes</option>
-              <option value="Moderate">Modérée — dizaines de personnes</option>
-              <option value="Severe">Sévère — centaines de personnes</option>
-              <option value="Extreme">Extrême — milliers de personnes</option>
-            </select>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Gravité estimée</label>
+          <div className="grid grid-cols-4 gap-2">
+            {SEVERITY_OPTIONS.map(o => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => setValue('severity', o.value, { shouldValidate: true })}
+                className={`flex flex-col items-center gap-1.5 py-3 px-1 rounded-xl border-2 transition-all ${
+                  selectedSeverity === o.value ? 'scale-[1.03] shadow-sm' : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+                style={selectedSeverity === o.value ? { borderColor: o.color, backgroundColor: o.color + '12' } : {}}
+              >
+                <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: o.color }} />
+                <span className="text-xs font-semibold text-gray-800">{o.label}</span>
+                <span className="text-[10px] text-gray-500 leading-tight text-center">{o.desc}</span>
+              </button>
+            ))}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Personnes affectées</label>
-            <input
-              {...register('estimatedAffected')}
-              type="number"
-              min="1"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
-              placeholder="Estimation..."
-            />
-          </div>
+          <button
+            type="button"
+            onClick={() => setValue('severity', 'Unknown', { shouldValidate: true })}
+            className={`mt-2 text-xs transition-colors ${selectedSeverity === 'Unknown' ? 'text-gray-700 font-medium underline' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            Je ne sais pas
+          </button>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Personnes affectées (estimation)</label>
+          <input
+            {...register('estimatedAffected')}
+            type="number"
+            min="1"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+            placeholder="Nombre de personnes affectées..."
+          />
         </div>
 
         <button
