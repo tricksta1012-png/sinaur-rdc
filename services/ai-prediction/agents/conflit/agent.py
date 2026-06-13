@@ -209,6 +209,12 @@ class ConflitAgent:
         de déplacement par province.
         """
         logger.info("conflit_agent.run_analysis.start")
+
+        # Re-bootstrap si le store est vide (échec au démarrage ou premier cycle)
+        if not _EVENT_STORE:
+            logger.warning("conflit_agent.store_empty_retrying_bootstrap")
+            await self._bootstrap_from_db()
+
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(days=30)
 

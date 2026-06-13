@@ -88,4 +88,25 @@ export async function conflitRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.status(status).send(data);
     },
   );
+
+  // POST /conflit/reload — force re-bootstrap depuis la DB (admin uniquement)
+  fastify.post(
+    '/conflit/reload',
+    { preHandler: [requireAuth, requireRole('system_admin')] },
+    async (_request, reply) => {
+      const { aiPost } = await import('../services/aiClient.js');
+      const res = await aiPost('/internal/conflit/reload', {});
+      return reply.status(res.status).send(res.data);
+    },
+  );
+
+  // GET /conflit/status — état du store en-mémoire (admin)
+  fastify.get(
+    '/conflit/status',
+    { preHandler: [requireAuth, requireRole('system_admin')] },
+    async (_request, reply) => {
+      const { status, data } = await aiGet('/internal/conflit/data-sources');
+      return reply.status(status).send(data);
+    },
+  );
 }
