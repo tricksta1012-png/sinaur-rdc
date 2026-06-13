@@ -1,7 +1,7 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY apps/public/package*.json ./
-RUN npm ci --ignore-scripts
+RUN npm install --ignore-scripts
 COPY apps/public/ ./
 RUN npm run build
 
