@@ -1,7 +1,10 @@
 name: Deploy to Railway
 
 on:
-  push:
+  # Déclenché après que le workflow Docker ait réussi (nouvelles images disponibles)
+  workflow_run:
+    workflows: [Docker]
+    types: [completed]
     branches: [master, main]
   workflow_dispatch:
 
@@ -9,6 +12,8 @@ jobs:
   deploy:
     name: Deploy ${{ matrix.service.name }}
     runs-on: ubuntu-latest
+    # Ne déployer que si le workflow Docker a réussi (ou si déclenché manuellement)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     strategy:
       fail-fast: false
       max-parallel: 3
@@ -41,5 +46,5 @@ jobs:
           if [ -n "$SERVICE_ID" ]; then
             railway redeploy --service "$SERVICE_ID" --yes
           else
-            echo "⚠️  ${{ matrix.service.name }}: RAILWAY_SERVICE_${{ matrix.service.name }}_ID not set, skipping."
+            echo "⚠️  ${{ matrix.service.name }}: secret ${{ matrix.service.service_id_secret }} not set, skipping."
           fi

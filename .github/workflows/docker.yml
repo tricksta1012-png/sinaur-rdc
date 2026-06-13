@@ -33,13 +33,13 @@ jobs:
             context: .
             dockerfile: services/ussd/Dockerfile
           - service: ai-prediction
-            context: services/ai-prediction
+            context: .
             dockerfile: services/ai-prediction/Dockerfile
           - service: command-center
             context: .
             dockerfile: apps/command-center/Dockerfile
           - service: public
-            context: apps/public
+            context: .
             dockerfile: apps/public/Dockerfile
 
     steps:
