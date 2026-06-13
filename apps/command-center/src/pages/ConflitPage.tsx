@@ -374,6 +374,8 @@ export function ConflitPage() {
   const corridorData = useMemo(() => {
     const lines: GeoJSON.Feature[] = [];
     const arrows: GeoJSON.Feature[] = [];
+    const origins: GeoJSON.Feature[] = [];
+    const destinations: GeoJSON.Feature[] = [];
     for (const c of enhancedCorridors) {
       lines.push({
         type: 'Feature',
@@ -389,10 +391,22 @@ export function ConflitPage() {
         geometry: { type: 'Point', coordinates: mid },
         properties: { color: c.color, bearing: getBearing(c.originCoords, c.destCoords), corridorId: c.id },
       });
+      origins.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: c.originCoords },
+        properties: { label: c.origin, color: c.color, corridorId: c.id },
+      });
+      destinations.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: c.destCoords },
+        properties: { label: c.destination, color: c.color, corridorId: c.id },
+      });
     }
     return {
-      lines:  { type: 'FeatureCollection' as const, features: lines },
-      arrows: { type: 'FeatureCollection' as const, features: arrows },
+      lines:        { type: 'FeatureCollection' as const, features: lines },
+      arrows:       { type: 'FeatureCollection' as const, features: arrows },
+      origins:      { type: 'FeatureCollection' as const, features: origins },
+      destinations: { type: 'FeatureCollection' as const, features: destinations },
     };
   }, [enhancedCorridors]);
 
@@ -486,7 +500,7 @@ export function ConflitPage() {
       const c = getCentroid(ev);
       if (!c) return [];
       return [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: c },
-        properties: { riskScore: t.riskScore } }];
+        properties: { riskScore: t.riskScore, province: t.target, rank: t.rank } }];
     }),
   }), [threatPredictions, events]);
 
@@ -515,15 +529,28 @@ export function ConflitPage() {
   // ── Map click ─────────────────────────────────────────────────────────
   const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     const f = e.features?.[0];
-    if (!f) return;
-    if (f.layer?.id === 'corridor-arrows') {
-      const cid = f.properties?.corridorId as string | undefined;
-      if (cid) { setCorridorId(cid === selectedCorridorId ? null : cid); setSelectedId(null); return; }
+    if (!f) { setSelectedId(null); setCorridorId(null); return; }
+
+    // Corridor arrow or endpoint clicked
+    const corridorId = f.properties?.corridorId as string | undefined;
+    if (corridorId) {
+      setCorridorId(corridorId === selectedCorridorId ? null : corridorId);
+      setSelectedId(null);
+      return;
     }
+
+    // Province circle / label / count clicked → find first event in that province
     const prov = f.properties?.province as string | undefined;
     if (prov) {
       const match = sortedEvents.find(ev => ev.province === prov || ev.p_code === prov);
-      if (match) { setSelectedId(match.external_id); setCorridorId(null); setDetailTab('info'); }
+      if (match) {
+        setSelectedId(match.external_id);
+        setCorridorId(null);
+        setDetailTab('info');
+        // Fly to province centroid
+        const c = getCentroid(match);
+        if (c) mapRef.current?.getMap().flyTo({ center: c, zoom: 7, duration: 700 });
+      }
     }
   }, [sortedEvents, selectedCorridorId]);
 
@@ -893,8 +920,8 @@ export function ConflitPage() {
         {/* Reset view */}
         <button
           onClick={resetView}
-          title={provinceBounds ? `Recentrer sur ${provinceName}` : 'Vue complète RDC'}
-          className="absolute top-2 right-2 z-20 px-2.5 py-1 rounded-lg text-[10px] font-mono border border-cc-700 bg-cc-900/92 text-cc-400 hover:text-white hover:border-cc-500 transition-colors backdrop-blur-sm"
+          title={provinceBounds ? `Recentrer sur ${provinceName}` : 'Recentrer — vue complète RDC'}
+          className="absolute top-2 right-2 z-20 px-3 py-1.5 rounded-lg text-[11px] font-mono font-bold border border-cc-500 bg-cc-800/95 text-gray-200 hover:text-white hover:bg-cc-700 hover:border-cc-400 transition-colors backdrop-blur-sm shadow-lg"
         >
           {provinceBounds ? `🏛️ ${provinceName}` : '🌍 Vue RDC'}
         </button>
@@ -907,7 +934,7 @@ export function ConflitPage() {
           }}
           style={{ width: '100%', height: '100%' }}
           mapStyle={MAP_STYLE}
-          interactiveLayerIds={['province-circles', 'province-halo', 'corridor-arrows']}
+          interactiveLayerIds={['province-circles', 'province-halo', 'province-counts', 'province-labels', 'corridor-arrows', 'corridor-origins', 'corridor-dests', 'threat-labels']}
           onClick={onMapClick}
         >
           {/* Threat prediction heatmap */}
@@ -923,6 +950,18 @@ export function ConflitPage() {
                 'circle-radius':  ['interpolate', ['linear'], ['get', 'riskScore'], 30, 28, 99, 55],
                 'circle-color':   '#ef4444',
                 'circle-opacity': ['interpolate', ['linear'], ['get', 'riskScore'], 30, 0.06, 99, 0.18],
+              }} />
+              <Layer id="threat-labels" type="symbol" layout={{
+                'text-field': ['concat', ['to-string', ['get', 'riskScore']], '% · ', ['get', 'province']],
+                'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                'text-size': 11,
+                'text-anchor': 'top',
+                'text-offset': [0, 1.2],
+                'text-allow-overlap': true,
+              }} paint={{
+                'text-color': '#fca5a5',
+                'text-halo-color': '#1a0505',
+                'text-halo-width': 1.5,
               }} />
             </Source>
           )}
@@ -961,6 +1000,50 @@ export function ConflitPage() {
                     'text-halo-width':     0.5,
                   }}
                 />
+              </Source>
+              {/* Corridor origin — small hollow circle */}
+              <Source id="corridor-origins-src" type="geojson" data={corridorData.origins}>
+                <Layer id="corridor-origins" type="circle" paint={{
+                  'circle-radius': 5,
+                  'circle-color': '#0d1b2a',
+                  'circle-stroke-color': ['get', 'color'],
+                  'circle-stroke-width': 2,
+                  'circle-opacity': 0.9,
+                }} />
+                <Layer id="corridor-origin-labels" type="symbol" layout={{
+                  'text-field': ['get', 'label'],
+                  'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+                  'text-size': 9,
+                  'text-anchor': 'right',
+                  'text-offset': [-1.0, 0],
+                  'text-allow-overlap': false,
+                }} paint={{
+                  'text-color': ['get', 'color'],
+                  'text-halo-color': '#0d1b2a',
+                  'text-halo-width': 1.5,
+                }} />
+              </Source>
+              {/* Corridor destination — filled circle with arrowhead */}
+              <Source id="corridor-dests-src" type="geojson" data={corridorData.destinations}>
+                <Layer id="corridor-dests" type="circle" paint={{
+                  'circle-radius': 6,
+                  'circle-color': ['get', 'color'],
+                  'circle-stroke-color': '#ffffff',
+                  'circle-stroke-width': 1.5,
+                  'circle-opacity': 0.95,
+                }} />
+                <Layer id="corridor-dest-labels" type="symbol" layout={{
+                  'text-field': ['concat', '▶ ', ['get', 'label']],
+                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                  'text-size': 9,
+                  'text-anchor': 'left',
+                  'text-offset': [1.0, 0],
+                  'text-allow-overlap': false,
+                }} paint={{
+                  'text-color': ['get', 'color'],
+                  'text-halo-color': '#0d1b2a',
+                  'text-halo-width': 1.5,
+                }} />
               </Source>
             </>
           )}
