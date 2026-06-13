@@ -320,6 +320,10 @@ export function ConflitPage() {
   const [replayIndex, setReplayIndex]           = useState(0);
   const [expandedActorId, setExpandedActorId]   = useState<string | null>(null);
   const [detailTab, setDetailTab]               = useState<'info' | 'acteurs' | 'recs'>('info');
+  const [panelVisible, setPanelVisible]         = useState(false);
+  const [corridorTooltip, setCorridorTooltip]   = useState<{
+    x: number; y: number; origin: string; destination: string; confidence: number; daysDiff: number;
+  } | null>(null);
 
   // ── Scope ─────────────────────────────────────────────────────────────
   const userScope = useMemo((): string[] => {
@@ -379,6 +383,15 @@ export function ConflitPage() {
     return () => clearTimeout(t);
   }, [replayMode, replayIndex, replayEvents.length]);
 
+  useEffect(() => {
+    if (!selectedId && !selectedCorridorId) {
+      setPanelVisible(false);
+      return;
+    }
+    const t = setTimeout(() => setPanelVisible(true), 10);
+    return () => clearTimeout(t);
+  }, [selectedId, selectedCorridorId]);
+
   const visibleEvents = useMemo(() =>
     replayMode ? replayEvents.slice(0, replayIndex + 1) : events,
     [replayMode, replayIndex, replayEvents, events],
@@ -424,7 +437,7 @@ export function ConflitPage() {
       lines.push({
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: [c.originCoords, c.destCoords] },
-        properties: { color: c.color, severity: c.severity, corridorId: c.id, confidence: c.confidence, origin: c.origin, destination: c.destination },
+        properties: { color: c.color, severity: c.severity, corridorId: c.id, confidence: c.confidence, origin: c.origin, destination: c.destination, daysDiff: c.daysDiff },
       });
       const mid: [number, number] = [
         (c.originCoords[0] + c.destCoords[0]) / 2,
@@ -570,6 +583,18 @@ export function ConflitPage() {
 
   const recommendations = useMemo(() => selectedEvent ? buildRecommendations(selectedEvent) : [], [selectedEvent]);
 
+  const selectedPrediction = useMemo(() => {
+    if (!selectedEvent) return null;
+    const prov = selectedEvent.province || selectedEvent.p_code || '';
+    return predictions.find(p => p.province === prov || p.province === selectedEvent.p_code) ?? null;
+  }, [selectedEvent, predictions]);
+
+  const relatedCorridors = useMemo(() => {
+    if (!selectedEvent) return [];
+    const prov = selectedEvent.province || selectedEvent.p_code || '';
+    return enhancedCorridors.filter(c => c.origin === prov || c.destination === prov).slice(0, 3);
+  }, [selectedEvent, enhancedCorridors]);
+
   // ── Map click ─────────────────────────────────────────────────────────
   const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     const f = e.features?.[0];
@@ -593,10 +618,36 @@ export function ConflitPage() {
         setDetailTab('info');
         // Fly to province centroid
         const c = getCentroid(match);
-        if (c) mapRef.current?.getMap().flyTo({ center: c, zoom: 7, duration: 700 });
+        if (c) mapRef.current?.getMap().flyTo({ center: c, zoom: 7, duration: 700, offset: [-160, 0] });
       }
     }
   }, [sortedEvents, selectedCorridorId]);
+
+  const onMouseMove = useCallback((e: MapLayerMouseEvent) => {
+    const f = e.features?.[0];
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    const canvas = map.getCanvas();
+    if (!f) {
+      canvas.style.cursor = '';
+      setCorridorTooltip(null);
+      return;
+    }
+    if (f.layer?.id === 'corridor-lines') {
+      canvas.style.cursor = 'crosshair';
+      setCorridorTooltip({
+        x:           e.point.x,
+        y:           e.point.y,
+        origin:      String(f.properties?.origin ?? ''),
+        destination: String(f.properties?.destination ?? ''),
+        confidence:  Number(f.properties?.confidence ?? 0),
+        daysDiff:    Number(f.properties?.daysDiff ?? 0),
+      });
+    } else {
+      canvas.style.cursor = 'pointer';
+      setCorridorTooltip(null);
+    }
+  }, []);
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
@@ -786,7 +837,14 @@ export function ConflitPage() {
                     <div
                       key={e.external_id || i}
                       className={`px-3 py-2 cursor-pointer transition-colors ${isSelected ? 'bg-cc-800' : 'hover:bg-cc-800/50'}`}
-                      onClick={() => { setSelectedId(isSelected ? null : (e.external_id || null)); setCorridorId(null); setDetailTab('info'); }}
+                      onClick={() => {
+                        if (isSelected) { setSelectedId(null); return; }
+                        setSelectedId(e.external_id || null);
+                        setCorridorId(null);
+                        setDetailTab('info');
+                        const c = getCentroid(e);
+                        if (c) mapRef.current?.getMap().flyTo({ center: c, zoom: 7, duration: 700, offset: [-160, 0] });
+                      }}
                     >
                       <div className="flex items-start gap-2">
                         <span className="w-2 h-2 rounded-full shrink-0 mt-1" style={{ backgroundColor: color }} />
@@ -978,8 +1036,14 @@ export function ConflitPage() {
           }}
           style={{ width: '100%', height: '100%' }}
           mapStyle={MAP_STYLE}
-          interactiveLayerIds={['province-circles', 'province-halo', 'province-counts', 'province-labels', 'corridor-arrows', 'corridor-origins', 'corridor-dests', 'threat-labels']}
+          interactiveLayerIds={['province-circles', 'province-halo', 'province-counts', 'province-labels', 'corridor-lines', 'corridor-arrows', 'corridor-origins', 'corridor-dests', 'threat-labels']}
           onClick={onMapClick}
+          onMouseMove={onMouseMove}
+          onMouseLeave={() => {
+            setCorridorTooltip(null);
+            const map = mapRef.current?.getMap();
+            if (map) map.getCanvas().style.cursor = '';
+          }}
         >
           {/* Threat prediction heatmap */}
           {showPredictionLayer && threatGeoJSON.features.length > 0 && (
@@ -1160,6 +1224,21 @@ export function ConflitPage() {
           </div>
         )}
 
+        {/* Corridor hover tooltip */}
+        {corridorTooltip && (
+          <div
+            className="absolute pointer-events-none z-30 bg-cc-900/97 border border-cc-600 rounded-lg px-3 py-2 text-xs font-mono shadow-xl"
+            style={{ left: corridorTooltip.x + 14, top: corridorTooltip.y - 60 }}
+          >
+            <div className="text-gray-200 font-bold mb-0.5">
+              {corridorTooltip.origin} <span className="text-cc-500">→</span> {corridorTooltip.destination}
+            </div>
+            <div className="text-cc-400 text-[10px]">
+              Corridor · Δ{corridorTooltip.daysDiff.toFixed(1)}j · Conf. {corridorTooltip.confidence}%
+            </div>
+          </div>
+        )}
+
         {/* Top stats bar */}
         <div className="absolute top-3 left-3 flex gap-2 flex-wrap">
           {events.length > 0 && (
@@ -1201,7 +1280,7 @@ export function ConflitPage() {
               ? (selectedEvent.coordinates ?? getCentroid(selectedEvent))
               : (selectedCorridor ? selectedCorridor.originCoords : null);
           return (
-          <div className="absolute top-2 right-3 w-80 bg-cc-950/98 border border-red-900 rounded-xl shadow-2xl overflow-hidden backdrop-blur-sm z-20 flex flex-col max-h-[calc(100vh-2rem)]">
+          <div className={`absolute top-2 right-3 w-80 bg-cc-950/98 border border-red-900 rounded-xl shadow-2xl overflow-hidden backdrop-blur-sm z-20 flex flex-col max-h-[calc(100vh-2rem)] transition-all duration-300 ease-out ${panelVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4'}`}>
 
             {/* Satellite mosaic */}
             {satCoords && (
@@ -1399,6 +1478,61 @@ export function ConflitPage() {
                       🔗 Source
                     </a>
                   )}
+
+                  {/* Displacement prediction */}
+                  {selectedPrediction && (
+                    <div className="border-t border-cc-800 pt-2.5 mt-1">
+                      <div className="text-[9px] font-mono text-orange-500 uppercase tracking-wider mb-2">📊 Prédiction IA · déplacement</div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 text-[10px]">
+                          <span className="text-cc-500 font-mono w-20 shrink-0">Pop. à risque :</span>
+                          <span className="text-orange-300 font-mono font-bold">
+                            {(selectedPrediction.displaced_estimate_low / 1000).toFixed(0)}k – {(selectedPrediction.displaced_estimate_high / 1000).toFixed(0)}k
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px]">
+                          <span className="text-cc-500 font-mono w-20 shrink-0">Horizon :</span>
+                          <span className="text-gray-300 font-mono">{selectedPrediction.horizon_days} jours</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px]">
+                          <span className="text-cc-500 font-mono w-20 shrink-0">Confiance :</span>
+                          <div className="flex items-center gap-2 flex-1">
+                            <span className="text-yellow-400 font-mono">{Math.round(selectedPrediction.confidence * 100)}%</span>
+                            <div className="flex-1 h-1 bg-cc-700 rounded-full">
+                              <div className="h-full bg-yellow-500 rounded-full" style={{ width: `${selectedPrediction.confidence * 100}%` }} />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Related corridors */}
+                  {relatedCorridors.length > 0 && (
+                    <div className="border-t border-cc-800 pt-2.5 mt-1">
+                      <div className="text-[9px] font-mono text-blue-400 uppercase tracking-wider mb-2">🗺 Corridors de mouvement</div>
+                      <div className="space-y-1.5">
+                        {relatedCorridors.map(c => {
+                          const role = c.origin === (selectedEvent.province || selectedEvent.p_code) ? 'ORIGINE' : 'DEST.';
+                          return (
+                            <div key={c.id} className="bg-cc-900 rounded-lg px-2.5 py-2 border border-cc-700">
+                              <div className="flex items-center gap-1 text-[10px] mb-1">
+                                <span className={`text-[8px] font-mono font-bold px-1 rounded shrink-0 ${role === 'ORIGINE' ? 'text-blue-400 bg-blue-900/40' : 'text-green-400 bg-green-900/40'}`}>{role}</span>
+                                <span className="text-cc-500 truncate">{c.origin}</span>
+                                <span className="text-cc-700 shrink-0">→</span>
+                                <span className="text-gray-300 truncate">{c.destination}</span>
+                              </div>
+                              <div className="flex items-center gap-3 text-[9px] text-cc-600 font-mono">
+                                <span>Conf. {c.confidence}%</span>
+                                <span>Δ{c.daysDiff.toFixed(1)}j</span>
+                                <span style={{ color: c.color }}>S{c.severity}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1467,6 +1601,24 @@ export function ConflitPage() {
                 </div>
               )}
             </div>
+
+            {/* Action buttons */}
+            {selectedEvent && (
+              <div className="px-3 py-2.5 border-t border-cc-800 bg-cc-950/80 shrink-0 flex flex-col gap-1.5">
+                <a
+                  href={`/crises/new?type=conflict&event_id=${encodeURIComponent(selectedEvent.external_id)}`}
+                  className="block w-full text-center py-2 bg-red-900/70 hover:bg-red-800 text-red-100 border border-red-800 rounded-lg text-[11px] font-mono font-bold transition-colors"
+                >
+                  ⚔️ Créer une crise depuis cet incident
+                </a>
+                <button
+                  onClick={() => navigator.clipboard.writeText(selectedEvent.external_id)}
+                  className="w-full text-center py-1.5 bg-cc-800 hover:bg-cc-700 text-cc-300 border border-cc-700 rounded-lg text-[10px] font-mono transition-colors"
+                >
+                  📋 Copier la référence incident
+                </button>
+              </div>
+            )}
           </div>
           );
         })()}
