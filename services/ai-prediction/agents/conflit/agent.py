@@ -44,6 +44,9 @@ _PREDICTION_STORE: list[dict] = []  # Prédictions de déplacement par province
 # Seuil au-delà duquel on publie une alerte critique sur le bus
 _CRITICAL_DISPLACEMENT_THRESHOLD = 10_000  # personnes
 
+_REDIS_CACHE_KEY = "conflit:events:v1"
+_REDIS_TTL       = 86_400  # 24 h
+
 
 # ---------------------------------------------------------------------------
 # Agent
@@ -80,8 +83,10 @@ class ConflitAgent:
             bus.subscribe("veille.new_event", self._handle_veille_event)
         )
 
-        # Bootstrap from disaster_events table (conflict + mass_displacement, last 30 days)
-        await self._bootstrap_from_db()
+        # Try Redis cache first — avoids cold-start latency and API dependency
+        loaded = await self._load_from_redis()
+        if not loaded:
+            await self._bootstrap_from_db()
 
         logger.info("conflit_agent.started", interval_hours=2, events_loaded=len(_EVENT_STORE))
 
@@ -93,6 +98,36 @@ class ConflitAgent:
     # ------------------------------------------------------------------
     # Bootstrap
     # ------------------------------------------------------------------
+
+    async def _load_from_redis(self) -> bool:
+        """Return True and populate _EVENT_STORE if a valid cache entry exists in Redis."""
+        try:
+            import json
+            from redis_client import get_redis
+            cached = await get_redis().get(_REDIS_CACHE_KEY)
+            if cached:
+                events = json.loads(cached)
+                if events:
+                    _EVENT_STORE.extend(events)
+                    logger.info("conflit_agent.redis_loaded", count=len(events))
+                    print(f"[conflit] redis_loaded count={len(events)}", flush=True)
+                    return True
+        except Exception as exc:
+            logger.warning("conflit_agent.redis_load_failed", error=str(exc))
+            print(f"[conflit] redis_load_failed error={exc}", flush=True)
+        return False
+
+    async def _save_to_redis(self) -> None:
+        """Persist current _EVENT_STORE to Redis with TTL."""
+        try:
+            import json
+            from redis_client import get_redis
+            await get_redis().setex(_REDIS_CACHE_KEY, _REDIS_TTL, json.dumps(_EVENT_STORE))
+            logger.info("conflit_agent.redis_saved", count=len(_EVENT_STORE))
+            print(f"[conflit] redis_saved count={len(_EVENT_STORE)}", flush=True)
+        except Exception as exc:
+            logger.warning("conflit_agent.redis_save_failed", error=str(exc))
+            print(f"[conflit] redis_save_failed error={exc}", flush=True)
 
     async def _bootstrap_from_db(self) -> None:
         """
@@ -170,6 +205,7 @@ class ConflitAgent:
 
             print(f"[conflit] bootstrap_done events_loaded={len(_EVENT_STORE)}", flush=True)
             logger.info("conflit_agent.bootstrap_done", events_loaded=len(_EVENT_STORE))
+            await self._save_to_redis()
         except Exception as exc:
             import traceback
             print(f"[conflit] bootstrap_FAILED error={exc}", flush=True)

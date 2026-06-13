@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import MapGL, { Source, Layer, type MapLayerMouseEvent, type MapRef } from 'react-map-gl/maplibre';
+import type { GeoJSONSource } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { formatDistanceToNow, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -96,6 +97,13 @@ const SEV_COLOR: Record<number, string> = {
 const SEV_LABEL: Record<number, string> = {
   1: 'Mineur', 2: 'Limité', 3: 'Modéré', 4: 'Grave', 5: 'Critique',
 };
+const HAZARD_FR_SHORT: Record<string, string> = {
+  flood: 'Inondation', landslide: 'Glissement', mass_displacement: 'Déplacement',
+  humanitarian_crisis: 'Crise hum.', health_epidemic: 'Épidémie',
+  volcanic_eruption: 'Volcan', drought: 'Sécheresse', fire: 'Incendie',
+  conflict: 'Conflit', earthquake: 'Séisme', other: 'Autre',
+};
+
 const EVENT_TYPE_FR: Record<string, string> = {
   conflict: 'Conflit armé', armed_clashes: 'Affrontements armés',
   violence_civilians: 'Violence contre civils', explosion_remote: 'Explosion/Mine',
@@ -125,6 +133,123 @@ const CAT_LABEL: Record<string, string> = {
   logistics:    'Logistique',
   coordination: 'Coordination',
 };
+
+// ── SitRep PDF ─────────────────────────────────────────────────────────────
+
+function printSitRep(
+  events: ConflictEvent[],
+  earlyWarnings: EarlyWarning[],
+  threatPredictions: ThreatPrediction[],
+  predictions: DisplacementPrediction[],
+  corridors: EnhancedCorridor[],
+  horizon: number,
+): void {
+  const win = window.open('', '_blank', 'width=820,height=700');
+  if (!win) return;
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const provincesCount = new Set(events.map(e => e.p_code || e.province)).size;
+
+  const warningRows = earlyWarnings.map(w => `
+    <tr>
+      <td>${w.province}</td>
+      <td class="lvl-${w.level}">${({ red:'CRITIQUE', orange:'ALERTE', yellow:'VIGILANCE', green:'NORMAL' } as Record<string,string>)[w.level]}</td>
+      <td>${w.message}</td>
+      <td style="font-size:9pt;color:#555">${w.indicators.join(' · ')}</td>
+    </tr>`).join('');
+
+  const threatRows = threatPredictions.map(t => `
+    <tr>
+      <td style="text-align:center;font-weight:bold">${t.rank}</td>
+      <td>${t.target}</td>
+      <td style="font-weight:bold;color:#dc2626">${t.riskScore}%</td>
+      <td>${t.confidence}%</td>
+      <td style="font-size:9pt;color:#555">${t.reasons.slice(0, 2).join(' · ')}</td>
+    </tr>`).join('');
+
+  const predRows = [...predictions]
+    .sort((a, b) => b.displaced_estimate_high - a.displaced_estimate_high)
+    .map(p => `
+    <tr>
+      <td>${p.province}</td>
+      <td>${Math.round(p.displaced_estimate_low / 1000)}k – ${Math.round(p.displaced_estimate_high / 1000)}k</td>
+      <td>${p.horizon_days}j</td>
+      <td>${Math.round(p.confidence * 100)}%</td>
+    </tr>`).join('');
+
+  const corrRows = corridors.slice(0, 8).map(c => `
+    <tr>
+      <td>${c.origin}</td>
+      <td>${c.destination}</td>
+      <td>S${c.severity}</td>
+      <td>${c.confidence}%</td>
+      <td>${c.daysDiff.toFixed(1)}j</td>
+    </tr>`).join('');
+
+  win.document.write(`<!DOCTYPE html><html lang="fr"><head>
+<meta charset="UTF-8">
+<title>SitRep Conflits — ${dateStr}</title>
+<style>
+  body{font-family:Arial,sans-serif;font-size:11pt;color:#111;max-width:800px;margin:0 auto;padding:24px}
+  h1{font-size:17pt;margin:4px 0}
+  h2{font-size:12pt;border-bottom:2px solid #dc2626;padding-bottom:4px;margin:22px 0 8px;color:#111}
+  .badge{display:inline-block;background:#dc2626;color:#fff;padding:3px 10px;border-radius:4px;font-size:9pt;font-weight:bold;letter-spacing:.05em}
+  .meta{font-size:9pt;color:#555;margin-top:6px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}
+  .stat{background:#f8f8f8;border:1px solid #e5e5e5;border-radius:8px;padding:12px;text-align:center}
+  .stat-val{font-size:26pt;font-weight:bold;color:#dc2626;line-height:1}
+  .stat-label{font-size:8pt;color:#777;text-transform:uppercase;margin-top:4px}
+  table{width:100%;border-collapse:collapse;margin-top:6px;font-size:10pt}
+  th{background:#f0f0f0;text-align:left;padding:6px 8px;font-size:9pt;border:1px solid #ddd}
+  td{padding:5px 8px;border-bottom:1px solid #eee;vertical-align:top}
+  .lvl-red{color:#dc2626;font-weight:bold}
+  .lvl-orange{color:#ea580c;font-weight:bold}
+  .lvl-yellow{color:#ca8a04;font-weight:bold}
+  .footer{margin-top:32px;font-size:8pt;color:#aaa;border-top:1px solid #eee;padding-top:10px;text-align:center}
+  @media print{body{padding:10px}button{display:none}}
+</style>
+</head><body>
+<div style="display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #dc2626;padding-bottom:12px;margin-bottom:18px">
+  <div>
+    <div class="badge">🔒 RESTREINT — USAGE HUMANITAIRE OPÉRATIONNEL</div>
+    <h1>⚔️ Rapport de Situation — Surveillance Conflits RDC</h1>
+    <div class="meta">SINAUR-RDC · Agent 9 · ${dateStr} à ${timeStr} · Fenêtre : ${horizon} jours</div>
+    <div class="meta" style="margin-top:2px">Sources : ACLED · OCHA · MONUSCO · ICG</div>
+  </div>
+  <button onclick="window.print()" style="background:#dc2626;color:#fff;border:none;padding:10px 18px;border-radius:6px;font-size:11pt;cursor:pointer;font-weight:bold">🖨 Imprimer</button>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="stat-val">${events.length}</div><div class="stat-label">Incidents</div></div>
+  <div class="stat"><div class="stat-val">${provincesCount}</div><div class="stat-label">Provinces</div></div>
+  <div class="stat"><div class="stat-val">${corridors.length}</div><div class="stat-label">Corridors</div></div>
+  <div class="stat" style="border-color:${earlyWarnings.filter(w=>w.level==='red').length>0?'#dc2626':'#e5e5e5'}">
+    <div class="stat-val" style="color:${earlyWarnings.filter(w=>w.level==='red').length>0?'#dc2626':'#f97316'}">${earlyWarnings.filter(w => w.level === 'red').length}</div>
+    <div class="stat-label">CRITIQUE</div>
+  </div>
+</div>
+
+${earlyWarnings.length > 0 ? `<h2>⚠️ Alertes précoces actives (${earlyWarnings.length})</h2>
+<table><tr><th>Province</th><th>Niveau</th><th>Message</th><th>Indicateurs</th></tr>${warningRows}</table>` : ''}
+
+${threatPredictions.length > 0 ? `<h2>🎯 Zones de menace prioritaires (IA)</h2>
+<table><tr><th>#</th><th>Province</th><th>Score risque</th><th>Confiance</th><th>Facteurs déterminants</th></tr>${threatRows}</table>` : ''}
+
+${predictions.length > 0 ? `<h2>🏃 Prédictions de déplacement</h2>
+<table><tr><th>Province</th><th>Population à risque</th><th>Horizon</th><th>Confiance</th></tr>${predRows}</table>` : ''}
+
+${corridors.length > 0 ? `<h2>🗺 Corridors de mouvement actifs (${corridors.length})</h2>
+<table><tr><th>Origine</th><th>Destination</th><th>Sévérité</th><th>Confiance</th><th>Intervalle</th></tr>${corrRows}</table>` : ''}
+
+<div class="footer">
+  Document classifié RESTREINT — Ne pas diffuser sans autorisation du coordinateur national<br>
+  Généré automatiquement par SINAUR-RDC · Système National d'Alerte et de Réponse aux Sinistres
+</div>
+</body></html>`);
+  win.document.close();
+  win.focus();
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -362,6 +487,20 @@ export function ConflitPage() {
     staleTime: 30 * 60_000,
   });
 
+  const { data: corrData } = useQuery({
+    queryKey: ['corr-events', selectedId],
+    queryFn: () => {
+      const ev = allEvents.find(e => e.external_id === selectedId);
+      const pcode = ev?.p_code || '';
+      if (!pcode) return Promise.resolve({ data: [] });
+      const params = new URLSearchParams({ province: pcode, limit: '6',
+        dateFrom: new Date(Date.now() - 30 * 86400000).toISOString() });
+      return apiClient.get(`/events?${params}`).then(r => r.data).catch(() => ({ data: [] }));
+    },
+    enabled: !!selectedId,
+    staleTime: 10 * 60_000,
+  });
+
   const allEvents: ConflictEvent[]        = eventsData?.events ?? [];
   const events: ConflictEvent[]           = userScope.length > 0
     ? allEvents.filter(e => !e.p_code || userScope.includes(e.p_code))
@@ -467,22 +606,22 @@ export function ConflitPage() {
     };
   }, [enhancedCorridors]);
 
-  // ── Province circles GeoJSON ──────────────────────────────────────────
-  const provinceGeoJSON = useMemo(() => {
-    const byKey: Record<string, ConflictEvent[]> = {};
-    for (const e of visibleEvents) { const k = getKey(e); (byKey[k] ??= []).push(e); }
-    return {
-      type: 'FeatureCollection' as const,
-      features: Object.entries(byKey).flatMap(([, evs]) => {
-        const c = getCentroid(evs[0]);
-        if (!c) return [];
-        const maxSev  = Math.max(...evs.map(e => e.severity || 1));
-        const maxRisk = Math.max(...evs.map(e => e.displacement_risk || 0));
-        return [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: c },
-          properties: { province: evs[0].province || getKey(evs[0]), eventCount: evs.length, maxSeverity: maxSev, maxRisk, color: SEV_COLOR[maxSev] ?? '#6b7280' } }];
-      }),
-    };
-  }, [visibleEvents]);
+  // ── Events GeoJSON (individual points, clustered by MapLibre) ────────
+  const eventsGeoJSON = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: visibleEvents.flatMap(ev => {
+      const c = getCentroid(ev);
+      if (!c) return [];
+      return [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: c },
+        properties: {
+          id:               ev.external_id,
+          province:         ev.province || ev.p_code || '',
+          severity:         ev.severity || 1,
+          color:            SEV_COLOR[ev.severity || 1] ?? '#6b7280',
+          displacement_risk: ev.displacement_risk || 0,
+        } }];
+    }),
+  }), [visibleEvents]);
 
   // ── Early warnings ────────────────────────────────────────────────────
   const earlyWarnings = useMemo((): EarlyWarning[] => {
@@ -595,10 +734,28 @@ export function ConflitPage() {
     return enhancedCorridors.filter(c => c.origin === prov || c.destination === prov).slice(0, 3);
   }, [selectedEvent, enhancedCorridors]);
 
+  const corrEvents: any[] = corrData?.data ?? [];
+
   // ── Map click ─────────────────────────────────────────────────────────
   const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     const f = e.features?.[0];
     if (!f) { setSelectedId(null); setCorridorId(null); return; }
+
+    // Cluster click → zoom to expansion zoom
+    if (f.properties?.point_count !== undefined) {
+      const map = mapRef.current?.getMap();
+      const src = map?.getSource('events') as GeoJSONSource | undefined;
+      if (src) {
+        src.getClusterExpansionZoom(f.properties.cluster_id as number).then(zoom => {
+          map?.easeTo({
+            center: (f.geometry as GeoJSON.Point).coordinates as [number, number],
+            zoom: zoom + 0.5,
+            duration: 500,
+          });
+        }).catch(() => {/* ignore */});
+      }
+      return;
+    }
 
     // Corridor arrow or endpoint clicked
     const corridorId = f.properties?.corridorId as string | undefined;
@@ -608,7 +765,22 @@ export function ConflitPage() {
       return;
     }
 
-    // Province circle / label / count clicked → find first event in that province
+    // Individual unclustered event clicked
+    const eventId = f.properties?.id as string | undefined;
+    if (eventId) {
+      const match = sortedEvents.find(ev => ev.external_id === eventId);
+      if (match) {
+        setSelectedId(eventId === selectedId ? null : eventId);
+        setCorridorId(null);
+        setDetailTab('info');
+        const c = getCentroid(match);
+        const currentZoom = mapRef.current?.getMap().getZoom() ?? 6;
+        if (c) mapRef.current?.getMap().flyTo({ center: c, zoom: Math.max(currentZoom, 8), duration: 500, offset: [-160, 0] });
+      }
+      return;
+    }
+
+    // Corridor line / label fallback
     const prov = f.properties?.province as string | undefined;
     if (prov) {
       const match = sortedEvents.find(ev => ev.province === prov || ev.p_code === prov);
@@ -616,12 +788,11 @@ export function ConflitPage() {
         setSelectedId(match.external_id);
         setCorridorId(null);
         setDetailTab('info');
-        // Fly to province centroid
         const c = getCentroid(match);
         if (c) mapRef.current?.getMap().flyTo({ center: c, zoom: 7, duration: 700, offset: [-160, 0] });
       }
     }
-  }, [sortedEvents, selectedCorridorId]);
+  }, [sortedEvents, selectedCorridorId, selectedId]);
 
   const onMouseMove = useCallback((e: MapLayerMouseEvent) => {
     const f = e.features?.[0];
@@ -1020,13 +1191,22 @@ export function ConflitPage() {
         )}
 
         {/* Reset view */}
-        <button
-          onClick={resetView}
-          title={provinceBounds ? `Recentrer sur ${provinceName}` : 'Recentrer — vue complète RDC'}
-          className="absolute top-2 right-2 z-20 px-3 py-1.5 rounded-lg text-[11px] font-mono font-bold border border-cc-500 bg-cc-800/95 text-gray-200 hover:text-white hover:bg-cc-700 hover:border-cc-400 transition-colors backdrop-blur-sm shadow-lg"
-        >
-          {provinceBounds ? `🏛️ ${provinceName}` : '🌍 Vue RDC'}
-        </button>
+        <div className="absolute top-2 right-2 z-20 flex gap-1.5">
+          <button
+            onClick={() => printSitRep(events, earlyWarnings, threatPredictions, predictions, enhancedCorridors, horizon)}
+            title="Générer un rapport de situation (SitRep)"
+            className="px-3 py-1.5 rounded-lg text-[11px] font-mono font-bold border border-orange-700 bg-orange-950/90 text-orange-200 hover:text-white hover:bg-orange-900 transition-colors backdrop-blur-sm shadow-lg"
+          >
+            📄 SitRep
+          </button>
+          <button
+            onClick={resetView}
+            title={provinceBounds ? `Recentrer sur ${provinceName}` : 'Recentrer — vue complète RDC'}
+            className="px-3 py-1.5 rounded-lg text-[11px] font-mono font-bold border border-cc-500 bg-cc-800/95 text-gray-200 hover:text-white hover:bg-cc-700 hover:border-cc-400 transition-colors backdrop-blur-sm shadow-lg"
+          >
+            {provinceBounds ? `🏛️ ${provinceName}` : '🌍 Vue RDC'}
+          </button>
+        </div>
 
         <MapGL
           ref={mapRef}
@@ -1036,7 +1216,7 @@ export function ConflitPage() {
           }}
           style={{ width: '100%', height: '100%' }}
           mapStyle={MAP_STYLE}
-          interactiveLayerIds={['province-circles', 'province-halo', 'province-counts', 'province-labels', 'corridor-lines', 'corridor-arrows', 'corridor-origins', 'corridor-dests', 'threat-labels']}
+          interactiveLayerIds={['cluster-circle', 'cluster-count', 'event-unclustered', 'corridor-lines', 'corridor-arrows', 'corridor-origins', 'corridor-dests', 'threat-labels']}
           onClick={onMapClick}
           onMouseMove={onMouseMove}
           onMouseLeave={() => {
@@ -1156,41 +1336,59 @@ export function ConflitPage() {
             </>
           )}
 
-          {/* Province tension circles */}
-          {provinceGeoJSON.features.length > 0 && (
-            <Source id="prov-conflit" type="geojson" data={provinceGeoJSON}>
-              <Layer id="province-halo" type="circle" paint={{
-                'circle-radius':  ['interpolate', ['linear'], ['get', 'eventCount'], 1, 32, 5, 46, 10, 62],
-                'circle-color':   ['get', 'color'],
-                'circle-opacity':  0.08,
-              }} />
-              <Layer id="province-circles" type="circle" paint={{
-                'circle-radius':       ['interpolate', ['linear'], ['get', 'eventCount'], 1, 18, 5, 28, 10, 38],
-                'circle-color':        ['get', 'color'],
-                'circle-opacity':       0.82,
-                'circle-stroke-color': '#ffffff',
-                'circle-stroke-width':  1.5,
-              }} />
-              <Layer id="province-counts" type="symbol" layout={{
-                'text-field':         ['to-string', ['get', 'eventCount']],
-                'text-font':          ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                'text-size':           11,
-                'text-allow-overlap':  true,
-              }} paint={{ 'text-color': '#ffffff' }} />
-              <Layer id="province-labels" type="symbol" layout={{
-                'text-field':         ['get', 'province'],
-                'text-font':          ['Open Sans Regular', 'Arial Unicode MS Regular'],
-                'text-size':           9,
-                'text-offset':        [0, 3.2],
-                'text-anchor':        'top',
-                'text-allow-overlap':  false,
-              }} paint={{
-                'text-color':       '#d1d5db',
-                'text-halo-color':  '#0d1b2a',
-                'text-halo-width':   1.5,
-              }} />
-            </Source>
-          )}
+          {/* Event clusters */}
+          <Source
+            id="events"
+            type="geojson"
+            data={eventsGeoJSON}
+            cluster={true}
+            clusterMaxZoom={7}
+            clusterRadius={50}
+          >
+            {/* Cluster outer glow */}
+            <Layer id="cluster-glow" type="circle" filter={['has', 'point_count']} paint={{
+              'circle-radius':  ['step', ['get', 'point_count'], 34, 5, 44, 20, 58],
+              'circle-color':   '#ef4444',
+              'circle-opacity':  0.10,
+              'circle-blur':     1,
+            }} />
+            {/* Cluster fill */}
+            <Layer id="cluster-circle" type="circle" filter={['has', 'point_count']} paint={{
+              'circle-radius':       ['step', ['get', 'point_count'], 18, 5, 26, 20, 34],
+              'circle-color':        ['step', ['get', 'point_count'], '#f97316', 5, '#ef4444', 20, '#b91c1c'],
+              'circle-opacity':       0.90,
+              'circle-stroke-color': '#ffffff',
+              'circle-stroke-width':  1.5,
+            }} />
+            {/* Cluster count label */}
+            <Layer id="cluster-count" type="symbol" filter={['has', 'point_count']} layout={{
+              'text-field':        '{point_count_abbreviated}',
+              'text-font':         ['Open Sans Bold', 'Arial Unicode MS Bold'],
+              'text-size':          12,
+              'text-allow-overlap': true,
+            }} paint={{ 'text-color': '#ffffff' }} />
+            {/* Individual unclustered events */}
+            <Layer id="event-unclustered" type="circle" filter={['!', ['has', 'point_count']]} paint={{
+              'circle-radius': ['case', ['==', ['get', 'id'], selectedId ?? '__none__'], 14, 10],
+              'circle-color':  ['get', 'color'],
+              'circle-opacity': 0.90,
+              'circle-stroke-color': '#ffffff',
+              'circle-stroke-width': ['case', ['==', ['get', 'id'], selectedId ?? '__none__'], 3, 1.5],
+            }} />
+            {/* Province name below unclustered event */}
+            <Layer id="event-labels" type="symbol" filter={['!', ['has', 'point_count']]} layout={{
+              'text-field':        ['get', 'province'],
+              'text-font':         ['Open Sans Regular', 'Arial Unicode MS Regular'],
+              'text-size':          9,
+              'text-offset':       [0, 1.8],
+              'text-anchor':       'top',
+              'text-allow-overlap': false,
+            }} paint={{
+              'text-color':       '#d1d5db',
+              'text-halo-color':  '#0d1b2a',
+              'text-halo-width':   1.5,
+            }} />
+          </Source>
         </MapGL>
 
         {/* Replay timeline */}
@@ -1530,6 +1728,31 @@ export function ConflitPage() {
                             </div>
                           );
                         })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cross-module correlation — humanitarian events in same province */}
+                  {corrEvents.length > 0 && (
+                    <div className="border-t border-cc-800 pt-2.5 mt-1">
+                      <div className="text-[9px] font-mono text-purple-400 uppercase tracking-wider mb-2">
+                        🔗 Événements humanitaires liés ({corrEvents.length})
+                      </div>
+                      <div className="space-y-1">
+                        {corrEvents.slice(0, 4).map((ev: any) => (
+                          <div key={ev.id} className="flex items-center gap-2 text-[10px] bg-cc-900 rounded px-2 py-1.5 border border-cc-700">
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{
+                              backgroundColor: SEV_COLOR[({ Minor: 2, Moderate: 3, Severe: 4, Extreme: 5 } as Record<string, number>)[ev.severity as string] ?? 1] ?? '#6b7280',
+                            }} />
+                            <span className="text-purple-400/80 font-mono shrink-0 text-[9px]">{HAZARD_FR_SHORT[ev.hazardType as string] ?? ev.hazardType}</span>
+                            <span className="text-gray-300 flex-1 truncate text-[9px]">{ev.locationName}</span>
+                          </div>
+                        ))}
+                        {corrEvents.length > 4 && (
+                          <a href="/operations" className="text-[9px] text-purple-400/70 font-mono hover:text-purple-300 block text-right">
+                            +{corrEvents.length - 4} autres → Salle d'opérations
+                          </a>
+                        )}
                       </div>
                     </div>
                   )}
