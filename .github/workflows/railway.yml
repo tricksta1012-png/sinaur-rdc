@@ -51,12 +51,7 @@ jobs:
           DOCKERFILE: ${{ matrix.service.dockerfile }}
         run: |
           if [ -n "$SERVICE_ID" ]; then
-            # Write per-service railway.toml so railway up uses the correct Dockerfile
-            cat > railway.toml << EOF
-[build]
-builder = "DOCKERFILE"
-dockerfilePath = "$DOCKERFILE"
-EOF
+            printf '[build]\nbuilder = "DOCKERFILE"\ndockerfilePath = "%s"\n' "$DOCKERFILE" > railway.toml
             railway up --service "$SERVICE_ID" --detach
           else
             echo "⚠️  ${{ matrix.service.name }}: secret ${{ matrix.service.service_id_secret }} not set, skipping."
