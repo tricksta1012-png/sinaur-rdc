@@ -128,6 +128,50 @@ const CAT_LABEL: Record<string, string> = {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+function lngLatToTile(lng: number, lat: number, z: number) {
+  const n = Math.pow(2, z);
+  const x = Math.floor((lng + 180) / 360 * n);
+  const latRad = lat * Math.PI / 180;
+  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+  return { x, y };
+}
+
+const esriTile = (z: number, y: number, x: number) =>
+  `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+
+function SatelliteMosaic({ lng, lat, zoom = 11 }: { lng: number; lat: number; zoom?: number }) {
+  const { x, y } = lngLatToTile(lng, lat, zoom);
+  return (
+    <div className="relative w-full h-36 overflow-hidden bg-cc-900 shrink-0">
+      <div className="grid grid-cols-3 absolute inset-0" style={{ gridTemplateRows: 'repeat(3,1fr)' }}>
+        {[-1, 0, 1].flatMap(dy =>
+          [-1, 0, 1].map(dx => (
+            <img
+              key={`${dx},${dy}`}
+              src={esriTile(zoom, y + dy, x + dx)}
+              className="w-full h-full object-cover"
+              alt=""
+              loading="lazy"
+              onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+            />
+          ))
+        )}
+      </div>
+      {/* Crosshair */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="relative">
+          <div className="w-5 h-5 rounded-full border-2 border-red-400 shadow-lg" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-px h-8 bg-red-400/80" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-px w-8 bg-red-400/80" />
+        </div>
+      </div>
+      <div className="absolute bottom-1 right-1 text-[8px] text-white/50 font-mono bg-black/50 px-1 rounded">
+        © Esri Satellite
+      </div>
+    </div>
+  );
+}
+
 function getBearing(from: [number, number], to: [number, number]): number {
   const toRad = (d: number) => d * Math.PI / 180;
   const [lon1, lat1] = from.map(toRad);
@@ -1151,11 +1195,34 @@ export function ConflitPage() {
         </div>
 
         {/* ── Intelligence Detail Panel ── */}
-        {(selectedEvent || selectedCorridor) && (
-          <div className="absolute top-14 right-3 w-72 bg-cc-950/98 border border-red-900 rounded-xl shadow-2xl overflow-hidden backdrop-blur-sm z-20 flex flex-col max-h-[calc(100vh-8rem)]">
+        {(selectedEvent || selectedCorridor) && (() => {
+          const satCoords: [number, number] | null =
+            selectedEvent
+              ? (selectedEvent.coordinates ?? getCentroid(selectedEvent))
+              : (selectedCorridor ? selectedCorridor.originCoords : null);
+          return (
+          <div className="absolute top-2 right-3 w-80 bg-cc-950/98 border border-red-900 rounded-xl shadow-2xl overflow-hidden backdrop-blur-sm z-20 flex flex-col max-h-[calc(100vh-2rem)]">
+
+            {/* Satellite mosaic */}
+            {satCoords && (
+              <div className="relative shrink-0">
+                <SatelliteMosaic lng={satCoords[0]} lat={satCoords[1]} zoom={11} />
+                {/* Overlay gradient */}
+                <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-cc-950 to-transparent pointer-events-none" />
+                {/* Close button over satellite */}
+                <button
+                  onClick={() => { setSelectedId(null); setCorridorId(null); }}
+                  className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 text-white/80 hover:text-white flex items-center justify-center text-sm font-bold leading-none"
+                >×</button>
+                {/* Coord badge */}
+                <div className="absolute top-2 left-2 text-[8px] font-mono bg-black/60 text-white/70 px-1.5 py-0.5 rounded">
+                  {satCoords[1].toFixed(3)}°N {satCoords[0].toFixed(3)}°E
+                </div>
+              </div>
+            )}
 
             {/* Panel header */}
-            <div className="px-3 pt-3 pb-2 border-b border-cc-800 shrink-0">
+            <div className={`px-3 pt-2.5 pb-2 border-b border-cc-800 shrink-0 ${!satCoords ? 'pt-3' : ''}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   {selectedEvent && (
@@ -1175,14 +1242,16 @@ export function ConflitPage() {
                     </>
                   )}
                 </div>
-                <button
-                  onClick={() => { setSelectedId(null); setCorridorId(null); }}
-                  className="w-5 h-5 rounded-full bg-cc-800 text-cc-400 hover:text-white text-xs flex items-center justify-center shrink-0"
-                >×</button>
+                {!satCoords && (
+                  <button
+                    onClick={() => { setSelectedId(null); setCorridorId(null); }}
+                    className="w-5 h-5 rounded-full bg-cc-800 text-cc-400 hover:text-white text-xs flex items-center justify-center shrink-0"
+                  >×</button>
+                )}
               </div>
 
               {selectedEvent && (
-                <div className="flex items-center gap-1.5 mt-1.5">
+                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                   <span
                     className="text-[10px] font-bold px-2 py-0.5 rounded-full border"
                     style={{
@@ -1192,6 +1261,9 @@ export function ConflitPage() {
                     }}
                   >
                     S{selectedEvent.severity} — {SEV_LABEL[selectedEvent.severity] ?? ''}
+                  </span>
+                  <span className="text-[9px] text-cc-500 font-mono">
+                    {EVENT_TYPE_FR[selectedEvent.event_type] ?? selectedEvent.event_type}
                   </span>
                   {relevantActors.length > 0 && (
                     <span className="text-[9px] bg-red-900/50 text-red-300 border border-red-800 px-1.5 py-0.5 rounded font-mono">
@@ -1206,6 +1278,7 @@ export function ConflitPage() {
                     Confiance {selectedCorridor.confidence}%
                   </span>
                   <span className="text-[10px] font-mono text-cc-500">S{selectedCorridor.severity}</span>
+                  <span className="text-[10px] font-mono text-cc-500">{selectedCorridor.daysDiff.toFixed(1)}j</span>
                 </div>
               )}
             </div>
@@ -1395,7 +1468,8 @@ export function ConflitPage() {
               )}
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* Severity legend */}
         <div className="absolute bottom-4 left-3 bg-cc-900/95 border border-cc-700 rounded-lg px-3 py-2 backdrop-blur-sm">
