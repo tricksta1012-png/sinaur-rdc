@@ -21,16 +21,22 @@ jobs:
         service:
           - name: api
             service_id_secret: RAILWAY_SERVICE_API_ID
+            dockerfile: apps/api/Dockerfile
           - name: ai-prediction
             service_id_secret: RAILWAY_SERVICE_AI_ID
+            dockerfile: services/ai-prediction/Dockerfile
           - name: command-center
             service_id_secret: RAILWAY_SERVICE_CC_ID
+            dockerfile: apps/command-center/Dockerfile
           - name: public
             service_id_secret: RAILWAY_SERVICE_PUBLIC_ID
+            dockerfile: apps/public/Dockerfile
           - name: alerting
             service_id_secret: RAILWAY_SERVICE_ALERTING_ID
+            dockerfile: services/alerting/Dockerfile
           - name: ingestion
             service_id_secret: RAILWAY_SERVICE_INGESTION_ID
+            dockerfile: services/ingestion/Dockerfile
 
     steps:
       - uses: actions/checkout@v4
@@ -42,9 +48,16 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           SERVICE_ID: ${{ secrets[matrix.service.service_id_secret] }}
+          DOCKERFILE: ${{ matrix.service.dockerfile }}
         run: |
           if [ -n "$SERVICE_ID" ]; then
-            railway redeploy --service "$SERVICE_ID" --yes
+            # Write per-service railway.toml so railway up uses the correct Dockerfile
+            cat > railway.toml << EOF
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "$DOCKERFILE"
+EOF
+            railway up --service "$SERVICE_ID" --detach
           else
             echo "⚠️  ${{ matrix.service.name }}: secret ${{ matrix.service.service_id_secret }} not set, skipping."
           fi
