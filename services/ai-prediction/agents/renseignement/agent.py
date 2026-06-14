@@ -218,7 +218,7 @@ class RenseignementAgent:
                              critical_count, high_count, summary, payload)
                         VALUES
                             (:id, :generated_at, :period_start, :period_end,
-                             :critical_count, :high_count, :summary, :payload::jsonb)
+                             :critical_count, :high_count, :summary, CAST(:payload AS jsonb))
                     """),
                     {
                         "id":            bulletin.bulletin_id,
