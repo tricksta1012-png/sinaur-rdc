@@ -122,6 +122,22 @@ class RenseignementAgent:
         except Exception as exc:
             logger.warning("renseignement_agent.redis_save_failed", error=str(exc))
 
+    @staticmethod
+    def _parse_date(date_str: str | None) -> datetime | None:
+        if not date_str:
+            return None
+        # Try RFC 2822 (RSS feeds: "Sun, 14 Jun 2026 18:03:10 +0100")
+        try:
+            from email.utils import parsedate_to_datetime
+            return parsedate_to_datetime(date_str)
+        except Exception:
+            pass
+        # Fallback: ISO 8601
+        try:
+            return datetime.fromisoformat(date_str)
+        except Exception:
+            return None
+
     async def _save_to_db(
         self,
         events: list[IntelEvent],
@@ -147,7 +163,7 @@ class RenseignementAgent:
                             "source_id":   ev.source_id,
                             "external_id": ev.external_id,
                             "title":       ev.title,
-                            "date":        ev.date,
+                            "date":        self._parse_date(ev.date),
                             "content":     ev.content,
                             "url":         ev.url,
                             "reliability": ev.reliability,
