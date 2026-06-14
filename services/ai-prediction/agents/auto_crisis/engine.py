@@ -12,16 +12,16 @@ Cadence: boucle asyncio infinie, cycle toutes les 5 minutes.
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+import structlog
 
 from agents.truth_filter.filter import SourceReport, truth_filter
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Stats en mémoire pour le dashboard
 _STATS: dict[str, Any] = {

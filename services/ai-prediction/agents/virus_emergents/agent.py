@@ -24,15 +24,15 @@ Cadence: boucle asyncio infinie, cycle toutes les 15 minutes.
 from __future__ import annotations
 
 import asyncio
-import logging
 import random
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+import structlog
 from agents import bus
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Profils des pathogènes émergents
