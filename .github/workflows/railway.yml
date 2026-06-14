@@ -16,27 +16,19 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 5
       matrix:
         service:
           - name: api
             service_id_secret: RAILWAY_SERVICE_API_ID
-            dockerfile: apps/api/Dockerfile
           - name: ai-prediction
             service_id_secret: RAILWAY_SERVICE_AI_ID
-            dockerfile: services/ai-prediction/Dockerfile
           - name: command-center
             service_id_secret: RAILWAY_SERVICE_CC_ID
-            dockerfile: apps/command-center/Dockerfile
           - name: public
             service_id_secret: RAILWAY_SERVICE_PUBLIC_ID
-            dockerfile: apps/public/Dockerfile
           - name: alerting
             service_id_secret: RAILWAY_SERVICE_ALERTING_ID
-            dockerfile: services/alerting/Dockerfile
-          - name: ingestion
-            service_id_secret: RAILWAY_SERVICE_INGESTION_ID
-            dockerfile: services/ingestion/Dockerfile
 
     steps:
       - uses: actions/checkout@v6
@@ -48,11 +40,12 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           SERVICE_ID: ${{ secrets[matrix.service.service_id_secret] }}
-          DOCKERFILE: ${{ matrix.service.dockerfile }}
+          SERVICE: ${{ matrix.service.name }}
         run: |
           if [ -n "$SERVICE_ID" ]; then
-            printf '[build]\nbuilder = "DOCKERFILE"\ndockerfilePath = "%s"\n' "$DOCKERFILE" > railway.toml
+            # Use pre-built Docker Hub image — Railway builds FROM the hub tag directly
+            echo "FROM matroschka/sinaur-rdc-${SERVICE}:latest" > Dockerfile
             railway up --service "$SERVICE_ID" --detach
           else
-            echo "⚠️  ${{ matrix.service.name }}: secret ${{ matrix.service.service_id_secret }} not set, skipping."
+            echo "⚠️  ${SERVICE}: secret ${{ matrix.service.service_id_secret }} not set, skipping."
           fi
