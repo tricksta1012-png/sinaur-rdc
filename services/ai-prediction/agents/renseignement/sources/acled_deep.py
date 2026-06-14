@@ -32,7 +32,7 @@ async def fetch_acled_deep(days: int = 14) -> list[IntelEvent]:
     api_key = os.getenv("ACLED_API_KEY", "")
     email = os.getenv("ACLED_EMAIL", "")
     if not api_key or not email:
-        logger.warning("acled_deep.no_credentials")
+        logger.info("acled_deep.no_credentials", hint="Set ACLED_API_KEY and ACLED_EMAIL env vars")
         return []
 
     params = {

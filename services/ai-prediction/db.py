@@ -3,6 +3,7 @@ Async SQLAlchemy database pool for SINAUR-RDC AI Prediction Service.
 """
 from __future__ import annotations
 
+import ssl as _ssl
 from collections.abc import AsyncGenerator
 
 import structlog
@@ -19,12 +20,19 @@ if _db_url.startswith("postgresql://"):
 elif _db_url.startswith("postgres://"):
     _db_url = "postgresql+asyncpg://" + _db_url[len("postgres://"):]
 
+# asyncpg rejects sslmode as a URL param — strip it and pass ssl via connect_args
+_ssl_ctx: _ssl.SSLContext | None = None
+if "sslmode=require" in _db_url:
+    _db_url = _db_url.replace("?sslmode=require", "").replace("&sslmode=require", "")
+    _ssl_ctx = _ssl.create_default_context()
+
 engine = create_async_engine(
     _db_url,
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,
     echo=False,
+    connect_args={"ssl": _ssl_ctx} if _ssl_ctx else {},
 )
 
 _AsyncSessionLocal = async_sessionmaker(
