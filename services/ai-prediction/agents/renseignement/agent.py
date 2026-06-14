@@ -206,7 +206,7 @@ class RenseignementAgent:
                             "active_actors":        a.active_actors,
                             "sources":              a.sources,
                             "confidence":           a.confidence,
-                            "computed_at":          a.computed_at,
+                            "computed_at":          self._parse_date(a.computed_at),
                         },
                     )
 
@@ -222,9 +222,9 @@ class RenseignementAgent:
                     """),
                     {
                         "id":            bulletin.bulletin_id,
-                        "generated_at":  bulletin.generated_at,
-                        "period_start":  bulletin.period_start,
-                        "period_end":    bulletin.period_end,
+                        "generated_at":  self._parse_date(bulletin.generated_at),
+                        "period_start":  self._parse_date(bulletin.period_start),
+                        "period_end":    self._parse_date(bulletin.period_end),
                         "critical_count": bulletin.critical_count,
                         "high_count":    bulletin.high_count,
                         "summary":       bulletin.summary,
