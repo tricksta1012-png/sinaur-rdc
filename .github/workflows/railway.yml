@@ -8,9 +8,6 @@ on:
     branches: [master, main]
   workflow_dispatch:
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   deploy:
     name: Deploy ${{ matrix.service.name }}
@@ -42,7 +39,7 @@ jobs:
             dockerfile: services/ingestion/Dockerfile
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli
