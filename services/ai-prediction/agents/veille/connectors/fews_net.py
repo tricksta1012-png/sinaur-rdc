@@ -16,7 +16,7 @@ from schemas.events import CanonicalEvent, EventType, RawEvent
 
 logger = structlog.get_logger(__name__)
 
-_FEWS_RSS_URL = "https://fews.net/rss/reliefweb?category=all&country=CD"
+_FEWS_RSS_URL = "https://fews.net/east-africa/democratic-republic-congo/feed"
 
 # Realistic mock data for when RSS is unavailable
 _MOCK_FEWS_DATA = [
@@ -76,7 +76,7 @@ class FewsNetConnector(AbstractConnector):
                 events = _parse_rss(rss_text, now)
                 logger.info("fews_net.fetch_live", count=len(events))
         except Exception as exc:
-            logger.warning("fews_net.rss_unavailable_using_mock", error=str(exc))
+            logger.info("fews_net.rss_unavailable_using_mock", error=str(exc))
             for item in _MOCK_FEWS_DATA:
                 events.append(
                     RawEvent(

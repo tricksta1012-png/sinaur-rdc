@@ -10,8 +10,10 @@ from ..schemas import IntelEvent, IntelCategory
 logger = structlog.get_logger(__name__)
 
 FEED_URLS = [
-    "https://www.radiookapi.net/securite/feed",
-    "https://www.radiookapi.net/droits-de-lhomme/feed",
+    "https://www.radiookapi.net/category/securite/feed",
+    "https://www.radiookapi.net/category/droits-de-lhomme/feed",
+    # Fallback: main feed filtered client-side by keyword
+    "https://www.radiookapi.net/feed",
 ]
 
 PCODE_MAP = {
@@ -103,5 +105,5 @@ async def fetch_okapi_events() -> list[IntelEvent]:
                         actor_names=_extract_actors(combined),
                     ))
             except Exception as exc:
-                logger.warning("okapi_fetch_failed", url=url, error=str(exc))
+                logger.debug("okapi_fetch_failed", url=url, error=str(exc))
     return events

@@ -85,6 +85,12 @@ class FirmsConnector(AbstractConnector):
 
     async def fetch(self) -> list[RawEvent]:
         map_key = settings.firms_map_key
+        if not map_key or map_key == "DEMO_KEY":
+            logger.info(
+                "firms_connector.skipped_no_key",
+                hint="Set FIRMS_MAP_KEY env var to a NASA FIRMS API key (register at https://firms.modaps.eosdis.nasa.gov/api/area/)",
+            )
+            return []
         url = (
             f"{_FIRMS_BASE}/{map_key}/VIIRS_SNPP_NRT"
             f"/{_DRC_WEST},{_DRC_SOUTH},{_DRC_EAST},{_DRC_NORTH}/2"
@@ -92,12 +98,10 @@ class FirmsConnector(AbstractConnector):
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.get(url)
-                # Rate-limited (429) or server error — return empty gracefully
                 if resp.status_code == 429:
                     logger.warning(
                         "firms_connector.rate_limited",
-                        map_key=map_key,
-                        hint="DEMO_KEY has strict rate limits; set FIRMS_MAP_KEY to a real key",
+                        hint="FIRMS API rate limit hit; consider increasing fetch_interval_minutes",
                     )
                     return []
                 if resp.status_code >= 400:
