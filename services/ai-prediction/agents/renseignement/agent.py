@@ -4,9 +4,11 @@ Surveillance renseignement militaire & sécuritaire RDC.
 Cadence : 2 heures. Scope : RESTRICTED.
 """
 from __future__ import annotations
+import json
 import uuid
 from datetime import datetime, timezone
 import structlog
+from sqlalchemy import text
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .schemas import IntelBulletin, IntelEvent, ProvinceAssessment
 from .sources.radio_okapi import fetch_okapi_events
@@ -79,6 +81,7 @@ class RenseignementAgent:
         _BULLETIN_STORE.append(bulletin.model_dump())
 
         await self._save_to_redis()
+        await self._save_to_db(events, assessments, bulletin)
         logger.info("renseignement_agent.run_analysis.done",
                     events=len(events), assessments=len(assessments))
 
@@ -112,13 +115,111 @@ class RenseignementAgent:
 
     async def _save_to_redis(self) -> None:
         try:
-            import json
             from redis_client import get_redis
             r = get_redis()
             await r.setex(_REDIS_KEY_EVENTS, _REDIS_TTL, json.dumps(_EVENT_STORE))
             await r.setex(_REDIS_KEY_ASSESSMENTS, _REDIS_TTL, json.dumps(_ASSESSMENT_STORE))
         except Exception as exc:
             logger.warning("renseignement_agent.redis_save_failed", error=str(exc))
+
+    async def _save_to_db(
+        self,
+        events: list[IntelEvent],
+        assessments: list[ProvinceAssessment],
+        bulletin: IntelBulletin,
+    ) -> None:
+        try:
+            from db import engine
+            async with engine.begin() as conn:
+                # Upsert events — ignore duplicates (immutable by source+external_id)
+                for ev in events:
+                    await conn.execute(
+                        text("""
+                            INSERT INTO intel_events
+                                (source_id, external_id, title, date, content, url,
+                                 reliability, category, p_code, province, territoire, actor_names)
+                            VALUES
+                                (:source_id, :external_id, :title, :date, :content, :url,
+                                 :reliability, :category, :p_code, :province, :territoire, :actor_names)
+                            ON CONFLICT (source_id, external_id) DO NOTHING
+                        """),
+                        {
+                            "source_id":   ev.source_id,
+                            "external_id": ev.external_id,
+                            "title":       ev.title,
+                            "date":        ev.date,
+                            "content":     ev.content,
+                            "url":         ev.url,
+                            "reliability": ev.reliability,
+                            "category":    ev.category.value if hasattr(ev.category, "value") else ev.category,
+                            "p_code":      ev.p_code,
+                            "province":    ev.province,
+                            "territoire":  ev.territoire,
+                            "actor_names": ev.actor_names,
+                        },
+                    )
+
+                # Replace all province assessments — one row per p_code per cycle
+                p_codes = [a.p_code for a in assessments]
+                if p_codes:
+                    await conn.execute(
+                        text("DELETE FROM intel_province_assessments WHERE p_code = ANY(:codes)"),
+                        {"codes": p_codes},
+                    )
+                for a in assessments:
+                    await conn.execute(
+                        text("""
+                            INSERT INTO intel_province_assessments
+                                (p_code, province, threat_level, threat_label, justification,
+                                 humanitarian_access, recommended_actions, safe_corridors,
+                                 active_actors, sources, confidence, computed_at)
+                            VALUES
+                                (:p_code, :province, :threat_level, :threat_label, :justification,
+                                 :humanitarian_access, :recommended_actions, :safe_corridors,
+                                 :active_actors, :sources, :confidence, :computed_at)
+                        """),
+                        {
+                            "p_code":               a.p_code,
+                            "province":             a.province,
+                            "threat_level":         int(a.threat_level),
+                            "threat_label":         a.threat_label,
+                            "justification":        a.justification,
+                            "humanitarian_access":  a.humanitarian_access,
+                            "recommended_actions":  a.recommended_actions,
+                            "safe_corridors":       a.safe_corridors,
+                            "active_actors":        a.active_actors,
+                            "sources":              a.sources,
+                            "confidence":           a.confidence,
+                            "computed_at":          a.computed_at,
+                        },
+                    )
+
+                # Append bulletin (keep full history)
+                await conn.execute(
+                    text("""
+                        INSERT INTO intel_bulletins
+                            (id, generated_at, period_start, period_end,
+                             critical_count, high_count, summary, payload)
+                        VALUES
+                            (:id, :generated_at, :period_start, :period_end,
+                             :critical_count, :high_count, :summary, :payload::jsonb)
+                    """),
+                    {
+                        "id":            bulletin.bulletin_id,
+                        "generated_at":  bulletin.generated_at,
+                        "period_start":  bulletin.period_start,
+                        "period_end":    bulletin.period_end,
+                        "critical_count": bulletin.critical_count,
+                        "high_count":    bulletin.high_count,
+                        "summary":       bulletin.summary,
+                        "payload":       json.dumps(bulletin.model_dump()),
+                    },
+                )
+
+            logger.info("renseignement_agent.db_saved",
+                        events=len(events), assessments=len(assessments))
+        except Exception as exc:
+            logger.error("renseignement_agent.db_save_failed", error=str(exc))
 
     def get_events(self, category: str | None = None, p_code: str | None = None) -> list[dict]:
         result = list(_EVENT_STORE)
