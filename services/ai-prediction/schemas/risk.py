@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class RiskType(str, Enum):
@@ -31,6 +31,7 @@ class FactorContribution(BaseModel):
 
 
 class RiskScore(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
     p_code: str
     province: str
     risk_type: RiskType

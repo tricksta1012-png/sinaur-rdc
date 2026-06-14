@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # URL of the Fastify API service (used by conflit agent to bootstrap events)
     api_service_url: str = "https://api-production-65ad.up.railway.app"
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", protected_namespaces=())
 
 
 settings = Settings()
