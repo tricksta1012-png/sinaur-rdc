@@ -25,27 +25,23 @@ class ReliefWebConnector(AbstractConnector):
     circuit_breaker_threshold = 5
 
     async def fetch(self) -> list[RawEvent]:
-        # ReliefWeb v1 GET with multi-condition filter syntax
-        url = (
-            f"{_RELIEFWEB_BASE}/reports"
-            f"?appname={settings.reliefweb_app_name}"
-            f"&filter[operator]=AND"
-            f"&filter[conditions][0][field]=primary_country.iso3"
-            f"&filter[conditions][0][value]=COD"
-            f"&filter[conditions][1][field]=theme.name"
-            f"&filter[conditions][1][value]=Disaster%20Management"
-            f"&fields[include][]=title"
-            f"&fields[include][]=date"
-            f"&fields[include][]=type"
-            f"&fields[include][]=primary_country"
-            f"&fields[include][]=glide"
-            f"&fields[include][]=status"
-            f"&fields[include][]=body-html"
-            f"&limit=50"
-            f"&sort[]=date.created:desc"
-        )
+        url = f"{_RELIEFWEB_BASE}/reports?appname={settings.reliefweb_app_name}"
+        payload = {
+            "filter": {
+                "operator": "AND",
+                "conditions": [
+                    {"field": "primary_country.iso3", "value": "COD"},
+                    {"field": "theme.name", "value": "Disaster Management"},
+                ],
+            },
+            "fields": {
+                "include": ["title", "date", "type", "primary_country", "glide", "status", "body-html"],
+            },
+            "limit": 50,
+            "sort": ["date.created:desc"],
+        }
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url)
+            resp = await client.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()
 
