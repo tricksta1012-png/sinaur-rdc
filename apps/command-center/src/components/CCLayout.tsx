@@ -35,8 +35,10 @@ export function CCLayout() {
     { to: '/coordination',  icon: '🤝',  label: t('nav_coordination')  },
     { to: '/rapports',      icon: '📄',  label: t('nav_reports')       },
     { to: '/ai',            icon: '🤖',  label: t('nav_ai')            },
-    { to: '/conflit',       icon: '⚔️',  label: t('nav_conflit')       },
+    { to: '/conflit',         icon: '⚔️',  label: t('nav_conflit')         },
+    { to: '/renseignement', icon: '🔎',  label: t('nav_renseignement') },
     { to: '/idp',           icon: '🏕️',  label: t('nav_idp')           },
+    { to: '/epidemie',      icon: '🦠',  label: t('nav_epidemie')      },
   ];
 
   return (

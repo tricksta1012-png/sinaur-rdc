@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../lib/api.js';
+import { useNavigate } from 'react-router-dom';
 
 const HAZARD_FR: Record<string, string> = {
   flood: 'Inondation', conflict: 'Conflit', health_epidemic: 'Épidémie',
@@ -28,9 +29,19 @@ const EMPTY_FORM: CreateForm = {
 
 export function CrisesPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [tab, setTab]   = useState<string | null>(null); // null = all
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CreateForm>(EMPTY_FORM);
+
+  const validateMutation = useMutation({
+    mutationFn: (id: string) => apiClient.post(`/crises/${id}/validate`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crises'] }),
+  });
+  const rejectMutation = useMutation({
+    mutationFn: (id: string) => apiClient.post(`/crises/${id}/reject`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crises'] }),
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['crises', tab],
@@ -116,28 +127,53 @@ export function CrisesPage() {
                 <th className="text-left px-4 py-3">Titre</th>
                 <th className="text-left px-4 py-3 hidden md:table-cell">Type</th>
                 <th className="text-left px-4 py-3">Statut</th>
+                <th className="text-left px-4 py-3 hidden lg:table-cell">Source</th>
                 <th className="text-right px-4 py-3 hidden lg:table-cell">Affectés</th>
-                <th className="text-right px-4 py-3 hidden xl:table-cell">Tâches ouvertes</th>
+                <th className="text-right px-4 py-3 hidden xl:table-cell">Tâches</th>
                 <th className="text-right px-4 py-3">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-cc-800">
               {data.map((c: any) => {
                 const sm = STATUS_META[c.status] ?? STATUS_META.active;
+                const isAgentAuto = c.createdBy === 'AGENT_AUTO' || c.pendingValidation;
                 return (
-                  <tr key={c.id} className="hover:bg-cc-800/50 transition-colors">
+                  <tr key={c.id} className={`hover:bg-cc-800/50 transition-colors ${isAgentAuto ? 'border-l-2 border-yellow-600' : ''}`}>
                     <td className="px-4 py-3">
                       <span className="font-mono text-xs text-yellow-400">{c.glideNumber}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-medium text-gray-200 text-sm">{c.title}</div>
-                      {c.locationName && <div className="text-xs text-cc-600 mt-0.5">📍 {c.locationName}</div>}
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="font-medium text-gray-200 text-sm truncate max-w-[180px]">{c.title}</span>
+                        {isAgentAuto && (
+                          <span className="text-[9px] font-bold px-1.5 py-px rounded bg-yellow-900/70 text-yellow-300 border border-yellow-700 shrink-0 animate-pulse">
+                            🤖 AGENT_AUTO
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {c.locationName && <span className="text-xs text-cc-600">📍 {c.locationName}</span>}
+                        {c.confidenceScore != null && (
+                          <span className="text-[10px] font-mono text-yellow-600">{Math.round(c.confidenceScore * 100)}%</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell text-gray-400 text-xs">
                       {HAZARD_FR[c.hazardType] ?? c.hazardType}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`cc-badge border ${sm.color}`}>{sm.label}</span>
+                      {c.pendingValidation ? (
+                        <span className="cc-badge border bg-yellow-900/50 text-yellow-300 border-yellow-700">En attente</span>
+                      ) : (
+                        <span className={`cc-badge border ${sm.color}`}>{sm.label}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      {isAgentAuto ? (
+                        <span className="text-[10px] text-yellow-600 font-mono">IA — veille auto</span>
+                      ) : (
+                        <span className="text-[10px] text-cc-600">Manuel</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right hidden lg:table-cell text-gray-300 text-xs font-mono">
                       {c.affectedCount != null ? c.affectedCount.toLocaleString('fr') : '—'}
@@ -149,22 +185,42 @@ export function CrisesPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        {c.status === 'active' && (
-                          <button
-                            onClick={() => updateStatus.mutate({ id: c.id, status: 'contained' })}
-                            className="cc-btn-ghost text-xs px-2 py-1"
-                            title="Marquer comme maîtrisée"
-                          >
-                            ✓ Maîtrisée
-                          </button>
-                        )}
-                        {c.status === 'contained' && (
-                          <button
-                            onClick={() => updateStatus.mutate({ id: c.id, status: 'closed' })}
-                            className="cc-btn-ghost text-xs px-2 py-1"
-                          >
-                            Clôturer
-                          </button>
+                        {c.pendingValidation ? (
+                          <>
+                            <button
+                              onClick={() => validateMutation.mutate(c.id)}
+                              disabled={validateMutation.isPending}
+                              className="text-[10px] px-2 py-1 rounded bg-green-800 text-green-200 hover:bg-green-700 transition-colors"
+                            >
+                              ✓
+                            </button>
+                            <button
+                              onClick={() => rejectMutation.mutate(c.id)}
+                              disabled={rejectMutation.isPending}
+                              className="text-[10px] px-2 py-1 rounded bg-red-900/60 text-red-300 hover:bg-red-800 transition-colors"
+                            >
+                              ✕
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {c.status === 'active' && (
+                              <button
+                                onClick={() => updateStatus.mutate({ id: c.id, status: 'contained' })}
+                                className="cc-btn-ghost text-xs px-2 py-1"
+                              >
+                                ✓ Maîtrisée
+                              </button>
+                            )}
+                            {c.status === 'contained' && (
+                              <button
+                                onClick={() => updateStatus.mutate({ id: c.id, status: 'closed' })}
+                                className="cc-btn-ghost text-xs px-2 py-1"
+                              >
+                                Clôturer
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
-import MapGL, { Marker } from 'react-map-gl/maplibre';
+import { useState, useMemo } from 'react';
+import MapGL, { Marker, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -562,6 +562,31 @@ function MapView({
 }) {
   const activeDepots = depots.filter(d => d.isActive);
 
+  const { data: divisionsGeo = [] } = useQuery({
+    queryKey: ['cc-divisions-geo'],
+    queryFn: () => apiClient.get('/geo/divisions?level=1&withGeometry=true').then(r => r.data.data),
+    staleTime: 60 * 60_000,
+  });
+
+  const provinceGeoJSON = useMemo(() => {
+    const lowByPcode = new Map<string, number>();
+    for (const d of depots) {
+      const prov = d.pcode.length >= 5 ? d.pcode.substring(0, 5) : d.pcode;
+      lowByPcode.set(prov, (lowByPcode.get(prov) ?? 0) + d.lowStockCount);
+    }
+    return {
+      type: 'FeatureCollection' as const,
+      features: (divisionsGeo as any[]).filter(d => d.geometry).map(d => ({
+        type: 'Feature' as const, geometry: d.geometry,
+        properties: {
+          pcode:         d.pcode,
+          name:          d.name,
+          lowStockCount: lowByPcode.get(d.pcode) ?? 0,
+        },
+      })),
+    };
+  }, [divisionsGeo, depots]);
+
   return (
     <div className="relative h-full">
       <MapGL
@@ -569,6 +594,30 @@ function MapView({
         style={{ width: '100%', height: '100%' }}
         mapStyle={STOCKS_MAP_STYLE}
       >
+        {/* Province fills colored by stock criticality */}
+        {provinceGeoJSON.features.length > 0 && (
+          <Source id="provinces" type="geojson" data={provinceGeoJSON}>
+            <Layer id="province-fill" type="fill" paint={{
+              'fill-color': ['interpolate', ['linear'], ['get', 'lowStockCount'],
+                0, 'rgba(34,197,94,0.28)',
+                1, 'rgba(245,158,11,0.45)',
+                3, 'rgba(239,68,68,0.60)'],
+              'fill-opacity': 1,
+            }} />
+            {/* Outer dark halo for border contrast */}
+            <Layer id="province-border-shadow" type="line" paint={{ 'line-color': '#071420', 'line-width': 3, 'line-blur': 1 }} />
+            {/* Inner bright border */}
+            <Layer id="province-border" type="line" paint={{ 'line-color': '#7eb4d4', 'line-width': 1.5 }} />
+            <Layer id="province-name" type="symbol" minzoom={4} layout={{
+              'text-field': ['get', 'name'],
+              'text-size': 11,
+              'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+              'text-allow-overlap': false,
+              'text-max-width': 8,
+            }} paint={{ 'text-color': '#e2e8f0', 'text-halo-color': '#071420', 'text-halo-width': 2 }} />
+          </Source>
+        )}
+
         {activeDepots.map((d, i) => {
           const [lng, lat] = markerCoords(d, i);
           const color = depotMarkerColor(d);

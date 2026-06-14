@@ -12,7 +12,9 @@ import { RapportsPage } from './pages/RapportsPage.js';
 import { StocksPage } from './pages/StocksPage.js';
 import { AiPage } from './pages/AiPage.js';
 import { ConflitPage } from './pages/ConflitPage.js';
+import { RenseignementPage } from './pages/RenseignementPage.js';
 import { IdpCheckpointPage } from './pages/IdpCheckpointPage.js';
+import { EpidemicPage } from './pages/EpidemicPage.js';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
@@ -41,8 +43,10 @@ export default function App() {
         <Route path="rapports"       element={<RapportsPage />} />
         <Route path="stocks"         element={<StocksPage />} />
         <Route path="ai"             element={<AiPage />} />
-        <Route path="conflit"        element={<ConflitPage />} />
+        <Route path="conflit"          element={<ConflitPage />} />
+        <Route path="renseignement"  element={<RenseignementPage />} />
         <Route path="idp"            element={<IdpCheckpointPage />} />
+        <Route path="epidemie"       element={<EpidemicPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

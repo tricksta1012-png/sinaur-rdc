@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../lib/api.js';
 
 type Tab = 'status' | 'predictions' | 'veille' | 'renseignements' | 'antifraud' | 'stocks' | 'signalements' | 'epidemie' | 'logistique' | 'reporting';
@@ -706,46 +707,167 @@ function AgentsStatusTab() {
     staleTime: 15_000,
     refetchInterval: 30_000,
   });
+  const { data: autoCrisisStats } = useQuery({
+    queryKey: ['ai-auto-crisis-stats'],
+    queryFn: () => apiClient.get('/ai/auto_crisis/stats').then(r => r.data).catch(() => null),
+    staleTime: 20_000,
+    refetchInterval: 30_000,
+  });
+  const { data: virusStatus } = useQuery({
+    queryKey: ['ai-virus-emergents-status'],
+    queryFn: () => apiClient.get('/ai/virus_emergents/status').then(r => r.data).catch(() => null),
+    staleTime: 30_000,
+  });
 
   const agents: any[] = data?.agents ?? [];
+  const sources: any[] = virusStatus?.sources ?? [];
+
+  const PATHOGEN_STATUS: Record<string, { label: string; cls: string; icon: string }> = {
+    'SURVEILLANCE_ACTIVE':  { label: 'SURVEILLANCE ACTIVE',  cls: 'bg-yellow-900/60 text-yellow-300 border-yellow-700', icon: '🔍' },
+    'SURVEILLANCE_PASSIVE': { label: 'SURVEILLANCE PASSIVE', cls: 'bg-cc-800 text-gray-400 border-cc-600',               icon: '📡' },
+    'ALERTE':               { label: 'ALERTE',               cls: 'bg-red-900/60 text-red-300 border-red-700',           icon: '🚨' },
+  };
+
+  const pathogenes = virusStatus?.pathogenes ?? {
+    hantavirus_andes: { nom_fr: 'Hantavirus Andes',       statut: 'SURVEILLANCE_ACTIVE',  transmission_h2h: true,  risque_label: 'MODÉRÉ',      surveillance_rdc: true  },
+    henipavirus_nipah:{ nom_fr: 'Henipavirus Nipah (NiV)',statut: 'SURVEILLANCE_PASSIVE', transmission_h2h: true,  risque_label: 'FAIBLE',       surveillance_rdc: false },
+    virus_marburg:    { nom_fr: 'Virus Marburg',           statut: 'SURVEILLANCE_ACTIVE',  transmission_h2h: true,  risque_label: 'ÉLEVÉ',        surveillance_rdc: true  },
+    disease_x:        { nom_fr: 'Disease X',               statut: 'SURVEILLANCE_PASSIVE', transmission_h2h: null,  risque_label: 'INDÉTERMINÉ',  surveillance_rdc: true  },
+  };
+
+  const autoStats = autoCrisisStats ?? {
+    received_today: 0, validated: 0, auto_created: 0, pending_human: 0, rejected: 0,
+  };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="text-[10px] font-mono text-gray-500 uppercase">
-          {agents.length} agents — {data?.response_ms != null ? `${data.response_ms}ms` : '…'}
+          {agents.length} agents · {data?.response_ms != null ? `${data.response_ms}ms` : '…'}
         </div>
         <button onClick={() => refetch()} className="text-[10px] text-gray-500 hover:text-gray-300 font-mono">↺ Actualiser</button>
       </div>
 
-      {isLoading ? (
-        <div className="text-center text-gray-500 text-sm py-8">Chargement…</div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3">
-          {agents.map((a: any) => (
-            <div key={a.id} className="bg-cc-800 rounded-lg p-3 space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${AGENT_STATUS_COLORS[a.status] ?? 'bg-gray-500'}`} />
-                <span className="text-xs font-bold text-white leading-tight">{a.name}</span>
-                <span className={`ml-auto text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${
-                  a.status === 'ok' ? 'bg-green-900 text-green-300' :
-                  a.status === 'degraded' ? 'bg-yellow-900 text-yellow-300' : 'bg-red-900 text-red-300'
-                }`}>{a.status?.toUpperCase()}</span>
-              </div>
-              <p className="text-[10px] text-gray-500 leading-tight">{a.description}</p>
-              {Object.keys(a.metrics ?? {}).length > 0 && (
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                  {Object.entries(a.metrics).map(([k, v]: any) => (
-                    <span key={k} className="text-[10px] font-mono text-gray-400">
-                      {k.replace(/_/g, ' ')}: <span className="text-gray-200">{v}</span>
-                    </span>
-                  ))}
+      {/* Section 1 — Agents IA */}
+      <div>
+        <div className="text-[10px] font-mono text-cc-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+          <span className="w-3 h-px bg-cc-600 inline-block" />
+          Agents IA — Santé opérationnelle
+        </div>
+        {isLoading ? (
+          <div className="text-center text-gray-500 text-sm py-6">Chargement…</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {agents.map((a: any) => (
+              <div key={a.id} className="bg-cc-800 rounded-lg p-2.5 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${AGENT_STATUS_COLORS[a.status] ?? 'bg-gray-500'}`} />
+                  <span className="text-[11px] font-bold text-white leading-tight truncate flex-1">{a.name}</span>
+                  <span className={`text-[8px] font-mono font-bold px-1 py-px rounded shrink-0 ${
+                    a.status === 'ok' ? 'bg-green-900 text-green-300' :
+                    a.status === 'degraded' ? 'bg-yellow-900 text-yellow-300' : 'bg-red-900 text-red-300'
+                  }`}>{a.status?.toUpperCase()}</span>
                 </div>
-              )}
+                {Object.keys(a.metrics ?? {}).length > 0 && (
+                  <div className="flex flex-wrap gap-x-2 gap-y-px">
+                    {Object.entries(a.metrics).slice(0, 3).map(([k, v]: any) => (
+                      <span key={k} className="text-[9px] font-mono text-gray-500">
+                        {k.replace(/_/g, ' ')}: <span className="text-gray-300">{v}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Section 2 — Filtre Vérité */}
+      <div>
+        <div className="text-[10px] font-mono text-cc-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+          <span className="w-3 h-px bg-cc-600 inline-block" />
+          Filtre Vérité — Validation multi-sources
+        </div>
+        <div className="grid grid-cols-5 gap-1.5">
+          {[
+            { label: 'Reçus/24h',    value: autoStats.received_today ?? 0, cls: 'bg-cc-800',                              textCls: 'text-white' },
+            { label: 'Validés',      value: autoStats.validated      ?? 0, cls: 'bg-green-900/40 border border-green-800', textCls: 'text-green-300' },
+            { label: 'Créés auto',   value: autoStats.auto_created   ?? 0, cls: 'bg-yellow-900/40 border border-yellow-800', textCls: 'text-yellow-300' },
+            { label: 'Attente hum.', value: autoStats.pending_human  ?? 0, cls: 'bg-orange-900/40 border border-orange-800 animate-pulse', textCls: 'text-orange-300' },
+            { label: 'Rejetés',      value: autoStats.rejected       ?? 0, cls: 'bg-cc-800',                              textCls: 'text-red-400' },
+          ].map(k => (
+            <div key={k.label} className={`rounded-lg p-2 text-center ${k.cls}`}>
+              <div className={`text-lg font-bold font-mono ${k.textCls}`}>{k.value}</div>
+              <div className="text-[8px] text-gray-500 leading-tight mt-0.5">{k.label}</div>
             </div>
           ))}
         </div>
-      )}
+
+        {/* Sources de collecte */}
+        <div className="mt-2.5">
+          <div className="text-[9px] font-mono text-cc-600 uppercase mb-1.5">Sources actives ({sources.length > 0 ? sources.filter((s:any) => s.status === 'ok').length : 8}/{sources.length > 0 ? sources.length : 8})</div>
+          <div className="space-y-1 max-h-32 overflow-y-auto">
+            {(sources.length > 0 ? sources : [
+              { id:'WHO_DON',     nom:'WHO DON',              status:'ok', events_per_h:0.5,  reliability:0.95, last_fetch: null },
+              { id:'PROMEDMAIL',  nom:'ProMED-mail',          status:'ok', events_per_h:8.0,  reliability:0.78, last_fetch: null },
+              { id:'HEALTHMAP',   nom:'HealthMap',            status:'ok', events_per_h:15.0, reliability:0.72, last_fetch: null },
+              { id:'ECDC',        nom:'ECDC',                 status:'ok', events_per_h:1.0,  reliability:0.90, last_fetch: null },
+              { id:'CDC_HAN',     nom:'CDC HAN',              status:'ok', events_per_h:0.2,  reliability:0.92, last_fetch: null },
+              { id:'AFRICA_CDC',  nom:'Africa CDC',           status:'ok', events_per_h:2.0,  reliability:0.88, last_fetch: null },
+              { id:'PASTEUR',     nom:'Institut Pasteur',     status:'ok', events_per_h:0.3,  reliability:0.92, last_fetch: null },
+              { id:'WHO_TWITTER', nom:'WHO @WHO',             status:'ok', events_per_h:4.0,  reliability:0.80, last_fetch: null },
+            ]).map((src: any) => (
+              <div key={src.id} className="flex items-center gap-2 bg-cc-800/60 rounded px-2 py-1">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${src.status === 'ok' ? 'bg-green-400' : 'bg-red-400'}`} />
+                <span className="text-[10px] text-gray-300 flex-1 truncate">{src.nom}</span>
+                <span className="text-[9px] font-mono text-gray-500 shrink-0">
+                  {src.events_per_h}/h
+                </span>
+                <span className="text-[9px] font-mono text-gray-600 shrink-0">
+                  {Math.round((src.reliability ?? 0) * 100)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Section 3 — Pathogènes émergents */}
+      <div>
+        <div className="text-[10px] font-mono text-cc-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+          <span className="w-3 h-px bg-cc-600 inline-block" />
+          Pathogènes émergents — Veille VirusEmergentAgent
+        </div>
+        <div className="space-y-1.5">
+          {Object.entries(pathogenes).map(([pid, p]: any) => {
+            const meta = PATHOGEN_STATUS[p.statut] ?? PATHOGEN_STATUS['SURVEILLANCE_PASSIVE'];
+            return (
+              <div key={pid} className="bg-cc-800 rounded-lg px-3 py-2 flex items-center gap-3">
+                <span className="text-base shrink-0">{meta.icon}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-[11px] font-bold text-white">{p.nom_fr}</span>
+                    {p.transmission_h2h && (
+                      <span className="text-[8px] bg-red-900/60 text-red-300 border border-red-800 px-1 rounded font-mono">H2H</span>
+                    )}
+                    {p.surveillance_rdc && (
+                      <span className="text-[8px] bg-blue-900/60 text-blue-300 border border-blue-800 px-1 rounded font-mono">RDC</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[8px] font-mono px-1.5 py-px rounded border ${meta.cls}`}>{meta.label}</span>
+                    {p.risque_label && (
+                      <span className="text-[9px] text-gray-500 font-mono">Import: {p.risque_label}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1014,20 +1136,64 @@ function EpidemieClusterCard({ c, expanded, onToggle }: { c: any; expanded: bool
   );
 }
 
+// ── Disease cards config (AI tab — compact) ──────────────────────────────────
+
+const AI_DISEASES = [
+  {
+    id:'EBOLA_BUNDIBUGYO', nom:'Ebola Bundibugyo', emoji:'🦠',
+    statut:'URGENCE INTERNATIONALE', statut_cls:'text-red-300',
+    zones:25, cas:515, deces:91, vaccin:false, traitement:false, usppi:true,
+    border:'border-red-800',
+  },
+  {
+    id:'CHOLERA', nom:'Choléra', emoji:'💧',
+    statut:'ENDÉMIQUE', statut_cls:'text-blue-300',
+    zones:18, cas:4820, deces:89, vaccin:true, traitement:true, usppi:false,
+    border:'border-blue-900',
+  },
+  {
+    id:'MPOX', nom:'Mpox', emoji:'⚕️',
+    statut:'ALERTE', statut_cls:'text-purple-300',
+    zones:8, cas:1240, deces:23, vaccin:true, traitement:true, usppi:false,
+    border:'border-purple-900',
+  },
+  {
+    id:'ROUGEOLE', nom:'Rougeole', emoji:'🔴',
+    statut:'ENDÉMIQUE', statut_cls:'text-orange-300',
+    zones:34, cas:12400, deces:234, vaccin:true, traitement:false, usppi:false,
+    border:'border-orange-900',
+  },
+  {
+    id:'MENINGITE', nom:'Méningite', emoji:'🧠',
+    statut:'SURVEILLANCE', statut_cls:'text-green-300',
+    zones:4, cas:320, deces:48, vaccin:true, traitement:true, usppi:false,
+    border:'border-green-900',
+  },
+  {
+    id:'PALUDISME', nom:'Paludisme', emoji:'🦟',
+    statut:'ENDÉMIQUE', statut_cls:'text-emerald-300',
+    zones:145, cas:890000, deces:12400, vaccin:true, traitement:true, usppi:false,
+    border:'border-emerald-900',
+  },
+];
+
 function EpidemieTab() {
+  const navigate = useNavigate();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAlerts, setShowAlerts] = useState(false);
+  const [showClusters, setShowClusters] = useState(false);
 
-  const { data: dashData, isLoading } = useQuery({
+  const { data: dashData } = useQuery({
     queryKey: ['ai-epidemie-dashboard'],
     queryFn: () => apiClient.get('/ai/epidemie/dashboard').then(r => r.data),
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
-  const { data: clustersData } = useQuery({
+  const { data: clustersData, isLoading: clustersLoading } = useQuery({
     queryKey: ['ai-epidemie-clusters'],
     queryFn: () => apiClient.get('/ai/epidemie/clusters').then(r => r.data),
     staleTime: 60_000,
+    enabled: showClusters,
   });
   const { data: alertsData } = useQuery({
     queryKey: ['ai-epidemie-alerts'],
@@ -1041,112 +1207,162 @@ function EpidemieTab() {
 
   return (
     <div className="space-y-4">
-      {/* KPIs */}
-      {dashData && (
-        <div className="grid grid-cols-4 gap-3">
-          {[
-            { label: 'CLUSTERS ACTIFS',  value: dashData.active_clusters  ?? 0, cls: 'bg-red-950 border-red-800',    icon: '🦠' },
-            { label: 'CRITIQUES',        value: criticalClusters.length,          cls: 'bg-red-900/60 border-red-700',  icon: '⚠️' },
-            { label: 'ALERTES CAP',      value: dashData.active_alerts    ?? 0, cls: 'bg-orange-900/50 border-orange-800', icon: '🚨' },
-            { label: 'MALADIES SUIVIES', value: dashData.diseases_monitored ?? 5, cls: 'bg-cc-800 border-cc-600',     icon: '🔬' },
-          ].map(k => (
-            <div key={k.label} className={`rounded-lg p-3 border ${k.cls}`}>
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-base">{k.icon}</span>
-                <div className="text-[9px] font-mono text-gray-400 uppercase">{k.label}</div>
+
+      {/* USPPI Banner */}
+      <div className="bg-red-950/80 border border-red-700 rounded-lg p-3 flex items-start gap-3">
+        <span className="text-red-400 animate-pulse text-xl shrink-0 mt-0.5">🚨</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-red-200 text-xs font-bold leading-tight">
+            URGENCE SANITAIRE DE PORTÉE INTERNATIONALE — OMS (17 MAI 2026)
+          </div>
+          <div className="text-red-400 text-[10px] font-mono mt-0.5">
+            Ebola Bundibugyo · 515 cas confirmés · 91 décès · 25 zones · 3 provinces
+          </div>
+          <div className="text-[9px] text-red-500 font-mono mt-0.5">
+            ⚠ Aucun vaccin ni traitement approuvé pour la souche Bundibugyo
+          </div>
+        </div>
+        <button
+          onClick={() => navigate('/epidemie')}
+          className="text-[10px] bg-red-900 hover:bg-red-800 text-red-200 px-2.5 py-1.5 rounded font-mono whitespace-nowrap shrink-0 transition-colors"
+        >
+          Module Épidémie →
+        </button>
+      </div>
+
+      {/* Disease cards grid */}
+      <div>
+        <div className="text-[10px] font-mono text-gray-500 uppercase mb-2">6 maladies sous surveillance active</div>
+        <div className="grid grid-cols-2 gap-2">
+          {AI_DISEASES.map(d => (
+            <div key={d.id} className={`bg-cc-800 rounded-lg border ${d.border} p-2.5 space-y-1.5`}>
+              <div className="flex items-center gap-1.5">
+                <span className="text-base">{d.emoji}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[11px] font-bold text-white truncate">{d.nom}</span>
+                    {d.usppi && <span className="text-[7px] bg-red-900 text-red-200 border border-red-700 px-1 py-px rounded font-bold shrink-0">USPPI</span>}
+                  </div>
+                  <span className={`text-[8px] font-mono ${d.statut_cls}`}>{d.statut}</span>
+                </div>
               </div>
-              <div className="text-2xl font-bold text-white">{k.value}</div>
+              <div className="grid grid-cols-3 gap-1 text-center">
+                <div>
+                  <div className="text-[11px] font-bold text-white">{d.zones}</div>
+                  <div className="text-[7px] text-cc-600 font-mono">zones</div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-bold text-white">{d.cas >= 1000 ? `${(d.cas/1000).toFixed(0)}k` : d.cas}</div>
+                  <div className="text-[7px] text-cc-600 font-mono">cas</div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-bold text-red-400">{d.deces >= 1000 ? `${(d.deces/1000).toFixed(1)}k` : d.deces}</div>
+                  <div className="text-[7px] text-cc-600 font-mono">décès</div>
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <span className={`text-[7px] px-1 py-px rounded font-mono border ${d.vaccin ? 'bg-green-950 text-green-400 border-green-900' : 'bg-red-950 text-red-400 border-red-900'}`}>
+                  💉{d.vaccin ? 'OUI' : 'NON'}
+                </span>
+                <span className={`text-[7px] px-1 py-px rounded font-mono border ${d.traitement ? 'bg-green-950 text-green-400 border-green-900' : 'bg-red-950 text-red-400 border-red-900'}`}>
+                  💊{d.traitement ? 'OUI' : 'NON'}
+                </span>
+              </div>
             </div>
           ))}
         </div>
-      )}
-
-      {/* Critical alert banner */}
-      {criticalClusters.length > 0 && (
-        <div className="bg-red-950/60 border border-red-700 rounded-lg p-3">
-          <div className="flex items-center gap-2 text-red-300 text-xs font-bold mb-2">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            {criticalClusters.length} foyer{criticalClusters.length > 1 ? 's' : ''} CRITIQUE{criticalClusters.length > 1 ? 'S' : ''} — Intervention immédiate requise
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {criticalClusters.map((c, i) => (
-              <span key={i} className="text-[10px] bg-red-900 text-red-200 px-2 py-0.5 rounded-full font-mono">
-                {DISEASE_ICONS[c.disease_id] ?? '🦠'} {DISEASE_FR[c.disease_id] ?? c.disease_id} — {c.province}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Clusters */}
-      <div className="flex items-center justify-between">
-        <div className="text-[10px] font-mono text-gray-500 uppercase">
-          Foyers épidémiques ({clusters.length})
-        </div>
-        {alerts.length > 0 && (
+        <div className="mt-2 text-right">
           <button
-            onClick={() => setShowAlerts(v => !v)}
-            className="text-[10px] font-mono text-orange-400 hover:text-orange-300 transition-colors"
+            onClick={() => navigate('/epidemie')}
+            className="text-[10px] text-red-400 hover:text-red-200 font-mono transition-colors"
           >
-            {showAlerts ? '▲' : '▼'} {alerts.length} alerte{alerts.length !== 1 ? 's' : ''} CAP
+            Carte épidémie temps réel →
           </button>
+        </div>
+      </div>
+
+      {/* Foyers IA (DBSCAN) — collapsible */}
+      <div>
+        <button
+          onClick={() => setShowClusters(v => !v)}
+          className="flex items-center justify-between w-full text-left"
+        >
+          <div className="text-[10px] font-mono text-gray-500 uppercase">
+            Foyers détectés par IA — DBSCAN {dashData?.active_clusters != null ? `(${dashData.active_clusters})` : ''}
+          </div>
+          <span className="text-cc-600 text-[10px]">{showClusters ? '▲' : '▼'}</span>
+        </button>
+
+        {showClusters && (
+          <div className="mt-2 space-y-2">
+            {/* CAP Alerts */}
+            {alerts.length > 0 && (
+              <button
+                onClick={() => setShowAlerts(v => !v)}
+                className="text-[10px] font-mono text-orange-400 hover:text-orange-300 transition-colors w-full text-left"
+              >
+                {showAlerts ? '▲' : '▼'} {alerts.length} alerte{alerts.length !== 1 ? 's' : ''} CAP
+              </button>
+            )}
+
+            {showAlerts && alerts.length > 0 && (
+              <div className="space-y-1 bg-orange-950/30 border border-orange-800 rounded-lg p-2.5">
+                {alerts.slice(0, 5).map((a: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2 text-[10px] border-b border-orange-900/50 pb-1 last:border-0 last:pb-0">
+                    <span>{DISEASE_ICONS[a.disease_id] ?? '🦠'}</span>
+                    <span className="text-orange-200 font-bold">{a.alert_level}</span>
+                    <span className="text-gray-300 flex-1 truncate">{DISEASE_FR[a.disease_id] ?? a.disease_id} — {a.province}</span>
+                    {a.validated && <span className="text-green-400 text-[9px]">✓</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {criticalClusters.length > 0 && (
+              <div className="bg-red-950/40 border border-red-800 rounded-lg p-2.5">
+                <div className="flex items-center gap-2 text-red-300 text-[10px] font-bold mb-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                  {criticalClusters.length} foyer{criticalClusters.length > 1 ? 's' : ''} CRITIQUE{criticalClusters.length > 1 ? 'S' : ''}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {criticalClusters.map((c, i) => (
+                    <span key={i} className="text-[9px] bg-red-900 text-red-200 px-1.5 py-px rounded-full font-mono">
+                      {DISEASE_ICONS[c.disease_id] ?? '🦠'} {DISEASE_FR[c.disease_id] ?? c.disease_id} — {c.province}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {clustersLoading ? (
+              <div className="text-center text-gray-500 text-xs py-4 animate-pulse">Chargement…</div>
+            ) : clusters.length === 0 ? (
+              <div className="py-4 text-center">
+                <div className="text-2xl opacity-30 mb-1">🦠</div>
+                <div className="text-xs text-gray-500">Aucun cluster DBSCAN détecté</div>
+                <div className="text-[10px] text-cc-600 mt-1">Cycle 30 min · Sources : SMS USSD, App mobile, Veille IA</div>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {clusters.map((c: any) => {
+                  const id = c.cluster_id ?? String(Math.random());
+                  return (
+                    <EpidemieClusterCard
+                      key={id}
+                      c={c}
+                      expanded={expandedId === id}
+                      onToggle={() => setExpandedId(expandedId === id ? null : id)}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
-      {/* CAP Alerts (collapsible) */}
-      {showAlerts && alerts.length > 0 && (
-        <div className="space-y-1.5 bg-orange-950/30 border border-orange-800 rounded-lg p-3">
-          <div className="text-[10px] font-mono text-orange-400 uppercase mb-2">Alertes CAP générées</div>
-          {alerts.slice(0, 6).map((a: any, i: number) => (
-            <div key={i} className="flex items-center gap-2 text-[11px] border-b border-orange-900/50 pb-1.5 last:border-0 last:pb-0">
-              <span>{DISEASE_ICONS[a.disease_id] ?? '🦠'}</span>
-              <span className="text-orange-200 font-bold uppercase">{a.alert_level}</span>
-              <span className="text-gray-300 flex-1 truncate">{DISEASE_FR[a.disease_id] ?? a.disease_id} — {a.province}</span>
-              <span className="text-gray-500 font-mono text-[10px] shrink-0">
-                {a.created_at ? new Date(a.created_at).toLocaleDateString('fr-FR') : '—'}
-              </span>
-              {a.validated && <span className="text-green-400 text-[10px] shrink-0">✓ Validé</span>}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="text-center text-gray-500 text-sm py-6 animate-pulse">Chargement des données épidémiques…</div>
-      ) : clusters.length === 0 ? (
-        <div className="py-8 text-center space-y-2">
-          <div className="text-3xl opacity-40">🦠</div>
-          <div className="text-sm text-gray-500">Aucun cluster sanitaire détecté</div>
-          <div className="text-[11px] text-cc-600 max-w-sm mx-auto">
-            Les foyers sont détectés automatiquement dès réception de signalements (SMS, app, veille IA) correspondant aux profils des 5 maladies surveillées.
-          </div>
-          <div className="pt-2 flex flex-wrap justify-center gap-2">
-            {['cholera', 'mpox', 'rougeole', 'meningite', 'ebola'].map(d => (
-              <span key={d} className="text-[10px] bg-cc-800 text-cc-400 px-2 py-1 rounded-full font-mono">
-                {DISEASE_ICONS[d]} {DISEASE_FR[d]}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {clusters.map((c: any) => {
-            const id = c.cluster_id ?? String(Math.random());
-            return (
-              <EpidemieClusterCard
-                key={id}
-                c={c}
-                expanded={expandedId === id}
-                onToggle={() => setExpandedId(expandedId === id ? null : id)}
-              />
-            );
-          })}
-        </div>
-      )}
-
-      {/* Surveillance note */}
       <div className="text-[10px] text-cc-700 font-mono pt-1">
-        Surveillance continue · Détection DBSCAN · Cycle 30 min · Sources : App mobile, SMS USSD, Veille IA
+        Surveillance continue · DBSCAN · 30 min · Sources : App mobile, SMS USSD, Veille IA
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../lib/api.js';
 import { useRealtimeFeed } from '../hooks/useRealtimeFeed.js';
@@ -54,6 +54,73 @@ function KpiCard({ label, value, sub, color, href }: { label: string; value: str
       <div className="text-xs text-gray-400 mt-1.5 font-medium">{label}</div>
       {sub && <div className="text-[11px] text-cc-600 mt-0.5">{sub}</div>}
       {href && <div className="text-[10px] text-cc-600 group-hover:text-sinaur-400 mt-1 font-mono transition-colors">Voir →</div>}
+    </div>
+  );
+}
+
+function CrisisValidationBanner() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['crises-pending'],
+    queryFn: () => apiClient.get('/crises/pending-validation').then(r => r.data.data ?? []),
+    staleTime: 15_000,
+    refetchInterval: 20_000,
+  });
+
+  const validateMutation = useMutation({
+    mutationFn: (id: string) => apiClient.post(`/crises/${id}/validate`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crises-pending'] }),
+  });
+  const rejectMutation = useMutation({
+    mutationFn: (id: string) => apiClient.post(`/crises/${id}/reject`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crises-pending'] }),
+  });
+
+  if (isLoading || !data || data.length === 0) return null;
+
+  return (
+    <div className="mb-4 rounded-xl border border-yellow-700 bg-yellow-950/40 overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-yellow-800/60 bg-yellow-900/20">
+        <span className="text-yellow-400 text-base">🤖</span>
+        <span className="text-yellow-300 text-xs font-bold uppercase tracking-wider">
+          {data.length} crise{data.length > 1 ? 's' : ''} détectée{data.length > 1 ? 's' : ''} par l'IA — validation requise
+        </span>
+        <span className="ml-auto text-[10px] text-yellow-600 font-mono">AGENT_AUTO</span>
+      </div>
+      <div className="divide-y divide-yellow-900/40">
+        {data.map((c: any) => (
+          <div key={c.id} className="flex items-center gap-3 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="font-mono text-[10px] text-yellow-500">{c.glideNumber}</span>
+                {c.confidenceScore != null && (
+                  <span className="text-[9px] font-mono bg-yellow-900/60 text-yellow-300 px-1.5 py-px rounded border border-yellow-700">
+                    {Math.round(c.confidenceScore * 100)}% confiance
+                  </span>
+                )}
+              </div>
+              <div className="text-sm font-medium text-gray-100 truncate">{c.title}</div>
+              {c.locationName && <div className="text-[10px] text-yellow-600 mt-0.5">📍 {c.locationName}</div>}
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={() => validateMutation.mutate(c.id)}
+                disabled={validateMutation.isPending || rejectMutation.isPending}
+                className="px-3 py-1 rounded-lg text-xs font-bold bg-green-800 text-green-200 hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
+                ✓ Valider
+              </button>
+              <button
+                onClick={() => rejectMutation.mutate(c.id)}
+                disabled={validateMutation.isPending || rejectMutation.isPending}
+                className="px-3 py-1 rounded-lg text-xs font-bold bg-red-900/60 text-red-300 hover:bg-red-800 transition-colors disabled:opacity-50"
+              >
+                ✕ Rejeter
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -134,6 +201,9 @@ export function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* AI Crisis Validation Banner */}
+      <CrisisValidationBanner />
 
       {/* Quick access bar */}
       <div className="flex flex-wrap gap-2 mb-6">

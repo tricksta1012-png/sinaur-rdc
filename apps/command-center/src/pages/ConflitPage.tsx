@@ -110,6 +110,11 @@ const EVENT_TYPE_FR: Record<string, string> = {
   protests: 'Manifestation', abduction: 'Enlèvement', other: 'Autre',
 };
 
+const EVENT_ICONS: Record<string, string> = {
+  conflict: '⚔️', armed_clashes: '💥', violence_civilians: '👥',
+  explosion_remote: '💣', protests: '📢', abduction: '🔗', other: '⚠️',
+};
+
 const WARN_COLOR = { green: '#22c55e', yellow: '#eab308', orange: '#f97316', red: '#ef4444' };
 const WARN_BG   = { green: 'bg-green-900/40', yellow: 'bg-yellow-900/40', orange: 'bg-orange-900/40', red: 'bg-red-900/40' };
 const WARN_BORDER = { green: 'border-green-800', yellow: 'border-yellow-800', orange: 'border-orange-700', red: 'border-red-700' };
@@ -133,6 +138,42 @@ const CAT_LABEL: Record<string, string> = {
   logistics:    'Logistique',
   coordination: 'Coordination',
 };
+
+// ── Narrative summary ──────────────────────────────────────────────────────
+
+function generateNarrativeSummary(
+  event: ConflictEvent,
+  corridors: EnhancedCorridor[],
+  prediction: DisplacementPrediction | null,
+  actors: ArmedActorRef[],
+): string {
+  const loc = [event.territoire, event.province].filter(Boolean).join(', ') || event.p_code || 'zone inconnue';
+  const sev = SEV_LABEL[event.severity] ?? `S${event.severity}`;
+  const type = EVENT_TYPE_FR[event.event_type] ?? event.event_type;
+  const ago = formatDistanceToNow(new Date(event.event_date), { addSuffix: true, locale: fr });
+
+  let s = `Incident de type « ${type} » (${sev}) signalé ${ago} à ${loc}.`;
+
+  if (event.fatalities_reported && event.fatalities_reported > 0)
+    s += ` ${event.fatalities_reported} victime${event.fatalities_reported > 1 ? 's' : ''} rapportée${event.fatalities_reported > 1 ? 's' : ''}.`;
+
+  if (actors.length > 0)
+    s += ` Groupe documenté : ${actors[0].nom_acled}${actors.length > 1 ? ` (+${actors.length - 1})` : ''}.`;
+
+  const inbound = corridors.filter(c => c.destination === event.province || c.destination === event.p_code).length;
+  if (inbound > 0)
+    s += ` ${inbound} corridor${inbound > 1 ? 's' : ''} de mouvement convergent${inbound > 1 ? 's' : ''} vers cette zone.`;
+
+  if (prediction && prediction.displaced_estimate_high > 0) {
+    const lo = (prediction.displaced_estimate_low / 1000).toFixed(0);
+    const hi = (prediction.displaced_estimate_high / 1000).toFixed(0);
+    s += ` IA prédit ${lo}k–${hi}k déplacés sur ${prediction.horizon_days}j (conf. ${Math.round(prediction.confidence * 100)}%).`;
+  } else if (event.displacement_risk >= 0.6) {
+    s += ` Risque élevé de déplacement (${Math.round(event.displacement_risk * 100)}%).`;
+  }
+
+  return s;
+}
 
 // ── SitRep PDF ─────────────────────────────────────────────────────────────
 
@@ -391,26 +432,171 @@ interface OperationalRec {
   action: string;
   why: string;
   priority: 'URGENT' | 'ÉLEVÉ' | 'MOYEN';
+  steps?: string[];
+  actors?: string[];
+  delay?: string;
+  resources?: string[];
+  indicators?: string[];
 }
 
 function buildRecommendations(event: ConflictEvent): OperationalRec[] {
   const recs: OperationalRec[] = [];
   const sev = event.severity || 1;
+  const risk = Math.round((event.displacement_risk || 0) * 100);
+  const loc  = event.territoire ? `${event.territoire}, ${event.province}` : (event.province || event.p_code || 'zone');
+
   if (sev >= 4) {
-    recs.push({ category: 'security', icon: '🚨', action: 'Alerter les autorités', why: `Sévérité S${sev} — urgence`, priority: 'URGENT' });
-    recs.push({ category: 'security', icon: '👁️', action: 'Renforcer la surveillance', why: 'Escalade documentée', priority: 'URGENT' });
+    recs.push({
+      category: 'security', icon: '🚨', action: 'Alerter les autorités',
+      why: `Sévérité S${sev} — situation d'urgence à ${loc}`, priority: 'URGENT',
+      delay: 'Immédiat (< 2h)',
+      steps: [
+        `Contacter le gouverneur de ${event.province || 'province'} via canal sécurisé`,
+        'Notifier FARDC/PNC avec coordonnées GPS de l\'incident',
+        'Activer la cellule de crise provinciale (protocole SINAUR P1)',
+        'Émettre un FLASH REPORT vers le Centre de commandement national',
+        'Documenter l\'heure d\'activation pour le suivi',
+      ],
+      actors: ['Gouverneur de province', 'FARDC', 'PNC', 'MONUSCO Force', 'Centre de commandement SINAUR'],
+      resources: ['Réseau radio sécurisé (HF/VHF)', 'Annuaire d\'urgence pré-établi', 'Formulaire FLASH REPORT'],
+      indicators: ['Accusé de réception des autorités < 1h', 'Cellule de crise activée confirmée', 'Personnel déployé sur site'],
+    });
+    recs.push({
+      category: 'security', icon: '👁️', action: 'Renforcer la surveillance',
+      why: 'Escalade documentée — risque de propagation', priority: 'URGENT',
+      delay: '2–6h',
+      steps: [
+        'Déployer équipes d\'observation aux points névralgiques',
+        'Activer les réseaux de sources communautaires',
+        'Fréquence de rapport : toutes les 3h minimum',
+        'Cartographier les axes de repli potentiels',
+        'Coordonner avec MONUSCO pour couverture aérienne si disponible',
+      ],
+      actors: ['Agents SINAUR terrain', 'Réseau communautaire', 'MONUSCO UNPOL', 'ONG locales partenaires'],
+      resources: ['Téléphones satellites', 'Fiches de rapport terrain', 'Véhicules tout-terrain'],
+      indicators: ['Rapports terrain reçus toutes les 3h', 'Carte de situation mise à jour', 'Aucune zone aveugle'],
+    });
   }
+
   if (event.displacement_risk >= 0.5) {
-    recs.push({ category: 'humanitarian', icon: '🏃', action: 'Préparer évacuation préventive', why: `Risque déplacement ${Math.round(event.displacement_risk * 100)}%`, priority: sev >= 4 ? 'URGENT' : 'ÉLEVÉ' });
-    recs.push({ category: 'humanitarian', icon: '📦', action: "Déployer kits d'urgence", why: 'Population exposée', priority: 'ÉLEVÉ' });
-    recs.push({ category: 'humanitarian', icon: '🏠', action: 'Établir abris temporaires', why: 'Flux de déplacement attendu', priority: 'MOYEN' });
+    recs.push({
+      category: 'humanitarian', icon: '🏃', action: 'Préparer évacuation préventive',
+      why: `Risque déplacement ${risk}% — population de ${loc} exposée`,
+      priority: sev >= 4 ? 'URGENT' : 'ÉLEVÉ',
+      delay: sev >= 4 ? 'Immédiat' : '6–12h',
+      steps: [
+        'Identifier les sites d\'accueil préalablement validés (capacité, eau, sécurité)',
+        'Activer les équipes de protection (femmes, enfants, personnes âgées en priorité)',
+        'Mettre en place des corridors d\'évacuation balisés avec escorte',
+        'Préparer les listes d\'enregistrement pour le Registre des sinistrés SINAUR',
+        'Coordonner avec les autorités locales pour l\'ordre d\'évacuation officiel',
+        'Communiquer les points de rassemblement via radio communautaire',
+      ],
+      actors: ['Protection civile', 'UNHCR', 'OIM', 'Croix-Rouge RDC', 'Autorités locales'],
+      resources: ['Bus et véhicules transport', 'Carburant réserve', 'Mégaphones', 'Listes d\'enregistrement'],
+      indicators: [`${risk >= 70 ? 'Évacuation lancée' : 'Pré-positionnement vérifié'}`, 'Sites d\'accueil ouverts', 'Enregistrement démarré'],
+    });
+    recs.push({
+      category: 'humanitarian', icon: '📦', action: "Déployer kits d'urgence",
+      why: 'Population exposée — besoins immédiats NFI et nourriture', priority: 'ÉLEVÉ',
+      delay: '12–24h',
+      steps: [
+        'Évaluation rapide des besoins (RRM/RRR) dans les zones affectées',
+        'Activer les stocks pré-positionnés au dépôt provincial',
+        'Priorité : NFI (Non-Food Items), eau potable, abris d\'urgence',
+        'Cibler les ménages les plus vulnérables (femmes enceintes, enfants < 5 ans)',
+        'Distribuer via points fixes sécurisés avec contrôle biométrique SINAUR',
+      ],
+      actors: ['PAM', 'UNICEF', 'OCHA', 'ONG terrain (MSF, IRC, NRC)'],
+      resources: ['Stocks NFI pré-positionnés', 'Véhicules de distribution', 'Agents terrain', 'Système biométrique SINAUR'],
+      indicators: ['Évaluation RRM complétée < 6h', 'Distribution lancée < 24h', 'Taux de couverture ≥ 80% ménages cibles'],
+    });
+    recs.push({
+      category: 'humanitarian', icon: '🏠', action: 'Établir abris temporaires',
+      why: 'Flux de déplacement attendu — capacité d\'accueil à anticiper', priority: 'MOYEN',
+      delay: '24–72h',
+      steps: [
+        'Sélectionner 2–3 sites selon critères SPHERE (distance conflict, eau, sol)',
+        'Installer bâches/tentes d\'urgence pour familles déplacées',
+        'Mettre en place points d\'eau (200L/jour/personne minimum)',
+        'Installer latrines (1 pour 20 personnes)',
+        'Créer espace sûr pour femmes et enfants (protection GBV)',
+      ],
+      actors: ['UNHCR', 'Croix-Rouge RDC', 'ACTED', 'Protection civile'],
+      resources: ['Bâches UNHCR', 'Matériel WASH', 'Équipes NFI'],
+      indicators: ['Sites opérationnels < 48h', 'Normes SPHERE respectées', 'Enregistrement IDP lancé'],
+    });
   }
+
   if (event.event_type === 'armed_clashes' || event.event_type === 'conflict') {
-    recs.push({ category: 'logistics', icon: '🛣️', action: "Sécuriser corridors d'appro.", why: 'Routes potentiellement coupées', priority: 'MOYEN' });
-    recs.push({ category: 'logistics', icon: '📦', action: 'Pré-positionner stocks secours', why: 'Accès humanitaire menacé', priority: 'MOYEN' });
+    recs.push({
+      category: 'logistics', icon: '🛣️', action: "Sécuriser les corridors d'approvisionnement",
+      why: 'Routes potentiellement coupées — accès humanitaire compromis', priority: 'MOYEN',
+      delay: '6–24h',
+      steps: [
+        'Vérifier l\'état de praticabilité des axes principaux (RN1, RN2, RN4…)',
+        'Identifier les itinéraires alternatifs avec distances et temps de passage',
+        'Négocier avec les parties un corridor humanitaire (droit international)',
+        'Organiser convois escortés si nécessaire (MONUSCO/FARDC)',
+        'Mettre en place système de tracking des convois en temps réel',
+      ],
+      actors: ['Logisticiens OCHA', 'FARDC/escorte', 'Transporteurs locaux', 'Cluster Logistique'],
+      resources: ['Cartes SIG des axes routiers', 'GPS trackers', 'Protocoles corridors humanitaires'],
+      indicators: ['Axes principaux évalués < 12h', 'Premier convoi passé', 'Aucun incident de convoi'],
+    });
+    recs.push({
+      category: 'logistics', icon: '📦', action: 'Pré-positionner stocks de secours',
+      why: 'Accès humanitaire menacé — anticipation des ruptures', priority: 'MOYEN',
+      delay: '24–48h',
+      steps: [
+        'Inventorier les stocks disponibles dans les dépôts à < 100km',
+        'Calculer les besoins pour 30 jours (scénario accès coupé)',
+        'Lancer commandes d\'urgence pour combler les déficits identifiés',
+        'Transporter par voie aérienne si routes fermées (UNHAS)',
+        'Documenter les stocks positionnés dans le système SINAUR Stocks',
+      ],
+      actors: ['Cluster Logistique', 'UNHAS', 'PAM Supply Chain', 'Fournisseurs locaux'],
+      resources: ['Budget d\'urgence', 'Capacité de stockage sécurisée', 'UNHAS si disponible'],
+      indicators: ['Stocks 30j confirmés < 48h', 'Commandes lancées', 'Positionnement documenté'],
+    });
   }
-  recs.push({ category: 'coordination', icon: '📡', action: 'Notifier partenaires OCHA', why: 'Coordination inter-agences requise', priority: 'MOYEN' });
-  if (sev >= 3) recs.push({ category: 'coordination', icon: '🏛️', action: 'Activer comité de crise', why: sev >= 4 ? 'Urgence déclarée' : 'Escalade potentielle', priority: sev >= 4 ? 'URGENT' : 'MOYEN' });
+
+  recs.push({
+    category: 'coordination', icon: '📡', action: 'Notifier les partenaires OCHA',
+    why: 'Coordination inter-agences requise — incident à impact multi-sectoriel', priority: 'MOYEN',
+    delay: '< 6h',
+    steps: [
+      'Envoyer SITREP initial via le portail OCHA (format standard 5W)',
+      'Notifier les clusters concernés (Protection, Abris, WASH, Nutrition)',
+      'Convoquer une réunion de coordination inter-agences d\'urgence',
+      'Partager les données SINAUR (incidents, déplacés) avec tous les acteurs',
+      'Établir un point de contact unique pour la réponse coordonnée',
+    ],
+    actors: ['OCHA RDC', 'Clusters humanitaires', 'ONG partenaires', 'Agences ONU'],
+    resources: ['Portail OCHA RDC', 'Liste de diffusion clusters', 'Modèle SITREP 5W'],
+    indicators: ['SITREP envoyé < 6h', 'Réunion de coordination tenue < 24h', 'Plan de réponse commun adopté'],
+  });
+
+  if (sev >= 3) {
+    recs.push({
+      category: 'coordination', icon: '🏛️', action: 'Activer le comité de crise',
+      why: sev >= 4 ? 'Urgence déclarée — protocole SINAUR niveau ROUGE' : 'Escalade potentielle — protocole niveau ORANGE',
+      priority: sev >= 4 ? 'URGENT' : 'MOYEN',
+      delay: sev >= 4 ? 'Immédiat' : '< 12h',
+      steps: [
+        `Déclencher protocole ${sev >= 4 ? 'ROUGE' : 'ORANGE'} selon manuel SINAUR`,
+        'Convoquer les membres du comité (gouverneur, sécurité, humanitaire, technique)',
+        'Établir une salle de crise avec flux d\'information en temps réel',
+        'Désigner un coordinateur de crise et un porte-parole officiel',
+        'Planifier des points de situation toutes les 6h minimum',
+        'Préparer la communication publique pour éviter les mouvements de panique',
+      ],
+      actors: ['Gouverneur de province', 'Ministère de l\'Intérieur', 'FARDC', 'Coordination humanitaire', 'SINAUR Centre national'],
+      resources: ['Salle de crise SINAUR', 'Tableau de bord temps réel', 'Plan de crise provincial', 'Budget d\'urgence déclenché'],
+      indicators: ['Comité réuni < 2h', 'Salle de crise opérationnelle', 'Premier point de situation diffusé', 'Porte-parole désigné'],
+    });
+  }
+
   return recs;
 }
 
@@ -426,6 +612,275 @@ function getCentroid(e: ConflictEvent): [number, number] | null {
     if (name.toLowerCase() === (e.province || '').toLowerCase()) return PROV_CENTROIDS[code] ?? null;
   }
   return null;
+}
+
+// ── RecsList ───────────────────────────────────────────────────────────────
+
+function RecsList({ recommendations }: { recommendations: OperationalRec[] }) {
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
+  return (
+    <div className="px-3 py-2.5 space-y-2">
+      {(['URGENT', 'ÉLEVÉ', 'MOYEN'] as const).map(priority => {
+        const recs = recommendations.filter(r => r.priority === priority);
+        if (recs.length === 0) return null;
+        return (
+          <div key={priority}>
+            <div className={`text-[9px] font-mono font-bold uppercase tracking-wider mb-1.5 ${
+              priority === 'URGENT' ? 'text-red-400' : priority === 'ÉLEVÉ' ? 'text-orange-400' : 'text-yellow-400'
+            }`}>{priority}</div>
+            <div className="space-y-1.5">
+              {recs.map((r, i) => {
+                const key      = `${priority}-${i}`;
+                const isOpen   = expandedKey === key;
+                const hasDetail = !!(r.steps?.length || r.actors?.length || r.delay || r.indicators?.length);
+                return (
+                  <div key={key} className={`rounded-lg border overflow-hidden transition-all ${PRIORITY_COLOR[priority]}`}>
+                    {/* Header — always visible, clickable */}
+                    <button
+                      className="w-full px-2.5 py-2 flex items-start gap-2 text-left hover:bg-white/5 transition-colors"
+                      onClick={() => hasDetail && setExpandedKey(isOpen ? null : key)}
+                    >
+                      <span className="text-sm shrink-0 mt-px">{r.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-[10px] font-medium ${CAT_COLOR[r.category]}`}>{CAT_LABEL[r.category]}</div>
+                        <div className="text-[11px] text-gray-200 font-semibold leading-tight">{r.action}</div>
+                        <div className="text-[9px] text-cc-500 font-mono mt-0.5 leading-relaxed">{r.why}</div>
+                        {r.delay && (
+                          <div className="text-[8px] font-mono mt-1 flex items-center gap-1">
+                            <span className="text-cc-600">⏱</span>
+                            <span className={priority === 'URGENT' ? 'text-red-400' : priority === 'ÉLEVÉ' ? 'text-orange-400' : 'text-yellow-500'}>
+                              {r.delay}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {hasDetail && (
+                        <span className="text-cc-600 text-[9px] shrink-0 mt-1">{isOpen ? '▲' : '▼'}</span>
+                      )}
+                    </button>
+
+                    {/* Expanded detail */}
+                    {isOpen && hasDetail && (
+                      <div className="px-3 pb-3 pt-1 border-t border-white/10 space-y-2.5">
+
+                        {/* Steps */}
+                        {r.steps && r.steps.length > 0 && (
+                          <div>
+                            <div className="text-[8px] font-mono text-cc-500 uppercase tracking-wider mb-1.5">Étapes d'exécution</div>
+                            <ol className="space-y-1">
+                              {r.steps.map((s, si) => (
+                                <li key={si} className="flex items-start gap-2 text-[9px] text-cc-300 leading-relaxed">
+                                  <span className={`shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold font-mono mt-0.5 ${
+                                    priority === 'URGENT' ? 'bg-red-900/60 text-red-300' :
+                                    priority === 'ÉLEVÉ'  ? 'bg-orange-900/60 text-orange-300' :
+                                    'bg-yellow-900/40 text-yellow-400'
+                                  }`}>{si + 1}</span>
+                                  {s}
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
+
+                        {/* Actors */}
+                        {r.actors && r.actors.length > 0 && (
+                          <div>
+                            <div className="text-[8px] font-mono text-cc-500 uppercase tracking-wider mb-1">Acteurs responsables</div>
+                            <div className="flex flex-wrap gap-1">
+                              {r.actors.map((a, ai) => (
+                                <span key={ai} className="text-[8px] font-mono px-1.5 py-0.5 bg-cc-900/60 text-cc-300 border border-cc-700 rounded">
+                                  {a}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Resources */}
+                        {r.resources && r.resources.length > 0 && (
+                          <div>
+                            <div className="text-[8px] font-mono text-cc-500 uppercase tracking-wider mb-1">Ressources nécessaires</div>
+                            <ul className="space-y-0.5">
+                              {r.resources.map((res, ri) => (
+                                <li key={ri} className="text-[9px] text-cc-400 font-mono flex items-center gap-1.5">
+                                  <span className="text-cc-700">◦</span>{res}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Indicators */}
+                        {r.indicators && r.indicators.length > 0 && (
+                          <div>
+                            <div className="text-[8px] font-mono text-cc-500 uppercase tracking-wider mb-1">Indicateurs de succès</div>
+                            <ul className="space-y-0.5">
+                              {r.indicators.map((ind, ii) => (
+                                <li key={ii} className="text-[9px] text-green-400/80 font-mono flex items-center gap-1.5">
+                                  <span className="text-green-700">✓</span>{ind}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── ConflictPopup ──────────────────────────────────────────────────────────
+
+interface ConflictPopupProps {
+  event: ConflictEvent;
+  pixel: { x: number; y: number };
+  prediction: DisplacementPrediction | null;
+  relatedCorridors: EnhancedCorridor[];
+  actors: ArmedActorRef[];
+  onClose: () => void;
+  onOpenPanel: () => void;
+}
+
+function ConflictPopup({ event, pixel, prediction, relatedCorridors, actors, onClose, onOpenPanel }: ConflictPopupProps) {
+  const narrative = generateNarrativeSummary(event, relatedCorridors, prediction, actors);
+  const color     = SEV_COLOR[event.severity] ?? '#6b7280';
+  const icon      = EVENT_ICONS[event.event_type] ?? '⚠️';
+  const typeLabel = EVENT_TYPE_FR[event.event_type] ?? event.event_type;
+  const flipX     = pixel.x > (window.innerWidth - 320) * 0.5;
+  const flipY     = pixel.y > window.innerHeight * 0.60;
+
+  return (
+    <div
+      className="absolute z-40 w-72 bg-cc-950/99 border rounded-xl shadow-2xl backdrop-blur-md overflow-hidden pointer-events-auto"
+      style={{
+        left:        pixel.x,
+        top:         pixel.y,
+        borderColor: color + '60',
+        transform:   `translate(${flipX ? 'calc(-100% - 10px)' : '12px'}, ${flipY ? 'calc(-100% + 10px)' : '-20px'})`,
+      }}
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Header */}
+      <div className="px-3 pt-2.5 pb-2 border-b" style={{ borderColor: color + '40', background: color + '12' }}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-base shrink-0">{icon}</span>
+            <div className="min-w-0">
+              <div className="text-white text-[12px] font-bold leading-tight truncate">
+                {event.territoire ? `${event.territoire} · ` : ''}{event.province || event.p_code}
+              </div>
+              <div className="text-[10px] font-mono mt-0.5" style={{ color }}>
+                S{event.severity} — {SEV_LABEL[event.severity] ?? ''} · {typeLabel}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-5 h-5 rounded-full bg-cc-800/80 text-cc-400 hover:text-white text-xs flex items-center justify-center shrink-0 mt-0.5"
+          >×</button>
+        </div>
+      </div>
+
+      {/* Narrative */}
+      <div className="px-3 py-2.5 border-b border-cc-800">
+        <p className="text-[10px] text-cc-300 leading-relaxed">{narrative}</p>
+      </div>
+
+      {/* Actors */}
+      {actors.length > 0 && (
+        <div className="px-3 py-2 border-b border-cc-800">
+          <div className="text-[9px] font-mono text-red-400 uppercase tracking-wider mb-1.5">Groupes armés documentés</div>
+          <div className="space-y-1">
+            {actors.slice(0, 2).map(a => (
+              <div key={a.nom_acled} className="flex items-center justify-between gap-2">
+                <span className="text-[10px] text-red-300 font-bold truncate">{a.nom_acled}</span>
+                <span className={`text-[8px] font-mono px-1 py-0.5 rounded border shrink-0 ${
+                  a.facteur_amplification_deplacement >= 1.4 ? 'text-red-400 border-red-800 bg-red-900/30' : 'text-orange-400 border-orange-800 bg-orange-900/30'
+                }`}>×{a.facteur_amplification_deplacement.toFixed(2)}</span>
+              </div>
+            ))}
+            {actors.length > 2 && (
+              <div className="text-[9px] text-cc-600 font-mono">+{actors.length - 2} groupe{actors.length - 2 > 1 ? 's' : ''}</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Corridor visual */}
+      {relatedCorridors.length > 0 && (
+        <div className="px-3 py-2 border-b border-cc-800">
+          <div className="text-[9px] font-mono text-blue-400 uppercase tracking-wider mb-1.5">Corridor de mouvement</div>
+          <div className="flex items-center gap-1.5 text-[10px]">
+            <span className="text-cc-300 truncate max-w-[5rem]">{relatedCorridors[0].origin}</span>
+            <span className="text-cc-500 shrink-0">——▶</span>
+            <span className="text-gray-200 font-bold truncate flex-1">{relatedCorridors[0].destination}</span>
+            <span className="text-cc-500 font-mono ml-auto shrink-0 text-[9px]">{relatedCorridors[0].confidence}%</span>
+          </div>
+          {relatedCorridors.length > 1 && (
+            <div className="text-[9px] text-cc-600 font-mono mt-0.5">+{relatedCorridors.length - 1} autre{relatedCorridors.length - 1 > 1 ? 's' : ''}</div>
+          )}
+        </div>
+      )}
+
+      {/* Displacement prediction */}
+      {prediction && (
+        <div className="px-3 py-2 border-b border-cc-800">
+          <div className="text-[9px] font-mono text-orange-400 uppercase tracking-wider mb-1.5">
+            Prédiction déplacement — {prediction.horizon_days}j
+          </div>
+          <div className="flex items-center justify-between text-[10px] mb-1">
+            <span className="text-orange-300 font-bold font-mono">
+              {(prediction.displaced_estimate_low / 1000).toFixed(0)}k – {(prediction.displaced_estimate_high / 1000).toFixed(0)}k pers.
+            </span>
+            <span className="text-cc-500 font-mono text-[9px]">{Math.round(prediction.confidence * 100)}% conf.</span>
+          </div>
+          <div className="h-0.5 bg-cc-700 rounded-full">
+            <div className="h-full bg-orange-500 rounded-full" style={{ width: `${prediction.confidence * 100}%` }} />
+          </div>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="px-3 py-2 flex gap-2">
+        <button
+          onClick={onOpenPanel}
+          className="flex-1 py-1.5 bg-cc-800 hover:bg-cc-700 border border-cc-600 text-gray-200 text-[10px] font-mono font-bold rounded-lg transition-colors"
+        >
+          Voir détail →
+        </button>
+        <a
+          href={`/crises/new?type=conflict&event_id=${encodeURIComponent(event.external_id)}`}
+          className="flex-1 py-1.5 bg-red-900/70 hover:bg-red-800 border border-red-700 text-red-100 text-[10px] font-mono font-bold rounded-lg transition-colors text-center"
+          onClick={e => e.stopPropagation()}
+        >
+          + Créer crise
+        </a>
+      </div>
+    </div>
+  );
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function getGeoBounds(geometry: GeoJSON.Geometry): [[number, number], [number, number]] | null {
+  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+  const walk = (c: any) => {
+    if (typeof c[0] === 'number') {
+      if (c[0] < minLng) minLng = c[0]; if (c[0] > maxLng) maxLng = c[0];
+      if (c[1] < minLat) minLat = c[1]; if (c[1] > maxLat) maxLat = c[1];
+    } else { c.forEach(walk); }
+  };
+  if (geometry.type === 'Polygon' || geometry.type === 'MultiPolygon') walk((geometry as any).coordinates);
+  else return null;
+  return isFinite(minLng) ? [[minLng, minLat], [maxLng, maxLat]] : null;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -449,6 +904,12 @@ export function ConflitPage() {
   const [corridorTooltip, setCorridorTooltip]   = useState<{
     x: number; y: number; origin: string; destination: string; confidence: number; daysDiff: number;
   } | null>(null);
+  const [popupPixel, setPopupPixel]             = useState<{ x: number; y: number } | null>(null);
+  const [listFilter, setListFilter]             = useState('');
+  const [sevFilter, setSevFilter]               = useState<number | null>(null);
+  const [provincePinned, setProvincePinned]     = useState<{ pcode: string; name: string } | null>(null);
+  const [hoveredProvince, setHoveredProvince]   = useState<{ pcode: string; name: string; x: number; y: number } | null>(null);
+  const selectedItemRef                         = useRef<HTMLDivElement | null>(null);
 
   // ── Scope ─────────────────────────────────────────────────────────────
   const userScope = useMemo((): string[] => {
@@ -501,6 +962,12 @@ export function ConflitPage() {
     staleTime: 10 * 60_000,
   });
 
+  const { data: divisionsGeo = [] } = useQuery({
+    queryKey: ['cc-divisions-geo'],
+    queryFn: () => apiClient.get('/geo/divisions?level=1&withGeometry=true').then(r => r.data.data),
+    staleTime: 60 * 60_000,
+  });
+
   const allEvents: ConflictEvent[]        = eventsData?.events ?? [];
   const events: ConflictEvent[]           = userScope.length > 0
     ? allEvents.filter(e => !e.p_code || userScope.includes(e.p_code))
@@ -530,6 +997,23 @@ export function ConflitPage() {
     const t = setTimeout(() => setPanelVisible(true), 10);
     return () => clearTimeout(t);
   }, [selectedId, selectedCorridorId]);
+
+  useEffect(() => {
+    const h = (ev: KeyboardEvent) => {
+      if (ev.key !== 'Escape') return;
+      if (popupPixel) { setPopupPixel(null); return; }
+      setSelectedId(null);
+      setCorridorId(null);
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [popupPixel]);
+
+  useEffect(() => {
+    if (selectedId && selectedItemRef.current) {
+      selectedItemRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [selectedId]);
 
   const visibleEvents = useMemo(() =>
     replayMode ? replayEvents.slice(0, replayIndex + 1) : events,
@@ -605,6 +1089,29 @@ export function ConflitPage() {
       destinations: { type: 'FeatureCollection' as const, features: destinations },
     };
   }, [enhancedCorridors]);
+
+  // ── Province fill GeoJSON (colored by conflict density) ─────────────
+  const provinceFillGeoJSON = useMemo(() => {
+    const countByPcode = new Map<string, { count: number; maxSev: number }>();
+    for (const e of events) {
+      const p = e.p_code || '';
+      if (!p) continue;
+      const cur = countByPcode.get(p) ?? { count: 0, maxSev: 0 };
+      countByPcode.set(p, { count: cur.count + 1, maxSev: Math.max(cur.maxSev, e.severity || 1) });
+    }
+    return {
+      type: 'FeatureCollection' as const,
+      features: (divisionsGeo as any[]).filter(d => d.geometry).map(d => ({
+        type: 'Feature' as const, geometry: d.geometry,
+        properties: {
+          pcode:       d.pcode,
+          name:        d.name,
+          eventCount:  countByPcode.get(d.pcode)?.count ?? 0,
+          maxSeverity: countByPcode.get(d.pcode)?.maxSev ?? 0,
+        },
+      })),
+    };
+  }, [divisionsGeo, events]);
 
   // ── Events GeoJSON (individual points, clustered by MapLibre) ────────
   const eventsGeoJSON = useMemo(() => ({
@@ -705,7 +1212,63 @@ export function ConflitPage() {
     [...events].sort((a, b) => new Date(b.event_date).getTime() - new Date(a.event_date).getTime()),
     [events],
   );
+
+  const filteredSortedEvents = useMemo(() => {
+    let res = sortedEvents;
+    if (provincePinned) res = res.filter(e => e.p_code === provincePinned.pcode);
+    if (sevFilter !== null) res = res.filter(e => (e.severity || 1) === sevFilter);
+    if (listFilter.trim()) {
+      const q = listFilter.toLowerCase();
+      res = res.filter(e =>
+        (e.province ?? '').toLowerCase().includes(q) ||
+        (e.territoire ?? '').toLowerCase().includes(q) ||
+        (EVENT_TYPE_FR[e.event_type] ?? e.event_type ?? '').toLowerCase().includes(q) ||
+        (e.p_code ?? '').toLowerCase().includes(q),
+      );
+    }
+    return res;
+  }, [sortedEvents, listFilter, sevFilter, provincePinned]);
+
   const affectedProvinces = useMemo(() => new Set(events.map(e => e.p_code || e.province)).size, [events]);
+
+  // ── Timeline histogram (incidents per day bucket) ─────────────────────
+  const timelineHistogram = useMemo(() => {
+    const now = Date.now();
+    const buckets: { label: string; count: number; maxSev: number }[] = [];
+    const step = horizon <= 7 ? 1 : horizon <= 14 ? 1 : 3;
+    for (let d = horizon; d > 0; d -= step) {
+      const from = now - d * 86400000;
+      const to   = now - (d - step) * 86400000;
+      const bucket = events.filter(e => {
+        const t = new Date(e.event_date).getTime();
+        return t >= from && t < to;
+      });
+      buckets.push({
+        label:  format(new Date(from), d > 3 ? 'dd/MM' : 'dd', { locale: fr }),
+        count:  bucket.length,
+        maxSev: bucket.length > 0 ? Math.max(...bucket.map(e => e.severity || 1)) : 0,
+      });
+    }
+    return buckets;
+  }, [events, horizon]);
+
+  // ── Province pinned stats ─────────────────────────────────────────────
+  const provincePinnedStats = useMemo(() => {
+    if (!provincePinned) return null;
+    const provEvents = events.filter(e => e.p_code === provincePinned.pcode);
+    if (provEvents.length === 0) return null;
+    const maxSev  = Math.max(...provEvents.map(e => e.severity || 1));
+    const avgRisk = provEvents.reduce((s, e) => s + (e.displacement_risk || 0), 0) / provEvents.length;
+    const pLower  = provincePinned.name.toLowerCase();
+    const provActors = actors.filter(a =>
+      a.provinces_actives_historique.some(p => pLower.includes(p.toLowerCase())),
+    ).length;
+    const provCorridors = enhancedCorridors.filter(c =>
+      c.origin === provincePinned.name || c.destination === provincePinned.name ||
+      provEvents.some(e => c.origin === (e.province || e.p_code) || c.destination === (e.province || e.p_code)),
+    ).length;
+    return { count: provEvents.length, maxSev, avgRisk, actors: provActors, corridors: provCorridors };
+  }, [provincePinned, events, actors, enhancedCorridors]);
 
   // ── Selected items ────────────────────────────────────────────────────
   const selectedEvent    = selectedId       ? events.find(e => e.external_id === selectedId) ?? null : null;
@@ -736,10 +1299,38 @@ export function ConflitPage() {
 
   const corrEvents: any[] = corrData?.data ?? [];
 
+  // ── CSV export ────────────────────────────────────────────────────────
+  const exportCSV = useCallback(() => {
+    const headers = ['ID', 'Date', 'Province', 'Territoire', 'Type', 'Sévérité', 'Victimes', 'Risque déplacement', 'Lat', 'Lng'];
+    const rows = filteredSortedEvents.map(e => {
+      const c = getCentroid(e);
+      return [
+        e.external_id ?? '',
+        format(new Date(e.event_date), 'yyyy-MM-dd HH:mm', { locale: fr }),
+        e.province ?? '',
+        e.territoire ?? '',
+        EVENT_TYPE_FR[e.event_type] ?? e.event_type ?? '',
+        e.severity ?? '',
+        e.fatalities_reported ?? '',
+        e.displacement_risk != null ? Math.round(e.displacement_risk * 100) + '%' : '',
+        c ? c[1].toFixed(4) : '',
+        c ? c[0].toFixed(4) : '',
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+    });
+    const csv  = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `sinaur-conflits-${format(new Date(), 'yyyyMMdd-HHmm')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [filteredSortedEvents]);
+
   // ── Map click ─────────────────────────────────────────────────────────
   const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     const f = e.features?.[0];
-    if (!f) { setSelectedId(null); setCorridorId(null); return; }
+    if (!f) { setSelectedId(null); setCorridorId(null); setPopupPixel(null); return; }
 
     // Cluster click → zoom to expansion zoom
     if (f.properties?.point_count !== undefined) {
@@ -762,20 +1353,46 @@ export function ConflitPage() {
     if (corridorId) {
       setCorridorId(corridorId === selectedCorridorId ? null : corridorId);
       setSelectedId(null);
+      setPopupPixel(null);
       return;
     }
 
-    // Individual unclustered event clicked
+    // Individual unclustered event clicked → show floating popup
     const eventId = f.properties?.id as string | undefined;
     if (eventId) {
       const match = sortedEvents.find(ev => ev.external_id === eventId);
       if (match) {
-        setSelectedId(eventId === selectedId ? null : eventId);
-        setCorridorId(null);
-        setDetailTab('info');
-        const c = getCentroid(match);
-        const currentZoom = mapRef.current?.getMap().getZoom() ?? 6;
-        if (c) mapRef.current?.getMap().flyTo({ center: c, zoom: Math.max(currentZoom, 8), duration: 500, offset: [-160, 0] });
+        if (eventId === selectedId) {
+          setSelectedId(null);
+          setPopupPixel(null);
+        } else {
+          setSelectedId(eventId);
+          setPopupPixel({ x: e.point.x, y: e.point.y });
+          setCorridorId(null);
+          setDetailTab('info');
+          const c = getCentroid(match);
+          const currentZoom = mapRef.current?.getMap().getZoom() ?? 6;
+          if (c) mapRef.current?.getMap().flyTo({ center: c, zoom: Math.max(currentZoom, 8), duration: 500 });
+        }
+      }
+      return;
+    }
+
+    // Province polygon clicked → zoom to it + pin province filter
+    if (f.layer?.id === 'province-fill') {
+      const pcode = String(f.properties?.pcode ?? '');
+      const name  = String(f.properties?.name  ?? pcode);
+      if (pcode) {
+        if (provincePinned?.pcode === pcode) {
+          setProvincePinned(null);
+        } else {
+          setProvincePinned({ pcode, name });
+          setSelectedId(null);
+          setPopupPixel(null);
+          setActiveTab('incidents');
+          const bounds = getGeoBounds(f.geometry as GeoJSON.Geometry);
+          if (bounds) mapRef.current?.getMap().fitBounds(bounds as any, { padding: 60, duration: 700 });
+        }
       }
       return;
     }
@@ -787,12 +1404,13 @@ export function ConflitPage() {
       if (match) {
         setSelectedId(match.external_id);
         setCorridorId(null);
+        setPopupPixel(null);
         setDetailTab('info');
         const c = getCentroid(match);
         if (c) mapRef.current?.getMap().flyTo({ center: c, zoom: 7, duration: 700, offset: [-160, 0] });
       }
     }
-  }, [sortedEvents, selectedCorridorId, selectedId]);
+  }, [sortedEvents, selectedCorridorId, selectedId, provincePinned]);
 
   const onMouseMove = useCallback((e: MapLayerMouseEvent) => {
     const f = e.features?.[0];
@@ -802,6 +1420,7 @@ export function ConflitPage() {
     if (!f) {
       canvas.style.cursor = '';
       setCorridorTooltip(null);
+      setHoveredProvince(null);
       return;
     }
     if (f.layer?.id === 'corridor-lines') {
@@ -814,9 +1433,17 @@ export function ConflitPage() {
         confidence:  Number(f.properties?.confidence ?? 0),
         daysDiff:    Number(f.properties?.daysDiff ?? 0),
       });
+      setHoveredProvince(null);
+    } else if (f.layer?.id === 'province-fill') {
+      canvas.style.cursor = 'default';
+      setCorridorTooltip(null);
+      const pcode = String(f.properties?.pcode ?? '');
+      const name  = String(f.properties?.name  ?? pcode);
+      setHoveredProvince({ pcode, name, x: e.point.x, y: e.point.y });
     } else {
       canvas.style.cursor = 'pointer';
       setCorridorTooltip(null);
+      setHoveredProvince(null);
     }
   }, []);
 
@@ -875,6 +1502,38 @@ export function ConflitPage() {
             </div>
           ))}
         </div>
+
+        {/* Timeline histogram */}
+        {timelineHistogram.length > 0 && events.length > 0 && (
+          <div className="px-3 pt-2 pb-1.5 border-b border-cc-700 shrink-0">
+            <div className="text-[9px] font-mono text-cc-500 uppercase tracking-wider mb-1.5">Activité / {horizon}j</div>
+            <div className="flex items-end gap-px h-10">
+              {(() => {
+                const maxCount = Math.max(1, ...timelineHistogram.map(b => b.count));
+                return timelineHistogram.map((b, i) => (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-px group relative">
+                    <div
+                      className="w-full rounded-sm min-h-[2px] transition-opacity group-hover:opacity-80"
+                      style={{
+                        height: `${Math.max(4, (b.count / maxCount) * 36)}px`,
+                        backgroundColor: b.count === 0 ? '#1e293b' : (SEV_COLOR[b.maxSev] ?? '#6b7280'),
+                        opacity: b.count === 0 ? 0.3 : 0.85,
+                      }}
+                    />
+                    {/* Tooltip on hover */}
+                    <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-cc-900 border border-cc-600 rounded px-1.5 py-0.5 text-[8px] font-mono text-gray-200 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-10 shadow-lg">
+                      {b.label} · {b.count} inc.{b.maxSev > 0 ? ` · S${b.maxSev}` : ''}
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+            <div className="flex justify-between text-[8px] text-cc-700 font-mono mt-0.5">
+              <span>−{horizon}j</span>
+              <span>Auj.</span>
+            </div>
+          </div>
+        )}
 
         {/* Layer toggles */}
         <div className="px-3 py-2 border-b border-cc-700 shrink-0 flex flex-wrap items-center gap-1.5">
@@ -986,7 +1645,7 @@ export function ConflitPage() {
         </div>
 
         {/* Tab content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto flex flex-col">
 
           {/* ── Incidents tab ── */}
           {activeTab === 'incidents' && (
@@ -1000,65 +1659,195 @@ export function ConflitPage() {
                 <span>Aucun incident ({horizon}j)</span>
               </div>
             ) : (
-              <div className="divide-y divide-cc-800/70">
-                {sortedEvents.map((e, i) => {
-                  const color = SEV_COLOR[e.severity || 1] ?? '#6b7280';
+              <>
+                {/* Province pinned banner + stats */}
+                {provincePinned && (
+                  <>
+                    <div className="px-2.5 py-1.5 border-b border-amber-800/60 bg-amber-950/40 shrink-0 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[9px] text-amber-400">🏛️</span>
+                        <span className="text-[10px] font-mono text-amber-300 font-bold truncate">{provincePinned.name}</span>
+                        <span className="text-[9px] text-amber-600 font-mono shrink-0">
+                          ({filteredSortedEvents.length} incident{filteredSortedEvents.length !== 1 ? 's' : ''})
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => setProvincePinned(null)}
+                        className="text-amber-600 hover:text-amber-300 text-[10px] font-mono shrink-0"
+                        title="Effacer le filtre province"
+                      >✕ effacer</button>
+                    </div>
+                    {provincePinnedStats && (
+                      <div className="grid grid-cols-4 divide-x divide-amber-900/40 border-b border-amber-900/40 bg-amber-950/20 shrink-0">
+                        {[
+                          { label: 'Sév. max', value: `S${provincePinnedStats.maxSev}`,
+                            color: SEV_COLOR[provincePinnedStats.maxSev] ?? '#6b7280' },
+                          { label: 'Dépl. moy.', value: `${Math.round(provincePinnedStats.avgRisk * 100)}%`,
+                            color: provincePinnedStats.avgRisk >= 0.7 ? '#f97316' : provincePinnedStats.avgRisk >= 0.5 ? '#eab308' : '#60a5fa' },
+                          { label: 'Groupes', value: String(provincePinnedStats.actors),  color: '#f87171' },
+                          { label: 'Corridors', value: String(provincePinnedStats.corridors), color: '#60a5fa' },
+                        ].map(s => (
+                          <div key={s.label} className="px-1 py-1.5 text-center">
+                            <div className="text-[11px] font-bold font-mono" style={{ color: s.color }}>{s.value}</div>
+                            <div className="text-[8px] text-amber-700 font-mono leading-tight">{s.label}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Search filter */}
+                <div className="px-2.5 py-2 border-b border-cc-800 shrink-0">
+                  <div className="relative">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-cc-500 text-[10px] pointer-events-none">🔍</span>
+                    <input
+                      type="text"
+                      value={listFilter}
+                      onChange={e => setListFilter(e.target.value)}
+                      placeholder="Filtrer par province, type…"
+                      className="w-full pl-6 pr-6 py-1 bg-cc-800 border border-cc-700 rounded text-[10px] font-mono text-gray-200 placeholder-cc-600 focus:outline-none focus:border-cc-500"
+                    />
+                    {listFilter && (
+                      <button
+                        onClick={() => setListFilter('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-cc-500 hover:text-gray-300 text-[10px]"
+                      >×</button>
+                    )}
+                  </div>
+
+                  {/* Severity chips */}
+                  <div className="flex gap-1 mt-1.5">
+                    <button
+                      onClick={() => setSevFilter(null)}
+                      className={`flex-1 py-0.5 rounded text-[9px] font-mono font-bold border transition-colors ${
+                        sevFilter === null
+                          ? 'bg-cc-600 border-cc-500 text-white'
+                          : 'border-cc-700 text-cc-500 hover:text-gray-300'
+                      }`}
+                    >Tous</button>
+                    {[1, 2, 3, 4, 5].map(s => (
+                      <button
+                        key={s}
+                        onClick={() => setSevFilter(sevFilter === s ? null : s)}
+                        className={`flex-1 py-0.5 rounded text-[9px] font-mono font-bold border transition-colors ${
+                          sevFilter === s
+                            ? 'text-white border-transparent'
+                            : 'border-cc-700 text-cc-500 hover:text-gray-300'
+                        }`}
+                        style={sevFilter === s ? { backgroundColor: SEV_COLOR[s], borderColor: SEV_COLOR[s] } : {}}
+                      >S{s}</button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between mt-1.5">
+                    {(listFilter || sevFilter !== null || provincePinned) ? (
+                      <div className="text-[9px] text-cc-600 font-mono">
+                        {filteredSortedEvents.length} / {sortedEvents.length} résultat{filteredSortedEvents.length !== 1 ? 's' : ''}
+                      </div>
+                    ) : <div />}
+                    <button
+                      onClick={exportCSV}
+                      disabled={filteredSortedEvents.length === 0}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono border border-cc-700 text-cc-500 hover:text-gray-200 hover:border-cc-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Exporter la liste filtrée en CSV"
+                    >⬇ CSV</button>
+                  </div>
+                </div>
+              <div className="divide-y divide-cc-800/60">
+                {filteredSortedEvents.map((e, i) => {
+                  const color      = SEV_COLOR[e.severity || 1] ?? '#6b7280';
                   const isSelected = selectedId === e.external_id;
+                  const evIcon     = EVENT_ICONS[e.event_type] ?? '⚠️';
+                  const pLower     = (e.province || '').toLowerCase();
+                  const evActors   = actors.filter(a =>
+                    a.provinces_actives_historique.some(p => pLower.includes(p.toLowerCase())),
+                  );
+                  const evProv     = e.province || e.p_code || '';
+                  const evCorridor = enhancedCorridors.find(c => c.origin === evProv || c.destination === evProv);
                   return (
                     <div
                       key={e.external_id || i}
-                      className={`px-3 py-2 cursor-pointer transition-colors ${isSelected ? 'bg-cc-800' : 'hover:bg-cc-800/50'}`}
+                      ref={isSelected ? (el => { selectedItemRef.current = el; }) : undefined}
+                      className={`flex cursor-pointer transition-colors ${isSelected ? 'bg-cc-800' : 'hover:bg-cc-800/50'}`}
                       onClick={() => {
-                        if (isSelected) { setSelectedId(null); return; }
+                        if (isSelected) { setSelectedId(null); setPopupPixel(null); return; }
                         setSelectedId(e.external_id || null);
                         setCorridorId(null);
+                        setPopupPixel(null);
                         setDetailTab('info');
                         const c = getCentroid(e);
                         if (c) mapRef.current?.getMap().flyTo({ center: c, zoom: 7, duration: 700, offset: [-160, 0] });
                       }}
                     >
-                      <div className="flex items-start gap-2">
-                        <span className="w-2 h-2 rounded-full shrink-0 mt-1" style={{ backgroundColor: color }} />
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[11px] text-gray-200 font-medium truncate">
-                            {e.province || e.p_code || 'Province inconnue'}
-                            {e.territoire ? ` · ${e.territoire}` : ''}
+                      {/* Severity stripe */}
+                      <div className="w-1 shrink-0 rounded-l" style={{ backgroundColor: color }} />
+
+                      <div className="px-2.5 py-2 flex-1 min-w-0">
+                        {/* Row 1: icon + location + severity */}
+                        <div className="flex items-start justify-between gap-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs shrink-0 leading-none mt-px">{evIcon}</span>
+                            <div className="min-w-0">
+                              <div className="text-[11px] text-gray-200 font-semibold truncate leading-tight">
+                                {e.territoire || e.province || e.p_code || 'Inconnu'}
+                              </div>
+                              {e.territoire && (
+                                <div className="text-[9px] text-cc-500 font-mono truncate">{e.province || e.p_code}</div>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-[10px] text-cc-400 font-mono">
+                          <span className="text-[9px] font-bold font-mono shrink-0 mt-px" style={{ color }}>S{e.severity}</span>
+                        </div>
+
+                        {/* Row 2: type + relative date */}
+                        <div className="flex items-center justify-between mt-0.5 gap-1">
+                          <span className="text-[9px] text-cc-400 font-mono truncate">
                             {EVENT_TYPE_FR[e.event_type] ?? e.event_type}
                             {e.fatalities_reported != null && e.fatalities_reported > 0
-                              ? ` · ${e.fatalities_reported} victime${e.fatalities_reported > 1 ? 's' : ''}`
+                              ? ` · ${e.fatalities_reported}†`
                               : ''}
-                          </div>
-                          <div className="text-[9px] text-cc-600 font-mono mt-0.5">
-                            {formatDistanceToNow(new Date(e.event_date), { addSuffix: true, locale: fr })}
-                          </div>
+                          </span>
+                          <span className="text-[9px] text-cc-600 font-mono shrink-0">
+                            {formatDistanceToNow(new Date(e.event_date), { addSuffix: false, locale: fr })}
+                          </span>
                         </div>
-                        <div className="text-[10px] font-bold font-mono shrink-0 mt-0.5" style={{ color }}>S{e.severity}</div>
-                      </div>
-                      {isSelected && (
-                        <div className="mt-2 space-y-1 border-t border-cc-700 pt-2">
-                          <div className="flex items-center gap-2 text-[10px]">
-                            <span className="text-cc-500 font-mono w-16 shrink-0">Déplacement :</span>
-                            <span className="text-orange-400 font-mono">{Math.round(e.displacement_risk * 100)}%</span>
+
+                        {/* Row 3: first actor if any */}
+                        {evActors.length > 0 && (
+                          <div className="mt-1 text-[9px] text-red-400/80 font-mono truncate">
+                            👥 {evActors[0].nom_acled}{evActors.length > 1 ? ` +${evActors.length - 1}` : ''}
                           </div>
-                          {e.raw_notes && (
-                            <div className="text-[10px] text-cc-400 leading-relaxed">
-                              {e.raw_notes.slice(0, 200)}{e.raw_notes.length > 200 ? '…' : ''}
+                        )}
+
+                        {/* Row 4: corridor if any */}
+                        {evCorridor && (
+                          <div className="mt-0.5 text-[9px] text-blue-400/70 font-mono truncate">
+                            ↗ {evCorridor.origin} → {evCorridor.destination}
+                          </div>
+                        )}
+
+                        {/* Displacement risk bar */}
+                        {e.displacement_risk > 0 && (
+                          <div className="mt-1.5 flex items-center gap-1.5">
+                            <div className="flex-1 h-0.5 bg-cc-700 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full"
+                                style={{
+                                  width: `${e.displacement_risk * 100}%`,
+                                  backgroundColor: e.displacement_risk >= 0.7 ? '#f97316' : e.displacement_risk >= 0.5 ? '#eab308' : '#3b82f6',
+                                }}
+                              />
                             </div>
-                          )}
-                          {e.source_url && (
-                            <a href={e.source_url} target="_blank" rel="noopener noreferrer"
-                              className="text-[10px] text-sinaur-400 hover:text-sinaur-300 font-mono block truncate"
-                              onClick={ev => ev.stopPropagation()}>🔗 Source
-                            </a>
-                          )}
-                        </div>
-                      )}
+                            <span className="text-[8px] text-cc-600 font-mono shrink-0">{Math.round(e.displacement_risk * 100)}%</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
               </div>
+              </>
             )
           )}
 
@@ -1216,15 +2005,56 @@ export function ConflitPage() {
           }}
           style={{ width: '100%', height: '100%' }}
           mapStyle={MAP_STYLE}
-          interactiveLayerIds={['cluster-circle', 'cluster-count', 'event-unclustered', 'corridor-lines', 'corridor-arrows', 'corridor-origins', 'corridor-dests', 'threat-labels']}
+          interactiveLayerIds={['province-fill', 'cluster-circle', 'cluster-count', 'event-unclustered', 'corridor-lines', 'corridor-arrows', 'corridor-origins', 'corridor-dests', 'threat-labels']}
           onClick={onMapClick}
           onMouseMove={onMouseMove}
           onMouseLeave={() => {
             setCorridorTooltip(null);
+            setHoveredProvince(null);
             const map = mapRef.current?.getMap();
             if (map) map.getCanvas().style.cursor = '';
           }}
         >
+          {/* Province fills colored by conflict density */}
+          {provinceFillGeoJSON.features.length > 0 && (
+            <Source id="provinces" type="geojson" data={provinceFillGeoJSON}>
+              <Layer id="province-fill" type="fill" paint={{
+                'fill-color': ['interpolate', ['linear'], ['get', 'eventCount'],
+                  0, 'rgba(37,99,235,0.20)',
+                  1, 'rgba(202,138,4,0.40)',
+                  3, 'rgba(234,88,12,0.54)',
+                  6, 'rgba(220,38,38,0.65)'],
+                'fill-opacity': 1,
+              }} />
+              {/* Outer dark halo for border contrast */}
+              <Layer id="province-border-shadow" type="line" paint={{ 'line-color': '#071420', 'line-width': 3, 'line-blur': 1 }} />
+              {/* Inner bright border */}
+              <Layer id="province-border" type="line" paint={{ 'line-color': '#7eb4d4', 'line-width': 1.5 }} />
+              {/* Hover highlight */}
+              <Layer id="province-hover-fill" type="fill" paint={{
+                'fill-color': '#ffffff',
+                'fill-opacity': ['case', ['==', ['get', 'pcode'], hoveredProvince?.pcode ?? '__none__'], 0.08, 0],
+              }} />
+              {/* Selected event province highlight */}
+              <Layer id="province-selected-fill" type="fill" paint={{
+                'fill-color': '#ef4444',
+                'fill-opacity': ['case', ['==', ['get', 'pcode'], selectedEvent?.p_code ?? '__none__'], 0.12, 0],
+              }} />
+              <Layer id="province-selected-border" type="line" paint={{
+                'line-color': '#ef4444',
+                'line-width': ['case', ['==', ['get', 'pcode'], selectedEvent?.p_code ?? '__none__'], 2.5, 0],
+                'line-opacity': ['case', ['==', ['get', 'pcode'], selectedEvent?.p_code ?? '__none__'], 0.85, 0],
+              }} />
+              <Layer id="province-name" type="symbol" minzoom={4} layout={{
+                'text-field': ['get', 'name'],
+                'text-size': 11,
+                'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+                'text-allow-overlap': false,
+                'text-max-width': 8,
+              }} paint={{ 'text-color': '#e2e8f0', 'text-halo-color': '#071420', 'text-halo-width': 2 }} />
+            </Source>
+          )}
+
           {/* Threat prediction heatmap */}
           {showPredictionLayer && threatGeoJSON.features.length > 0 && (
             <Source id="threats" type="geojson" data={threatGeoJSON}>
@@ -1391,6 +2221,19 @@ export function ConflitPage() {
           </Source>
         </MapGL>
 
+        {/* Floating ConflictPopup — appears near map click point */}
+        {popupPixel && selectedEvent && (
+          <ConflictPopup
+            event={selectedEvent}
+            pixel={popupPixel}
+            prediction={selectedPrediction}
+            relatedCorridors={relatedCorridors}
+            actors={relevantActors}
+            onClose={() => { setPopupPixel(null); setSelectedId(null); }}
+            onOpenPanel={() => setPopupPixel(null)}
+          />
+        )}
+
         {/* Replay timeline */}
         {replayMode && replayEvents.length > 1 && (
           <div className="absolute bottom-20 left-3 right-3 z-20 bg-cc-900/97 border border-cc-600 rounded-xl px-4 py-3 backdrop-blur-sm shadow-2xl">
@@ -1437,6 +2280,22 @@ export function ConflitPage() {
           </div>
         )}
 
+        {/* Province hover tooltip */}
+        {hoveredProvince && !corridorTooltip && (
+          <div
+            className="absolute pointer-events-none z-30 bg-cc-900/95 border border-cc-600 rounded-lg px-2.5 py-1.5 text-xs font-mono shadow-xl"
+            style={{ left: hoveredProvince.x + 12, top: hoveredProvince.y - 44 }}
+          >
+            <div className="text-gray-200 font-bold text-[11px]">{hoveredProvince.name}</div>
+            <div className="text-cc-500 text-[9px] mt-0.5">
+              {(() => {
+                const cnt = events.filter(e => e.p_code === hoveredProvince.pcode).length;
+                return cnt > 0 ? `${cnt} incident${cnt > 1 ? 's' : ''} / ${horizon}j` : 'Aucun incident';
+              })()}
+            </div>
+          </div>
+        )}
+
         {/* Top stats bar */}
         <div className="absolute top-3 left-3 flex gap-2 flex-wrap">
           {events.length > 0 && (
@@ -1471,8 +2330,8 @@ export function ConflitPage() {
           )}
         </div>
 
-        {/* ── Intelligence Detail Panel ── */}
-        {(selectedEvent || selectedCorridor) && (() => {
+        {/* ── Intelligence Detail Panel (hidden when popup is open) ── */}
+        {!popupPixel && (selectedEvent || selectedCorridor) && (() => {
           const satCoords: [number, number] | null =
             selectedEvent
               ? (selectedEvent.coordinates ?? getCentroid(selectedEvent))
@@ -1795,33 +2654,7 @@ export function ConflitPage() {
 
               {/* Recommendations tab */}
               {selectedEvent && detailTab === 'recs' && (
-                <div className="px-3 py-2.5 space-y-2">
-                  {(['URGENT', 'ÉLEVÉ', 'MOYEN'] as const).map(priority => {
-                    const recs = recommendations.filter(r => r.priority === priority);
-                    if (recs.length === 0) return null;
-                    return (
-                      <div key={priority}>
-                        <div className={`text-[9px] font-mono font-bold uppercase tracking-wider mb-1.5 ${
-                          priority === 'URGENT' ? 'text-red-400' : priority === 'ÉLEVÉ' ? 'text-orange-400' : 'text-yellow-400'
-                        }`}>{priority}</div>
-                        <div className="space-y-1.5">
-                          {recs.map((r, i) => (
-                            <div key={i} className={`rounded-lg px-2.5 py-2 border ${PRIORITY_COLOR[priority]}`}>
-                              <div className="flex items-start gap-2">
-                                <span className="text-sm shrink-0">{r.icon}</span>
-                                <div className="flex-1 min-w-0">
-                                  <div className={`text-[10px] font-medium ${CAT_COLOR[r.category]}`}>{CAT_LABEL[r.category]}</div>
-                                  <div className="text-[11px] text-gray-200">{r.action}</div>
-                                  <div className="text-[9px] text-cc-500 font-mono mt-0.5">{r.why}</div>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <RecsList recommendations={recommendations} />
               )}
             </div>
 

@@ -89,6 +89,9 @@ export async function crisisRoutes(fastify: FastifyInstance) {
         c.id, c.glide_number, c.title, c.hazard_type, c.status, c.severity,
         c.start_date, c.end_date, c.affected_count, c.displaced_count, c.deaths_count,
         c.response_lead, c.created_at,
+        c.pending_validation, c.confidence_score,
+        CASE WHEN c.pending_validation = TRUE AND c.created_by IS NULL
+          THEN 'AGENT_AUTO' ELSE c.created_by::text END AS created_by,
         d.name_fr AS location_name,
         COUNT(t.id) FILTER (WHERE t.status != 'done')::int AS open_tasks,
         COUNT(s.id)::int AS sitrep_count
@@ -98,7 +101,7 @@ export async function crisisRoutes(fastify: FastifyInstance) {
       LEFT JOIN situation_reports  s ON s.crisis_event_id = c.id
       WHERE (${status}::text IS NULL OR c.status = ${status})
       GROUP BY c.id, d.name_fr
-      ORDER BY c.created_at DESC
+      ORDER BY c.pending_validation DESC, c.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `
 
@@ -265,6 +268,73 @@ export async function crisisRoutes(fastify: FastifyInstance) {
 
     return { success: true, data: sitrep }
   })
+
+  // ── Crises en attente de validation IA ────────────────────────────────────
+
+  fastify.get('/crises/pending-validation', {
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin')],
+  }, async (_request) => {
+    const rows = await sql`
+      SELECT
+        c.id, c.glide_number, c.title, c.hazard_type, c.severity,
+        c.start_date, c.created_at, c.confidence_score, c.sources_detection, c.truth_filter_data,
+        d.name_fr AS location_name
+      FROM crisis_events c
+      LEFT JOIN admin_divisions d ON d.pcode = c.location_pcode
+      WHERE c.pending_validation = TRUE
+      ORDER BY c.confidence_score DESC, c.created_at DESC
+      LIMIT 20
+    `
+    return { success: true, data: rows }
+  })
+
+  // ── Valider une crise IA ────────────────────────────────────────────────
+
+  fastify.post('/crises/:id/validate', {
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'territory_admin')],
+  }, async (request, reply) => {
+    const user = request.jwtUser
+    const { id } = request.params as { id: string }
+
+    const [crisis] = await sql`
+      UPDATE crisis_events SET
+        pending_validation = FALSE,
+        status             = 'active',
+        created_by         = ${user.sub},
+        updated_at         = NOW()
+      WHERE id = ${id} AND pending_validation = TRUE
+      RETURNING id, glide_number, title, status
+    `
+    if (!crisis) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND_OR_ALREADY_VALIDATED' } })
+
+    await writeAuditLog(user.sub, 'validate', 'crisis_events', id, request, {})
+    broadcast({ type: 'CRISIS_VALIDATED', payload: { id, glideNumber: crisis.glideNumber, title: crisis.title } } as any)
+
+    return { success: true, data: crisis }
+  })
+
+  // ── Rejeter une crise IA ────────────────────────────────────────────────
+
+  fastify.post('/crises/:id/reject', {
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'territory_admin')],
+  }, async (request, reply) => {
+    const user = request.jwtUser
+    const { id } = request.params as { id: string }
+
+    const [crisis] = await sql`
+      SELECT id, glide_number, title FROM crisis_events
+      WHERE id = ${id} AND pending_validation = TRUE
+    `
+    if (!crisis) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND_OR_ALREADY_PROCESSED' } })
+
+    await sql`DELETE FROM crisis_events WHERE id = ${id}`
+    await writeAuditLog(user.sub, 'reject', 'crisis_events', id, request, { title: crisis.title })
+    broadcast({ type: 'CRISIS_REJECTED', payload: { id, title: crisis.title } } as any)
+
+    return { success: true }
+  })
+
+  // ── SitReps ─────────────────────────────────────────────────────────────
 
   fastify.patch('/crises/:id/sitreps/:reportId', {
     preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin')],

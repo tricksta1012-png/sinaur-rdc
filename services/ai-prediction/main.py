@@ -1,10 +1,17 @@
 """
 SINAUR-RDC AI Prediction Service — top-level FastAPI application.
 
-Starts 3 agents:
-  1. VeilleAgent    — data ingestion from ReliefWeb, Open-Meteo, FEWS NET, OCHA HDX, Mettelsat
-  2. PredictionAgent — risk scoring (26 provinces × 4 risk types, 6h cadence)
-  3. AntiFraudAgent  — beneficiary dossier fraud/deduplication (on-demand via API)
+Starts 10 agents:
+  1. VeilleAgent         — data ingestion from ReliefWeb, Open-Meteo, FEWS NET, OCHA HDX, Mettelsat
+  2. PredictionAgent     — risk scoring (26 provinces × 4 risk types, 6h cadence)
+  3. AntiFraudAgent      — beneficiary dossier fraud/deduplication (on-demand via API)
+  4. AnomalieStocksAgent — stock movement anomaly detection (8 patterns, real-time)
+  5. SignalementsAgent   — multilingual citizen report classification & geo-clustering
+  6. ReportingAgent      — daily bulletins, executive summaries, HXL exports
+  7. LogistiqueAgent     — warehouse↔disaster resource allocation, OSRM routing
+  8. EpidemieAgent       — epidemic cluster detection (Cholera/Mpox/Measles/Meningitis/Ebola)
+  9. ConflitAgent        — armed conflict surveillance, displacement prediction (RESTRICTED)
+ 10. RenseignementAgent  — military & security intelligence, threat assessment (RESTRICTED)
 
 All /internal/* routes require X-Internal-API-Key header.
 """
@@ -20,13 +27,16 @@ from fastapi.responses import JSONResponse
 
 from agents.anomalie_stocks.router import router as anomalie_stocks_router
 from agents.antifraud.router import router as antifraud_router
+from agents.auto_crisis.router import router as auto_crisis_router
 from agents.conflit.router import router as conflit_router
+from agents.renseignement.router import router as renseignement_router
 from agents.epidemie.router import router as epidemie_router
 from agents.logistique.router import router as logistique_router
 from agents.prediction.router import router as prediction_router
 from agents.reporting.router import router as reporting_router
 from agents.signalements.router import router as signalements_router
 from agents.veille.router import router as veille_router
+from agents.virus_emergents.router import router as virus_emergents_router
 from config import settings
 from redis_client import close_redis, get_redis
 
@@ -103,6 +113,22 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("lifespan.epidemie_agent_start_failed", error=str(exc))
 
+    # Start AutoCrisisEngine (automatic crisis creation from multi-source reports)
+    try:
+        from agents.auto_crisis.engine import auto_crisis_engine
+        await auto_crisis_engine.start()
+        logger.info("lifespan.auto_crisis_engine_started")
+    except Exception as exc:
+        logger.warning("lifespan.auto_crisis_engine_start_failed", error=str(exc))
+
+    # Start VirusEmergentAgent (emerging pathogen surveillance — 8 sources)
+    try:
+        from agents.virus_emergents.agent import virus_emergent_agent
+        await virus_emergent_agent.start()
+        logger.info("lifespan.virus_emergent_agent_started")
+    except Exception as exc:
+        logger.warning("lifespan.virus_emergent_agent_start_failed", error=str(exc))
+
     # Start Conflit agent (armed conflict surveillance + displacement prediction)
     try:
         from agents.conflit.agent import conflit_agent
@@ -110,6 +136,14 @@ async def lifespan(app: FastAPI):
         logger.info("lifespan.conflit_agent_started")
     except Exception as exc:
         logger.warning("lifespan.conflit_agent_start_failed", error=str(exc))
+
+    # Start Renseignement agent (military & security intelligence)
+    try:
+        from agents.renseignement.agent import renseignement_agent
+        await renseignement_agent.start()
+        logger.info("lifespan.renseignement_agent_started")
+    except Exception as exc:
+        logger.warning("lifespan.renseignement_agent_start_failed", error=str(exc))
 
     # Verify Redis connectivity
     try:
@@ -163,6 +197,24 @@ async def lifespan(app: FastAPI):
     try:
         from agents.conflit.agent import conflit_agent
         await conflit_agent.stop()
+    except Exception:
+        pass
+
+    try:
+        from agents.renseignement.agent import renseignement_agent
+        await renseignement_agent.stop()
+    except Exception:
+        pass
+
+    try:
+        from agents.auto_crisis.engine import auto_crisis_engine
+        await auto_crisis_engine.stop()
+    except Exception:
+        pass
+
+    try:
+        from agents.virus_emergents.agent import virus_emergent_agent
+        await virus_emergent_agent.stop()
     except Exception:
         pass
 
@@ -287,6 +339,9 @@ app.include_router(reporting_router)
 app.include_router(logistique_router)
 app.include_router(epidemie_router)
 app.include_router(conflit_router)
+app.include_router(renseignement_router)
+app.include_router(auto_crisis_router)
+app.include_router(virus_emergents_router)
 
 
 # --- Unified agents status endpoint ---
@@ -428,6 +483,17 @@ async def agents_status():
         ))
     except Exception as exc:
         agents.append(_agent_entry("conflit", "Surveillance des Conflits Armés", "", status="error", metrics={"error": str(exc)}))
+
+    # Agent 10 — Renseignement
+    try:
+        from agents.renseignement.agent import renseignement_agent, _EVENT_STORE as _RENS_EVENTS, _ASSESSMENT_STORE, _BULLETIN_STORE
+        agents.append(_agent_entry(
+            "renseignement", "Renseignement Militaire & Sécuritaire",
+            "Surveillance Radio Okapi + ACLED deep, évaluation menace 26 provinces, bulletins RESTRICTED",
+            metrics={"events_stored": len(_RENS_EVENTS), "assessments": len(_ASSESSMENT_STORE), "has_bulletin": bool(_BULLETIN_STORE)},
+        ))
+    except Exception as exc:
+        agents.append(_agent_entry("renseignement", "Renseignement Militaire & Sécuritaire", "", status="error", metrics={"error": str(exc)}))
 
     elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
     overall = "ok" if all(a["status"] == "ok" for a in agents) else (
