@@ -13,12 +13,12 @@ const CreateUserSchema = z.object({
   fullName:             z.string().min(2).max(120),
   phone:                z.string().optional(),
   password:             z.string().min(10),
-  role:                 z.enum(['citizen', 'field_agent', 'local_validator', 'territory_admin', 'humanitarian_partner', 'national_decision_maker', 'system_admin']),
+  role:                 z.enum(['citizen', 'field_agent', 'local_validator', 'territory_admin', 'provincial_coordinator', 'humanitarian_partner', 'national_decision_maker', 'system_admin']),
   geographicScopePcodes: z.array(z.string()).default([]),
 })
 
 const UpdateUserSchema = z.object({
-  role:                 z.enum(['citizen', 'field_agent', 'local_validator', 'territory_admin', 'humanitarian_partner', 'national_decision_maker', 'system_admin']).optional(),
+  role:                 z.enum(['citizen', 'field_agent', 'local_validator', 'territory_admin', 'provincial_coordinator', 'humanitarian_partner', 'national_decision_maker', 'system_admin']).optional(),
   geographicScopePcodes: z.array(z.string()).optional(),
   isActive:             z.boolean().optional(),
   fullName:             z.string().min(2).max(120).optional(),

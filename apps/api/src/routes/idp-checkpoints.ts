@@ -60,16 +60,23 @@ export async function idpCheckpointRoutes(fastify: FastifyInstance): Promise<voi
 
   // GET /idp-checkpoints/flows — liste des flux récents
   fastify.get('/idp-checkpoints/flows', { preHandler: [requireAuth] }, async (request) => {
+    const user = request.jwtUser;
     const { limit, province } = z.object({
       limit:    z.coerce.number().int().min(1).max(100).default(20),
       province: z.string().optional(),
     }).parse(request.query);
 
+    // Coordinateurs provinciaux : restreindre aux flux de leur province
+    const isScoped = user.role !== 'system_admin' && user.role !== 'national_decision_maker' && user.scope.length > 0;
+    const effectiveProvinces = isScoped
+      ? (province ? user.scope.filter(s => s === province) : user.scope)
+      : (province ? [province] : null);
+
     const rows = await sql`
       SELECT f.id, f.checkpoint_name, f.province_pcode, f.direction, f.count,
              f.flow_date, f.origin_province, f.destination, f.notes, f.created_at
       FROM idp_flows f
-      ${province ? sql`WHERE f.province_pcode = ${province}` : sql``}
+      ${effectiveProvinces ? sql`WHERE f.province_pcode = ANY(${sql.array(effectiveProvinces)}::text[])` : sql``}
       ORDER BY f.flow_date DESC, f.created_at DESC
       LIMIT ${limit}
     `;
@@ -106,7 +113,13 @@ export async function idpCheckpointRoutes(fastify: FastifyInstance): Promise<voi
 
   // GET /idp-checkpoints/stats — statistiques agrégées
   fastify.get('/idp-checkpoints/stats', { preHandler: [requireAuth] }, async (request) => {
+    const user = request.jwtUser;
     const { days } = z.object({ days: z.coerce.number().int().min(1).max(90).default(7) }).parse(request.query);
+
+    const isScoped = user.role !== 'system_admin' && user.role !== 'national_decision_maker' && user.scope.length > 0;
+    const scopeWhere = isScoped
+      ? sql`AND province_pcode = ANY(${sql.array(user.scope)}::text[])`
+      : sql``;
 
     const [totals] = await sql`
       SELECT
@@ -115,6 +128,7 @@ export async function idpCheckpointRoutes(fastify: FastifyInstance): Promise<voi
         COUNT(DISTINCT checkpoint_name)                               AS active_checkpoints
       FROM idp_flows
       WHERE flow_date >= CURRENT_DATE - (${days} || ' days')::interval
+      ${scopeWhere}
     `;
 
     const byProvince = await sql`
@@ -125,6 +139,7 @@ export async function idpCheckpointRoutes(fastify: FastifyInstance): Promise<voi
              SUM(count) FILTER (WHERE direction = 'sortant') AS sortant
       FROM idp_flows
       WHERE flow_date >= CURRENT_DATE - (${days} || ' days')::interval
+      ${scopeWhere}
       GROUP BY province_pcode
       ORDER BY total_count DESC
       LIMIT 10

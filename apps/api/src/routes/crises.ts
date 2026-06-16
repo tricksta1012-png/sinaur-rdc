@@ -78,11 +78,18 @@ export async function crisisRoutes(fastify: FastifyInstance) {
   fastify.get('/crises', {
     preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin', 'humanitarian_partner')],
   }, async (request) => {
-    const q = request.query as Record<string, string>
+    const user   = request.jwtUser
+    const q      = request.query as Record<string, string>
     const status = q.status ?? null
     const page   = Math.max(1, parseInt(q.page ?? '1'))
     const limit  = Math.min(100, Math.max(1, parseInt(q.limit ?? '20')))
     const offset = (page - 1) * limit
+
+    // Coordinateurs provinciaux : restreindre aux crises de leur province
+    const isScoped = user.role !== 'system_admin' && user.role !== 'national_decision_maker' && user.scope.length > 0
+    const scopeWhere = isScoped
+      ? sql`AND c.location_pcode = ANY(${sql.array(user.scope)}::text[])`
+      : sql``
 
     const rows = await sql`
       SELECT
@@ -100,14 +107,16 @@ export async function crisisRoutes(fastify: FastifyInstance) {
       LEFT JOIN coordination_tasks t ON t.crisis_event_id = c.id
       LEFT JOIN situation_reports  s ON s.crisis_event_id = c.id
       WHERE (${status}::text IS NULL OR c.status = ${status})
+      ${scopeWhere}
       GROUP BY c.id, d.name_fr
       ORDER BY c.pending_validation DESC, c.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `
 
     const [{ total }] = await sql`
-      SELECT COUNT(*)::int AS total FROM crisis_events
-      WHERE (${status}::text IS NULL OR status = ${status})
+      SELECT COUNT(*)::int AS total FROM crisis_events c
+      WHERE (${status}::text IS NULL OR c.status = ${status})
+      ${scopeWhere}
     `
 
     return { success: true, data: rows, meta: { total, page, limit } }
