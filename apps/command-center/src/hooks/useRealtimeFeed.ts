@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuthStore } from '../stores/auth.js';
+import { apiClient } from '../lib/api.js';
 
 export type FeedEvent =
   | { type: 'NEW_EVENT';      payload: { id: string; hazardType: string; severity: string; locationPcode: string; title: string; createdAt: string } }
@@ -13,25 +14,74 @@ export type FeedEvent =
 
 const MAX_FEED_ITEMS = 100
 
+function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return payload.exp * 1000 < Date.now() + 30_000; // 30s buffer
+  } catch {
+    return true;
+  }
+}
+
+async function tryRefreshToken(): Promise<string | null> {
+  const { tokens, logout } = useAuthStore.getState();
+  if (!tokens?.refreshToken) return null;
+  try {
+    const { data } = await apiClient.post<{ success: boolean; data: { accessToken: string } }>(
+      '/auth/refresh',
+      { refreshToken: tokens.refreshToken },
+    );
+    const newTokens = { ...tokens, accessToken: data.data.accessToken };
+    apiClient.defaults.headers.common['Authorization'] = `Bearer ${newTokens.accessToken}`;
+    useAuthStore.setState({ tokens: newTokens });
+    return newTokens.accessToken;
+  } catch {
+    logout();
+    window.location.href = '/login';
+    return null;
+  }
+}
+
+function buildWsUrl(token: string): string {
+  // Connect directly to the API if VITE_API_BASE_URL is set (bypasses nginx proxy + timeout)
+  const apiBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  const wsBase = apiBase
+    ? apiBase.replace(/^http/, 'ws').replace(/\/$/, '')
+    : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
+  return `${wsBase}/ws?token=${encodeURIComponent(token)}`;
+}
+
 export function useRealtimeFeed() {
   const [events, setEvents] = useState<(FeedEvent & { receivedAt: string })[]>([])
   const [connected, setConnected] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
+  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tokens = useAuthStore(s => s.tokens)
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
-    const token = tokens?.accessToken ?? ''
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    const ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`)
+    let token = tokens?.accessToken ?? ''
 
-    ws.onopen  = () => setConnected(true)
+    // Refresh expired token before opening a new connection
+    if (token && isTokenExpired(token)) {
+      const refreshed = await tryRefreshToken();
+      if (!refreshed) return;
+      token = refreshed;
+    }
+
+    const ws = new WebSocket(buildWsUrl(token))
+
+    ws.onopen = () => setConnected(true)
+
     ws.onclose = () => {
       setConnected(false)
-      setTimeout(connect, 5000) // reconnect
+      // Use latest connect via ref to avoid stale closure on refresh
+      reconnectRef.current = setTimeout(() => connect(), 5_000)
     }
+
     ws.onerror = () => ws.close()
+
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data) as FeedEvent
@@ -48,7 +98,10 @@ export function useRealtimeFeed() {
 
   useEffect(() => {
     if (tokens) connect()
-    return () => wsRef.current?.close()
+    return () => {
+      if (reconnectRef.current) clearTimeout(reconnectRef.current)
+      wsRef.current?.close()
+    }
   }, [connect, tokens])
 
   const clearFeed = () => setEvents([])
