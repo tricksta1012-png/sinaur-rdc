@@ -150,10 +150,10 @@ export async function idpCheckpointRoutes(fastify: FastifyInstance): Promise<voi
     return {
       data: {
         period_days:        days,
-        total_entrant:      Number(totals.total_entrant),
-        total_sortant:      Number(totals.total_sortant),
-        net_displacement:   Number(totals.total_entrant) - Number(totals.total_sortant),
-        active_checkpoints: Number(totals.active_checkpoints),
+        total_entrant:      Number(totals.totalEntrant),
+        total_sortant:      Number(totals.totalSortant),
+        net_displacement:   Number(totals.totalEntrant) - Number(totals.totalSortant),
+        active_checkpoints: Number(totals.activeCheckpoints),
         by_province:        byProvince,
       },
     };
