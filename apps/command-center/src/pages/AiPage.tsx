@@ -210,10 +210,247 @@ const RISK_TYPE_FILTER: { key: string; label: string; icon: string }[] = [
   { key: 'EPIDEMIC',     label: 'Épidémie',          icon: '🦠' },
 ];
 
+// ── Domain config for PredictionsTab ─────────────────────────────────────────
+
+const DOMAIN_CONFIG: {
+  key: string;
+  icon: string;
+  label: string;
+  borderActive: string;
+  borderCard: string;
+}[] = [
+  { key: 'FLOOD',        icon: '🌊', label: 'Inondations',  borderActive: 'border-blue-500',   borderCard: 'border-blue-700'   },
+  { key: 'DISPLACEMENT', icon: '🏃', label: 'Déplacements', borderActive: 'border-orange-500', borderCard: 'border-orange-700' },
+  { key: 'EPIDEMIC',     icon: '🦠', label: 'Épidémies',    borderActive: 'border-red-500',    borderCard: 'border-red-700'    },
+  { key: 'LANDSLIDE',    icon: '⛰️', label: 'Glissements',  borderActive: 'border-yellow-500', borderCard: 'border-yellow-700' },
+];
+
+const DOMAIN_CONTEXT: Record<string, { lines: string[] }> = {
+  FLOOD: {
+    lines: [
+      '🌊 Saison des pluies : mars–mai / sept–déc (pic actuel)',
+      '📍 Zones à risque chronique : Équateur, Kasaï-Central, Tanganyika, Maniema',
+      '⚡ Seuil critique : cumul ≥ 200mm/semaine ou niveau rivière +2m au-dessus cote alerte',
+      '🏠 Population exposée zones inondables : ~4.2M personnes (OCHA 2025)',
+    ],
+  },
+  DISPLACEMENT: {
+    lines: [
+      '🏃 6.9M PDI en RDC — 1ère crise de déplacement en Afrique (UNHCR juin 2026)',
+      '📈 Tendance : +340 000 nouveaux déplacés depuis janvier 2026',
+      '⚔️ Facteurs principaux : M23/AFC (Kivu), ADF (Ituri/Nord-Kivu), CODECO (Ituri)',
+      '🏕️ Sites saturés : Bunia, Goma, Beni — capacité accueil dépassée de 40%',
+    ],
+  },
+  EPIDEMIC: {
+    lines: [
+      '🚨 USPPI active : Ebola Bundibugyo (OMS, 17 mai 2026) — 515 cas, 91 décès',
+      '🦠 Co-épidémies actives : Choléra (4 820 cas), Mpox (1 240 cas), Rougeole (12 400 cas)',
+      '⚠️ Risque émergent : Virus Marburg (frontière Ouganda), Hantavirus Andes (import)',
+      '🏥 Réseau santé : 68% des zones de santé actives sous pression',
+    ],
+  },
+  LANDSLIDE: {
+    lines: [
+      '⛰️ Zones à relief escarpé à risque : Nord-Kivu, Sud-Kivu, Ituri, Maniema',
+      '🌧️ Déclencheur principal : pluies cumulées > 200mm/semaine + sols saturés',
+      '🏘️ Exposition : 1.8M personnes en zones de pente > 30° (RMSI 2024)',
+      '📅 Saison critique : avril–juin / octobre–novembre (convergence pluies + déjà saturé)',
+    ],
+  },
+};
+
+const DOMAIN_INDICATORS: Record<string, string[]> = {
+  FLOOD:        ['Intensité pluies', 'Population exposée', 'Infrastructures à risque', 'Capacité évacuation'],
+  DISPLACEMENT: ['Intensité conflit', 'Flux sortants', 'Capacité accueil', 'Stocks NFI'],
+  EPIDEMIC:     ['Taux d\'attaque', 'Rayon diffusion', 'Couverture vaccin', 'Accès équipes santé'],
+  LANDSLIDE:    ['Saturation sol', 'Pente moy.', 'Couvert végétal', 'Densité population'],
+};
+
+function levelScoreColor(level: string): string {
+  if (level === 'CRITIQUE') return 'bg-red-500';
+  if (level === 'ELEVE')    return 'bg-orange-400';
+  if (level === 'MODERE')   return 'bg-yellow-500';
+  return 'bg-green-500';
+}
+
+function levelCardBorder(level: string): string {
+  if (level === 'CRITIQUE') return 'border-red-700 bg-red-950/20';
+  if (level === 'ELEVE')    return 'border-orange-700 bg-orange-950/10';
+  if (level === 'MODERE')   return 'border-yellow-700 bg-yellow-950/10';
+  return 'border-cc-700 bg-cc-800';
+}
+
+function getHighestLevel(risks: any[]): string {
+  const order = ['CRITIQUE', 'ELEVE', 'MODERE', 'FAIBLE'];
+  for (const lvl of order) {
+    if (risks.some(r => r.level === lvl)) return lvl;
+  }
+  return '—';
+}
+
+function ProvinceCard({ r, expanded, onToggle }: { r: any; expanded: boolean; onToggle: () => void }) {
+  const level = r.level ?? 'FAIBLE';
+  const badge = LEVEL_BADGE[level] ?? LEVEL_BADGE.FAIBLE;
+  const score = Math.round(r.score ?? 0);
+  const confidence = r.confidence ?? null;
+  const factors: { name: string; contribution: number; direction: string }[] = r.factors ?? [];
+  const actions: string[] = (ACTION_RECOMMENDATIONS[r.risk_type]?.[level] ?? []).slice(0, 4);
+  const indicators: string[] = DOMAIN_INDICATORS[r.risk_type] ?? [];
+
+  return (
+    <div
+      className={`rounded-xl border transition-colors cursor-pointer ${levelCardBorder(level)}`}
+      onClick={onToggle}
+    >
+      {/* Collapsed header — always visible */}
+      <div className="px-3 py-2.5 flex items-center gap-3">
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${badge.cls}`}>
+          {badge.label}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-bold text-white truncate">{r.province ?? r.p_code}</div>
+          <div className="text-[10px] text-cc-500 font-mono">{r.p_code} · Horizon {r.horizon_days}j</div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="hidden sm:flex items-center gap-1.5">
+            <div className="w-16 h-1.5 bg-cc-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${levelScoreColor(level)}`}
+                style={{ width: `${score}%` }}
+              />
+            </div>
+          </div>
+          <span className="text-white font-bold font-mono text-sm">{score}</span>
+          <span className="text-cc-600 text-[10px] font-mono">/100</span>
+        </div>
+        {confidence !== null && (
+          <div className="hidden sm:block text-[10px] text-cc-400 font-mono shrink-0 w-10 text-right">
+            {Math.round(confidence * 100)}%
+          </div>
+        )}
+        <span className="text-cc-600 text-[10px] shrink-0">{expanded ? '▲' : '▼'}</span>
+      </div>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div
+          className="px-3 pb-3 space-y-3 border-t border-cc-700/40 pt-3"
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Score bar large */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-mono text-cc-500 uppercase">Score de risque</span>
+              <span className="text-xs font-bold font-mono text-white">{score}/100</span>
+            </div>
+            <div className="h-2 bg-cc-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${levelScoreColor(level)}`}
+                style={{ width: `${score}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Confidence gauge */}
+          {confidence !== null && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] font-mono text-cc-500 uppercase">Niveau de confiance</span>
+                <span className={`text-[10px] font-bold font-mono ${confidence >= 0.7 ? 'text-green-400' : confidence >= 0.5 ? 'text-yellow-400' : 'text-red-400'}`}>
+                  {Math.round(confidence * 100)}%
+                </span>
+              </div>
+              <div className="h-1.5 bg-cc-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${confidence >= 0.7 ? 'bg-green-500' : confidence >= 0.5 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                  style={{ width: `${Math.round(confidence * 100)}%` }}
+                />
+              </div>
+              <div className="text-[9px] text-cc-600 font-mono mt-0.5">
+                {confidence >= 0.7 ? 'Confiance élevée — données suffisantes' :
+                 confidence >= 0.5 ? 'Confiance modérée — données partielles' :
+                 'Confiance faible — données insuffisantes, résultat indicatif'}
+              </div>
+            </div>
+          )}
+
+          {/* Factors */}
+          {factors.length > 0 && (
+            <div>
+              <div className="text-[10px] font-mono text-cc-500 uppercase mb-1.5">Facteurs contributifs</div>
+              <div className="space-y-1.5">
+                {[...factors]
+                  .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
+                  .slice(0, 5)
+                  .map((f, i) => (
+                    <FactorBar
+                      key={i}
+                      name={f.name}
+                      contribution={f.contribution}
+                      direction={f.direction ?? (f.contribution >= 0 ? '+' : '-')}
+                    />
+                  ))
+                }
+              </div>
+            </div>
+          )}
+
+          {/* Domain-specific indicators */}
+          {indicators.length > 0 && (
+            <div>
+              <div className="text-[10px] font-mono text-cc-500 uppercase mb-1.5">Indicateurs domaine</div>
+              <div className="flex flex-wrap gap-1.5">
+                {indicators.map((ind, i) => {
+                  const matchingFactor = factors.find(f =>
+                    f.name.toLowerCase().includes(ind.toLowerCase().split(' ')[0].toLowerCase())
+                  );
+                  const val = matchingFactor
+                    ? `${(Math.abs(matchingFactor.contribution) * 100).toFixed(0)}%`
+                    : '—';
+                  return (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1 text-[9px] font-mono bg-cc-700 text-cc-300 border border-cc-600 px-2 py-1 rounded-lg"
+                    >
+                      <span className="text-cc-500">{ind}</span>
+                      <span className="text-white font-bold">{val}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Actions recommandées */}
+          {actions.length > 0 && (
+            <div>
+              <div className="text-[10px] font-mono text-cc-500 uppercase mb-1.5">Actions recommandées</div>
+              <div className="space-y-1">
+                {actions.map((a, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[10px] text-gray-300">
+                    <span className="text-sinaur-500 shrink-0 font-bold mt-px">{i + 1}.</span>
+                    <span>{a}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-1.5 text-[9px] text-cc-600 italic border-t border-cc-700/50 pt-1.5">
+                ⚠ Ces recommandations sont générées automatiquement par l'IA. Toute décision opérationnelle requiert validation humaine.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PredictionsTab() {
+  // ── All hooks at the top (Rules of Hooks) ──
   const [horizon, setHorizon] = useState<7 | 30 | 90>(7);
-  const [selected, setSelected] = useState<any | null>(null);
-  const [filterType, setFilterType] = useState<string>('ALL');
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  // null = auto (derive from data); string = user manually picked
+  const [userDomain, setUserDomain] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -227,12 +464,6 @@ function PredictionsTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['ai-risks'] }); },
   });
 
-  const allRisks: any[] = data?.data ?? (Array.isArray(data) ? data : []);
-  // Field names from Pydantic: p_code, risk_type, level (CRITIQUE/ELEVE/MODERE/FAIBLE)
-  const risks = filterType === 'ALL' ? allRisks : allRisks.filter(r => r.risk_type === filterType);
-  const critical = allRisks.filter(r => r.level === 'CRITIQUE');
-  const high     = allRisks.filter(r => r.level === 'ELEVE');
-
   const alertsQuery = useQuery({
     queryKey: ['ai-alerts-pending'],
     queryFn: () => apiClient.get('/predictions/alerts/pending').then(r => r.data),
@@ -240,14 +471,34 @@ function PredictionsTab() {
   });
   const pendingAlerts: any[] = Array.isArray(alertsQuery.data) ? alertsQuery.data : [];
 
+  const allRisks: any[] = data?.data ?? (Array.isArray(data) ? data : []);
+  const critical = allRisks.filter(r => r.level === 'CRITIQUE');
+  const high     = allRisks.filter(r => r.level === 'ELEVE');
+
+  // Derive best domain from data (most CRITIQUE, fallback DISPLACEMENT)
+  const autoDomain: string = allRisks.length > 0
+    ? DOMAIN_CONFIG.reduce((bestKey, d) => {
+        const cnt     = allRisks.filter(r => r.risk_type === d.key     && r.level === 'CRITIQUE').length;
+        const bestCnt = allRisks.filter(r => r.risk_type === bestKey   && r.level === 'CRITIQUE').length;
+        return cnt > bestCnt ? d.key : bestKey;
+      }, 'DISPLACEMENT')
+    : 'DISPLACEMENT';
+
+  const selectedDomain = userDomain ?? autoDomain;
+
+  const domainRisks = allRisks
+    .filter(r => r.risk_type === selectedDomain)
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, 15);
+
   return (
     <div className="space-y-4">
-      {/* KPIs */}
+      {/* ── 1. KPI row ── */}
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: 'CRITIQUE', value: critical.length, cls: 'bg-red-950 border border-red-800' },
           { label: 'ÉLEVÉ',    value: high.length,     cls: 'bg-red-900/50 border border-red-800' },
-          { label: 'TOTAL',    value: risks.length,    cls: 'bg-cc-800 border border-cc-600' },
+          { label: 'TOTAL',    value: allRisks.length, cls: 'bg-cc-800 border border-cc-600' },
         ].map(k => (
           <div key={k.label} className={`rounded-lg p-3 ${k.cls}`}>
             <div className="text-[10px] font-mono text-gray-400 mb-1">{k.label}</div>
@@ -256,7 +507,7 @@ function PredictionsTab() {
         ))}
       </div>
 
-      {/* Pending CAP alerts */}
+      {/* ── 2. Pending CAP alerts banner ── */}
       {pendingAlerts.length > 0 && (
         <div className="bg-red-950/40 border border-red-800 rounded-lg p-3">
           <div className="text-[10px] font-mono text-red-400 uppercase mb-2 flex items-center gap-1.5">
@@ -276,36 +527,13 @@ function PredictionsTab() {
         </div>
       )}
 
-      {/* Aléa filter */}
-      <div className="flex flex-wrap gap-1.5 items-center">
-        <span className="text-[10px] font-mono text-cc-500 uppercase">Aléa :</span>
-        {RISK_TYPE_FILTER.map(f => {
-          const count = f.key === 'ALL' ? allRisks.length : allRisks.filter(r => r.risk_type === f.key).length;
-          return (
-            <button
-              key={f.key}
-              onClick={() => { setFilterType(f.key); setSelected(null); }}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-mono border transition-colors ${
-                filterType === f.key
-                  ? 'bg-sinaur-800 border-sinaur-600 text-sinaur-200'
-                  : 'border-cc-700 text-cc-400 hover:text-gray-300 hover:border-cc-600'
-              }`}
-            >
-              <span>{f.icon}</span>
-              <span>{f.label}</span>
-              <span className={`ml-0.5 ${filterType === f.key ? 'text-sinaur-400' : 'text-cc-600'}`}>({count})</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Controls */}
+      {/* ── 3. Horizon selector + refresh ── */}
       <div className="flex items-center gap-3">
         <div className="flex gap-1 bg-cc-800 rounded-lg p-1">
           {([7, 30, 90] as const).map(h => (
             <button
               key={h}
-              onClick={() => { setHorizon(h); setSelected(null); }}
+              onClick={() => { setHorizon(h); setExpandedCard(null); }}
               className={`px-3 py-1 rounded text-xs font-mono transition-colors ${
                 horizon === h ? 'bg-sinaur-700 text-white' : 'text-gray-400 hover:text-gray-200'
               }`}
@@ -326,72 +554,75 @@ function PredictionsTab() {
         </button>
       </div>
 
-      {/* Selected risk detail */}
-      {selected && (
-        <RiskDetailPanel risk={selected} onClose={() => setSelected(null)} />
+      {/* ── 4. Domain selector cards ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {DOMAIN_CONFIG.map(d => {
+          const domRisks = allRisks.filter(r => r.risk_type === d.key);
+          const isActive = selectedDomain === d.key;
+          const highestLvl = getHighestLevel(domRisks);
+          const hlBadge = LEVEL_BADGE[highestLvl];
+          return (
+            <button
+              key={d.key}
+              onClick={() => { setUserDomain(d.key); setExpandedCard(null); }}
+              className={`rounded-xl border-2 p-3 text-left transition-all ${
+                isActive
+                  ? `${d.borderActive} bg-cc-800`
+                  : 'border-cc-700 bg-cc-800 hover:border-cc-500'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <span className="text-xl">{d.icon}</span>
+                <span className="text-xs font-bold text-white">{d.label}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono text-cc-400">
+                  {domRisks.length} zone{domRisks.length !== 1 ? 's' : ''}
+                </span>
+                {hlBadge && (
+                  <span className={`text-[8px] font-bold px-1.5 py-px rounded-full ${hlBadge.cls}`}>
+                    {hlBadge.label}
+                  </span>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── 5. Domain context box ── */}
+      {DOMAIN_CONTEXT[selectedDomain] && (
+        <div className="bg-cc-800 border border-cc-600 rounded-xl p-3 space-y-1.5">
+          {DOMAIN_CONTEXT[selectedDomain].lines.map((line, i) => (
+            <div key={i} className="text-[10px] text-gray-300 leading-relaxed">{line}</div>
+          ))}
+        </div>
       )}
 
-      {/* Table */}
+      {/* ── 6. Province risk cards ── */}
       {isLoading ? (
         <div className="text-center text-gray-500 text-sm py-8">Chargement…</div>
-      ) : risks.length === 0 ? (
-        <div className="text-center text-gray-500 text-sm py-8">Aucune donnée — lancer un recalcul</div>
+      ) : domainRisks.length === 0 ? (
+        <div className="text-center text-gray-500 text-sm py-8">
+          Aucune donnée pour {DOMAIN_CONFIG.find(d => d.key === selectedDomain)?.label ?? selectedDomain} — lancer un recalcul
+        </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-cc-700 text-gray-500 font-mono uppercase text-[10px]">
-                <th className="pb-2 text-left">Province</th>
-                <th className="pb-2 text-left">Aléa</th>
-                <th className="pb-2 text-right">Score</th>
-                <th className="pb-2 text-center">Niveau</th>
-                <th className="pb-2 text-center">Conf.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {risks.slice(0, 40).map((r, i) => {
-                const badge = LEVEL_BADGE[r.level] ?? LEVEL_BADGE.FAIBLE;
-                const isSelected = selected?.p_code === r.p_code && selected?.risk_type === r.risk_type;
-                return (
-                  <tr
-                    key={i}
-                    onClick={() => setSelected(isSelected ? null : r)}
-                    className={`border-b border-cc-800 cursor-pointer transition-colors ${
-                      isSelected ? 'bg-cc-700' : 'hover:bg-cc-800'
-                    }`}
-                  >
-                    <td className="py-2 font-mono text-gray-300">{r.province ?? r.p_code}</td>
-                    <td className="py-2 text-gray-300">
-                      <span className="mr-1">{RISK_TYPE_ICON[r.risk_type] ?? '⚠️'}</span>
-                      <span className="text-[10px]">{RISK_TYPE_FR[r.risk_type] ?? r.risk_type}</span>
-                    </td>
-                    <td className="py-2 text-right">
-                      <div className="inline-flex items-center gap-1.5">
-                        <div
-                          className={`h-1.5 rounded-full ${r.level === 'CRITIQUE' ? 'bg-red-500' : r.level === 'ELEVE' ? 'bg-orange-400' : r.level === 'MODERE' ? 'bg-yellow-500' : 'bg-green-500'}`}
-                          style={{ width: `${Math.round((r.score ?? 0) / 5)}px`, maxWidth: '40px', minWidth: '2px' }}
-                        />
-                        <span className="text-white font-bold">{Math.round(r.score ?? 0)}</span>
-                      </div>
-                    </td>
-                    <td className="py-2 text-center">
-                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${badge.cls}`}>
-                        {badge.label}
-                      </span>
-                    </td>
-                    <td className="py-2 text-center text-cc-400 font-mono text-[10px]">
-                      {r.confidence != null ? `${Math.round(r.confidence * 100)}%` : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {risks.length > 40 && (
-            <p className="text-center text-xs text-gray-600 mt-2 font-mono">
-              +{risks.length - 40} autres provinces · filtrer par type pour affiner
-            </p>
-          )}
+        <div className="space-y-2">
+          <div className="text-[10px] font-mono text-cc-500 uppercase flex items-center gap-2">
+            <span>{RISK_TYPE_ICON[selectedDomain]}</span>
+            <span>{RISK_TYPE_FR[selectedDomain] ?? selectedDomain} — {domainRisks.length} provinces (top 15 par score)</span>
+          </div>
+          {domainRisks.map((r, i) => {
+            const cardKey = `${r.p_code ?? i}-${r.risk_type}`;
+            return (
+              <ProvinceCard
+                key={cardKey}
+                r={r}
+                expanded={expandedCard === cardKey}
+                onToggle={() => setExpandedCard(expandedCard === cardKey ? null : cardKey)}
+              />
+            );
+          })}
         </div>
       )}
     </div>
