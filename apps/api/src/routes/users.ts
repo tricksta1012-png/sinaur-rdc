@@ -123,6 +123,26 @@ export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
     return { success: true, data: updated }
   })
 
+  // ── Réinitialiser le mot de passe ─────────────────────────────────────────
+  fastify.post('/admin/users/:id/reset-password', {
+    preHandler: [requireAuth, requireRole('system_admin')],
+  }, async (request, reply) => {
+    const { id }  = request.params as { id: string }
+    const admin   = request.jwtUser
+    const { password } = z.object({ password: z.string().min(10) }).parse(request.body)
+
+    const hash = await bcrypt.hash(password, 12)
+    const [updated] = await sql`
+      UPDATE users SET password_hash = ${hash}, updated_at = NOW()
+      WHERE id = ${id} AND deleted_at IS NULL
+      RETURNING id, email
+    `
+    if (!updated) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND' } })
+
+    await writeAuditLog(admin.sub, 'PASSWORD_RESET', 'users', id, request, { email: updated.email })
+    return { success: true }
+  })
+
   // ── Supprimer (soft-delete) un utilisateur ─────────────────────────────────
   fastify.delete('/admin/users/:id', {
     preHandler: [requireAuth, requireRole('system_admin')],
