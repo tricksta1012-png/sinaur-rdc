@@ -15,16 +15,35 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
   closed:    { label: 'Clôturée', color: 'bg-gray-800 text-gray-400 border-gray-700'  },
 };
 
+const PROVINCES_DRC = [
+  { pcode: 'CD10', name: 'Kinshasa' }, { pcode: 'CD20', name: 'Kongo-Central' },
+  { pcode: 'CD21', name: 'Kwango' },   { pcode: 'CD22', name: 'Kwilu' },
+  { pcode: 'CD23', name: 'Maï-Ndombe' }, { pcode: 'CD41', name: 'Équateur' },
+  { pcode: 'CD42', name: 'Sud-Ubangi' }, { pcode: 'CD43', name: 'Nord-Ubangi' },
+  { pcode: 'CD44', name: 'Mongala' },  { pcode: 'CD45', name: 'Tshuapa' },
+  { pcode: 'CD51', name: 'Tshopo' },   { pcode: 'CD52', name: 'Bas-Uélé' },
+  { pcode: 'CD53', name: 'Haut-Uélé' }, { pcode: 'CD54', name: 'Ituri' },
+  { pcode: 'CD61', name: 'Nord-Kivu' }, { pcode: 'CD62', name: 'Sud-Kivu' },
+  { pcode: 'CD63', name: 'Maniema' },  { pcode: 'CD71', name: 'Haut-Katanga' },
+  { pcode: 'CD72', name: 'Lualaba' },  { pcode: 'CD73', name: 'Haut-Lomami' },
+  { pcode: 'CD74', name: 'Tanganyika' }, { pcode: 'CD81', name: 'Lomami' },
+  { pcode: 'CD82', name: 'Kasaï-Oriental' }, { pcode: 'CD83', name: 'Kasaï' },
+  { pcode: 'CD84', name: 'Kasaï-Central' }, { pcode: 'CD85', name: 'Sankuru' },
+];
+
 interface CreateForm {
   title: string; hazardType: string; severity: string;
-  locationPcode: string; affectedCount: string;
-  displacedCount: string; responseLead: string; description: string;
+  startDate: string; locationPcode: string;
+  affectedCount: string; displacedCount: string; deathsCount: string;
+  responseLead: string; description: string;
 }
+
+const today = new Date().toISOString().slice(0, 10);
 
 const EMPTY_FORM: CreateForm = {
   title: '', hazardType: 'flood', severity: 'Severe',
-  locationPcode: '', affectedCount: '', displacedCount: '',
-  responseLead: '', description: '',
+  startDate: today, locationPcode: '', affectedCount: '',
+  displacedCount: '', deathsCount: '', responseLead: '', description: '',
 };
 
 export function CrisesPage() {
@@ -65,9 +84,11 @@ export function CrisesPage() {
       title:          form.title,
       hazardType:     form.hazardType,
       severity:       form.severity,
-      locationPcode:  form.locationPcode || undefined,
+      startDate:      form.startDate      || undefined,
+      locationPcode:  form.locationPcode  || undefined,
       affectedCount:  form.affectedCount  ? parseInt(form.affectedCount)  : undefined,
       displacedCount: form.displacedCount ? parseInt(form.displacedCount) : undefined,
+      deathsCount:    form.deathsCount    ? parseInt(form.deathsCount)    : undefined,
       responseLead:   form.responseLead   || undefined,
       description:    form.description    || undefined,
     });
@@ -240,14 +261,17 @@ export function CrisesPage() {
               <h2 className="text-white font-semibold">Ouvrir une nouvelle crise</h2>
               <button onClick={() => setShowForm(false)} className="text-cc-600 hover:text-gray-300 text-xl leading-none">×</button>
             </div>
-            <form onSubmit={handleCreate} className="px-6 py-4 space-y-4">
+            <form onSubmit={handleCreate} className="px-6 py-5 space-y-4 max-h-[75vh] overflow-y-auto">
+              {/* Titre */}
+              <div>
+                <label className="cc-label">Titre de la crise *</label>
+                <input className="cc-input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required placeholder="Ex: Épidémie Mpox Nord-Kivu, Inondations Kinshasa Ouest…" />
+              </div>
+
+              {/* Type + Sévérité */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
-                  <label className="cc-label">Titre *</label>
-                  <input className="cc-input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required placeholder="Ex: Inondations Kinshasa Ouest" />
-                </div>
                 <div>
-                  <label className="cc-label">Type de risque *</label>
+                  <label className="cc-label">Type de crise *</label>
                   <select className="cc-input" value={form.hazardType} onChange={e => setForm(f => ({ ...f, hazardType: e.target.value }))}>
                     {HAZARD_CODES.map(c => <option key={c} value={c}>{HAZARD_FR[c]}</option>)}
                   </select>
@@ -255,37 +279,75 @@ export function CrisesPage() {
                 <div>
                   <label className="cc-label">Sévérité</label>
                   <select className="cc-input" value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))}>
-                    {['Extreme', 'Severe', 'Moderate', 'Minor', 'Unknown'].map(s => <option key={s} value={s}>{s}</option>)}
+                    <option value="Extreme">Extrême</option>
+                    <option value="Severe">Sévère</option>
+                    <option value="Moderate">Modérée</option>
+                    <option value="Minor">Mineure</option>
+                    <option value="Unknown">Inconnue</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Alerte épidémie */}
+              {form.hazardType === 'health_epidemic' && (
+                <div className="bg-red-950/40 border border-red-800/60 rounded-lg px-3 py-2 text-xs text-red-300">
+                  🦠 Épidémie — Précisez la maladie dans le titre et la description (ex : Mpox, Ebola, Choléra, Rougeole…)
+                </div>
+              )}
+
+              {/* Date début + Province */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="cc-label">Code province (P-code)</label>
-                  <input className="cc-input font-mono" value={form.locationPcode} onChange={e => setForm(f => ({ ...f, locationPcode: e.target.value }))} placeholder="CD01" maxLength={10} />
+                  <label className="cc-label">Date de début</label>
+                  <input className="cc-input" type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="cc-label">Agence cheffe de file</label>
-                  <input className="cc-input" value={form.responseLead} onChange={e => setForm(f => ({ ...f, responseLead: e.target.value }))} placeholder="OCHA, UNHCR, MSF…" />
-                </div>
-                <div>
-                  <label className="cc-label">Personnes affectées (estim.)</label>
-                  <input className="cc-input" type="number" min="0" value={form.affectedCount} onChange={e => setForm(f => ({ ...f, affectedCount: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="cc-label">Personnes déplacées (estim.)</label>
-                  <input className="cc-input" type="number" min="0" value={form.displacedCount} onChange={e => setForm(f => ({ ...f, displacedCount: e.target.value }))} />
-                </div>
-                <div className="col-span-2">
-                  <label className="cc-label">Description</label>
-                  <textarea className="cc-input h-20 resize-none" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+                  <label className="cc-label">Province concernée</label>
+                  <select className="cc-input" value={form.locationPcode} onChange={e => setForm(f => ({ ...f, locationPcode: e.target.value }))}>
+                    <option value="">— Nationale / Inconnue —</option>
+                    {PROVINCES_DRC.map(p => <option key={p.pcode} value={p.pcode}>{p.name}</option>)}
+                  </select>
                 </div>
               </div>
+
+              {/* Chiffres clés */}
+              <div>
+                <div className="text-xs font-mono text-cc-500 uppercase tracking-wider mb-2">Chiffres clés (estimations)</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="cc-label">Personnes affectées</label>
+                    <input className="cc-input" type="number" min="0" placeholder="0" value={form.affectedCount} onChange={e => setForm(f => ({ ...f, affectedCount: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="cc-label">Personnes déplacées</label>
+                    <input className="cc-input" type="number" min="0" placeholder="0" value={form.displacedCount} onChange={e => setForm(f => ({ ...f, displacedCount: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="cc-label">Décès confirmés</label>
+                    <input className="cc-input" type="number" min="0" placeholder="0" value={form.deathsCount} onChange={e => setForm(f => ({ ...f, deathsCount: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Agence cheffe de file */}
+              <div>
+                <label className="cc-label">Agence cheffe de file</label>
+                <input className="cc-input" value={form.responseLead} onChange={e => setForm(f => ({ ...f, responseLead: e.target.value }))} placeholder="OCHA, UNHCR, MSF, OMS, UNICEF…" />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="cc-label">Description / contexte</label>
+                <textarea className="cc-input h-24 resize-none" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Décrivez la situation, les causes, les populations touchées, les besoins prioritaires…" />
+              </div>
+
               {createMutation.error && (
-                <div className="text-red-400 text-xs bg-red-950 px-3 py-2 rounded-lg">Erreur lors de la création.</div>
+                <div className="text-red-400 text-xs bg-red-950 px-3 py-2 rounded-lg">Erreur lors de la création. Vérifiez les champs obligatoires.</div>
               )}
               <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setShowForm(false)} className="cc-btn-ghost">Annuler</button>
+                <button type="button" onClick={() => { setShowForm(false); setForm(EMPTY_FORM); }} className="cc-btn-ghost">Annuler</button>
                 <button type="submit" disabled={createMutation.isPending} className="cc-btn-primary">
-                  {createMutation.isPending ? 'Création…' : 'Créer la crise'}
+                  {createMutation.isPending ? 'Création…' : 'Ouvrir la crise'}
                 </button>
               </div>
             </form>

@@ -31,27 +31,38 @@ const PROVINCES_DRC = [
   { pcode: 'CD85', name: 'Sankuru' },
 ];
 
-function provinceNameFromPcode(pcode: string): string {
+const CAUSES_DEPLACEMENT = [
+  { value: 'conflict',  label: 'Conflit armé' },
+  { value: 'flood',     label: 'Inondation' },
+  { value: 'eruption',  label: 'Éruption volcanique' },
+  { value: 'epidemic',  label: 'Épidémie' },
+  { value: 'drought',   label: 'Sécheresse' },
+  { value: 'other',     label: 'Autre' },
+];
+
+function provinceName(pcode: string): string {
   return PROVINCES_DRC.find(p => p.pcode === pcode)?.name ?? pcode;
 }
 
-interface CheckpointEntry {
+interface Flow {
   id: string;
-  checkpointName: string;
-  provincePcode: string;
+  checkpoint_name: string;
+  province_pcode: string;
   direction: 'entrant' | 'sortant';
   count: number;
-  date: string;
+  flow_date: string;
+  origin_province?: string;
+  destination?: string;
   notes?: string;
-  createdAt: string;
+  created_at: string;
 }
 
-interface CheckpointStats {
-  totalEntrants7d: number;
-  totalSortants7d: number;
-  activeCheckpoints: number;
-  mostAffectedProvince: string;
-  topProvinces: { pcode: string; total: number }[];
+interface RawStats {
+  total_entrant: number;
+  total_sortant: number;
+  net_displacement: number;
+  active_checkpoints: number;
+  by_province: { province_pcode: string; total_count: number }[];
 }
 
 interface FormState {
@@ -59,7 +70,10 @@ interface FormState {
   provincePcode: string;
   direction: 'entrant' | 'sortant';
   count: string;
-  date: string;
+  flowDate: string;
+  originProvince: string;
+  destination: string;
+  cause: string;
   notes: string;
 }
 
@@ -70,68 +84,66 @@ const defaultForm: FormState = {
   provincePcode: '',
   direction: 'entrant',
   count: '',
-  date: today,
+  flowDate: today,
+  originProvince: '',
+  destination: '',
+  cause: '',
   notes: '',
-};
-
-// Fallback mock stats when API is unavailable
-const MOCK_STATS: CheckpointStats = {
-  totalEntrants7d: 0,
-  totalSortants7d: 0,
-  activeCheckpoints: 0,
-  mostAffectedProvince: '—',
-  topProvinces: [],
 };
 
 export function IdpCheckpointPage() {
   const qc = useQueryClient();
   const [form, setForm] = useState<FormState>(defaultForm);
   const [submitMsg, setSubmitMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  // Optimistic local entries to show even if API not available
-  const [localEntries, setLocalEntries] = useState<CheckpointEntry[]>([]);
+  const [localEntries, setLocalEntries] = useState<Flow[]>([]);
 
-  const { data: entriesData } = useQuery<CheckpointEntry[]>({
-    queryKey: ['idp-checkpoints'],
-    queryFn: () => apiClient.get('/idp-checkpoints?limit=20').then(r => r.data.data ?? []),
+  const { data: flowsData } = useQuery<Flow[]>({
+    queryKey: ['idp-flows'],
+    queryFn: () => apiClient.get('/idp-checkpoints/flows?limit=20').then(r => r.data.data ?? []),
     retry: 1,
     staleTime: 30_000,
   });
 
-  const { data: statsData } = useQuery<CheckpointStats>({
+  const { data: rawStats } = useQuery<RawStats>({
     queryKey: ['idp-checkpoints-stats'],
-    queryFn: () => apiClient.get('/idp-checkpoints/stats').then(r => r.data.data ?? MOCK_STATS),
+    queryFn: () => apiClient.get('/idp-checkpoints/stats').then(r => r.data.data),
     retry: 1,
     staleTime: 30_000,
   });
 
-  const entries: CheckpointEntry[] = [...(entriesData ?? []), ...localEntries]
-    .sort((a, b) => new Date(b.createdAt ?? b.date).getTime() - new Date(a.createdAt ?? a.date).getTime())
+  const flows: Flow[] = [...(flowsData ?? []), ...localEntries]
+    .sort((a, b) => new Date(b.created_at ?? b.flow_date).getTime() - new Date(a.created_at ?? a.flow_date).getTime())
     .slice(0, 20);
 
-  const stats: CheckpointStats = statsData ?? MOCK_STATS;
-
-  const maxTopProvince = Math.max(1, ...(stats.topProvinces?.map(p => p.total) ?? [1]));
+  const totalEntrant    = rawStats?.total_entrant ?? 0;
+  const totalSortant    = rawStats?.total_sortant ?? 0;
+  const netDisplacement = rawStats?.net_displacement ?? 0;
+  const activeCheckpoints = rawStats?.active_checkpoints ?? 0;
+  const topProvinces    = rawStats?.by_province ?? [];
+  const mostAffected    = topProvinces[0]?.province_pcode ?? null;
+  const maxProv         = Math.max(1, ...topProvinces.map(p => Number(p.total_count)));
 
   const createMutation = useMutation({
-    mutationFn: (body: object) => apiClient.post('/idp-checkpoints', body),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ['idp-checkpoints'] });
+    mutationFn: (body: object) => apiClient.post('/idp-checkpoints/flows', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['idp-flows'] });
       qc.invalidateQueries({ queryKey: ['idp-checkpoints-stats'] });
       setSubmitMsg({ type: 'success', text: 'Flux enregistré avec succès.' });
       setForm(defaultForm);
       setTimeout(() => setSubmitMsg(null), 4000);
     },
     onError: () => {
-      // Optimistic local save
-      const optimistic: CheckpointEntry = {
+      const optimistic: Flow = {
         id: crypto.randomUUID(),
-        checkpointName: form.checkpointName,
-        provincePcode: form.provincePcode,
+        checkpoint_name: form.checkpointName,
+        province_pcode: form.provincePcode,
         direction: form.direction,
         count: parseInt(form.count, 10),
-        date: form.date,
+        flow_date: form.flowDate,
+        origin_province: form.originProvince || undefined,
+        destination: form.destination || undefined,
         notes: form.notes || undefined,
-        createdAt: new Date().toISOString(),
+        created_at: new Date().toISOString(),
       };
       setLocalEntries(prev => [optimistic, ...prev]);
       setSubmitMsg({ type: 'success', text: 'Enregistré localement (API non disponible).' });
@@ -142,60 +154,66 @@ export function IdpCheckpointPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.checkpointName || !form.provincePcode || !form.count || !form.date) return;
+    if (!form.checkpointName || !form.provincePcode || !form.count || !form.flowDate) return;
+    const notes = [
+      form.cause ? `Cause : ${CAUSES_DEPLACEMENT.find(c => c.value === form.cause)?.label ?? form.cause}` : '',
+      form.notes,
+    ].filter(Boolean).join(' — ') || undefined;
+
     createMutation.mutate({
-      checkpointName: form.checkpointName,
-      provincePcode: form.provincePcode,
-      direction: form.direction,
-      count: parseInt(form.count, 10),
-      date: form.date,
-      notes: form.notes || undefined,
+      checkpointName:  form.checkpointName,
+      provincePcode:   form.provincePcode,
+      direction:       form.direction,
+      count:           parseInt(form.count, 10),
+      flowDate:        form.flowDate,
+      originProvince:  form.originProvince || undefined,
+      destination:     form.destination    || undefined,
+      notes,
     });
   }
 
+  const netColor = netDisplacement > 0 ? 'text-red-400' : netDisplacement < 0 ? 'text-green-400' : 'text-gray-400';
+
   return (
     <div className="h-full overflow-y-auto p-6">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-white">🏕️ Suivi des Déplacés — Points de contrôle</h1>
-          <p className="text-sm text-cc-600 mt-0.5">Enregistrement des flux IDP aux checkpoints</p>
+          <h1 className="text-xl font-bold text-white">🏕️ Suivi des Déplacés</h1>
+          <p className="text-sm text-cc-600 mt-0.5">Enregistrement des flux IDP aux points de contrôle</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left panel */}
+        {/* ── Panneau gauche ── */}
         <div className="space-y-4">
-          {/* Form */}
+
+          {/* Formulaire */}
           <div className="cc-card p-5">
             <div className="text-xs font-mono text-cc-500 uppercase tracking-wider mb-4">
-              Enregistrer un flux
+              Enregistrer un déplacement
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-3">
-              {/* Checkpoint name */}
+
+              {/* Checkpoint */}
               <div>
-                <label className="block text-xs text-cc-600 font-mono uppercase mb-1">
-                  Nom du checkpoint *
-                </label>
+                <label className="idp-label">Nom du checkpoint / site *</label>
                 <input
                   type="text"
                   required
-                  placeholder="ex: Checkpoint Nord-Kivu Km47"
-                  className="w-full bg-cc-800 border border-cc-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sinaur-600 placeholder-cc-600"
+                  placeholder="ex: Checkpoint RN2 Km47, Site Bulengo…"
+                  className="idp-input"
                   value={form.checkpointName}
                   onChange={e => setForm(f => ({ ...f, checkpointName: e.target.value }))}
                 />
               </div>
 
-              {/* Province */}
+              {/* Province de passage */}
               <div>
-                <label className="block text-xs text-cc-600 font-mono uppercase mb-1">
-                  Province *
-                </label>
+                <label className="idp-label">Province (lieu d'observation) *</label>
                 <select
                   required
-                  className="w-full bg-cc-800 border border-cc-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sinaur-600"
+                  className="idp-input"
                   value={form.provincePcode}
                   onChange={e => setForm(f => ({ ...f, provincePcode: e.target.value }))}
                 >
@@ -208,9 +226,7 @@ export function IdpCheckpointPage() {
 
               {/* Direction */}
               <div>
-                <label className="block text-xs text-cc-600 font-mono uppercase mb-2">
-                  Direction *
-                </label>
+                <label className="idp-label">Direction *</label>
                 <div className="flex gap-4">
                   {(['entrant', 'sortant'] as const).map(dir => (
                     <label key={dir} className="flex items-center gap-2 cursor-pointer">
@@ -230,60 +246,94 @@ export function IdpCheckpointPage() {
                 </div>
               </div>
 
-              {/* Count + Date */}
+              {/* Nombre + Date */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-cc-600 font-mono uppercase mb-1">
-                    Nombre *
-                  </label>
+                  <label className="idp-label">Nombre de personnes *</label>
                   <input
                     type="number"
                     required
                     min="1"
                     placeholder="0"
-                    className="w-full bg-cc-800 border border-cc-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sinaur-600"
+                    className="idp-input"
                     value={form.count}
                     onChange={e => setForm(f => ({ ...f, count: e.target.value }))}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-cc-600 font-mono uppercase mb-1">
-                    Date *
-                  </label>
+                  <label className="idp-label">Date d'observation *</label>
                   <input
                     type="date"
                     required
-                    className="w-full bg-cc-800 border border-cc-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sinaur-600"
-                    value={form.date}
-                    onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                    className="idp-input"
+                    value={form.flowDate}
+                    onChange={e => setForm(f => ({ ...f, flowDate: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              {/* Cause */}
+              <div>
+                <label className="idp-label">Cause du déplacement</label>
+                <select
+                  className="idp-input"
+                  value={form.cause}
+                  onChange={e => setForm(f => ({ ...f, cause: e.target.value }))}
+                >
+                  <option value="">— Non précisée —</option>
+                  {CAUSES_DEPLACEMENT.map(c => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Province d'origine + Destination */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="idp-label">Province d'origine</label>
+                  <select
+                    className="idp-input"
+                    value={form.originProvince}
+                    onChange={e => setForm(f => ({ ...f, originProvince: e.target.value }))}
+                  >
+                    <option value="">— Inconnue —</option>
+                    {PROVINCES_DRC.map(p => (
+                      <option key={p.pcode} value={p.name}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="idp-label">Destination / site d'accueil</label>
+                  <input
+                    type="text"
+                    placeholder="ex: Camp Mugunga, Goma…"
+                    className="idp-input"
+                    value={form.destination}
+                    onChange={e => setForm(f => ({ ...f, destination: e.target.value }))}
                   />
                 </div>
               </div>
 
               {/* Notes */}
               <div>
-                <label className="block text-xs text-cc-600 font-mono uppercase mb-1">
-                  Notes (optionnel)
-                </label>
+                <label className="idp-label">Observations complémentaires</label>
                 <textarea
                   rows={2}
-                  placeholder="Observations, contexte..."
-                  className="w-full bg-cc-800 border border-cc-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sinaur-600 resize-none placeholder-cc-600"
+                  placeholder="Conditions, besoins observés, groupes vulnérables…"
+                  className="idp-input resize-none"
                   value={form.notes}
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                 />
               </div>
 
-              {/* Submit */}
               <button
                 type="submit"
                 disabled={createMutation.isPending}
                 className="w-full bg-sinaur-700 hover:bg-sinaur-600 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-60"
               >
-                {createMutation.isPending ? 'Enregistrement…' : '✓ Enregistrer le flux'}
+                {createMutation.isPending ? 'Enregistrement…' : '✓ Enregistrer le déplacement'}
               </button>
 
-              {/* Feedback */}
               {submitMsg && (
                 <div className={`text-xs px-3 py-2 rounded-lg font-mono ${
                   submitMsg.type === 'success'
@@ -296,36 +346,41 @@ export function IdpCheckpointPage() {
             </form>
           </div>
 
-          {/* Recent entries */}
+          {/* Entrées récentes */}
           <div className="cc-card p-5">
             <div className="text-xs font-mono text-cc-500 uppercase tracking-wider mb-3">
-              Entrées récentes
+              Enregistrements récents
             </div>
-            {entries.length === 0 ? (
-              <div className="text-center text-cc-600 text-xs py-6">Aucune entrée enregistrée</div>
+            {flows.length === 0 ? (
+              <div className="text-center text-cc-600 text-xs py-6">Aucun enregistrement</div>
             ) : (
               <div className="space-y-2">
-                {entries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="flex items-start gap-3 py-2 border-b border-cc-800 last:border-0"
-                  >
+                {flows.map(f => (
+                  <div key={f.id} className="flex items-start gap-3 py-2.5 border-b border-cc-800 last:border-0">
                     <span className={`mt-0.5 text-xs font-bold shrink-0 ${
-                      entry.direction === 'entrant' ? 'text-green-400' : 'text-orange-400'
+                      f.direction === 'entrant' ? 'text-green-400' : 'text-orange-400'
                     }`}>
-                      {entry.direction === 'entrant' ? '▶' : '◀'}
+                      {f.direction === 'entrant' ? '▶' : '◀'}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="text-xs text-gray-200 font-medium truncate">
-                        {entry.checkpointName}
-                      </div>
+                      <div className="text-xs text-gray-200 font-medium truncate">{f.checkpoint_name}</div>
                       <div className="text-[10px] text-cc-600 mt-0.5 font-mono">
-                        {provinceNameFromPcode(entry.provincePcode)} · {entry.date}
+                        {provinceName(f.province_pcode)} · {f.flow_date}
                       </div>
+                      {(f.origin_province || f.destination) && (
+                        <div className="text-[10px] text-cc-600 mt-0.5">
+                          {f.origin_province && <span>De : {f.origin_province}</span>}
+                          {f.origin_province && f.destination && <span> → </span>}
+                          {f.destination && <span>Vers : {f.destination}</span>}
+                        </div>
+                      )}
+                      {f.notes && (
+                        <div className="text-[10px] text-cc-700 mt-0.5 italic truncate">{f.notes}</div>
+                      )}
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-sm font-bold font-mono text-white">
-                        {entry.count.toLocaleString('fr')}
+                        {f.count.toLocaleString('fr')}
                       </div>
                       <div className="text-[10px] text-cc-600">personnes</div>
                     </div>
@@ -336,59 +391,65 @@ export function IdpCheckpointPage() {
           </div>
         </div>
 
-        {/* Right panel — stats */}
+        {/* ── Panneau droit — statistiques ── */}
         <div className="space-y-4">
+
           {/* KPIs */}
           <div className="grid grid-cols-2 gap-3">
             <div className="cc-card p-4 border-l-4 border-l-green-600">
               <div className="text-2xl font-bold font-mono text-white leading-none">
-                {(stats.totalEntrants7d ?? 0).toLocaleString('fr')}
+                {totalEntrant.toLocaleString('fr')}
               </div>
               <div className="text-xs text-gray-400 mt-1.5 font-medium">Total entrants (7j)</div>
             </div>
             <div className="cc-card p-4 border-l-4 border-l-orange-600">
               <div className="text-2xl font-bold font-mono text-white leading-none">
-                {(stats.totalSortants7d ?? 0).toLocaleString('fr')}
+                {totalSortant.toLocaleString('fr')}
               </div>
               <div className="text-xs text-gray-400 mt-1.5 font-medium">Total sortants (7j)</div>
             </div>
             <div className="cc-card p-4 border-l-4 border-l-blue-600">
               <div className="text-2xl font-bold font-mono text-white leading-none">
-                {stats.activeCheckpoints ?? 0}
+                {activeCheckpoints}
               </div>
               <div className="text-xs text-gray-400 mt-1.5 font-medium">Checkpoints actifs</div>
             </div>
-            <div className="cc-card p-4 border-l-4 border-l-purple-600">
-              <div className="text-base font-bold font-mono text-white leading-none truncate">
-                {stats.mostAffectedProvince
-                  ? provinceNameFromPcode(stats.mostAffectedProvince)
-                  : '—'}
+            <div className="cc-card p-4 border-l-4 border-l-red-600">
+              <div className={`text-xl font-bold font-mono leading-none ${netColor}`}>
+                {netDisplacement > 0 ? '+' : ''}{netDisplacement.toLocaleString('fr')}
               </div>
-              <div className="text-xs text-gray-400 mt-1.5 font-medium">Province la plus touchée</div>
+              <div className="text-xs text-gray-400 mt-1.5 font-medium">Solde net (7j)</div>
             </div>
           </div>
 
-          {/* Bar chart — top 5 provinces */}
+          {/* Province la plus touchée */}
+          {mostAffected && (
+            <div className="cc-card p-4 flex items-center gap-3">
+              <span className="text-2xl">📍</span>
+              <div>
+                <div className="text-sm font-bold text-white">{provinceName(mostAffected)}</div>
+                <div className="text-xs text-cc-600 mt-0.5">Province la plus touchée (7j)</div>
+              </div>
+            </div>
+          )}
+
+          {/* Bar chart */}
           <div className="cc-card p-5">
             <div className="text-xs font-mono text-cc-500 uppercase tracking-wider mb-4">
-              Top 5 provinces — flux total
+              Top provinces — flux total (7j)
             </div>
-            {!stats.topProvinces || stats.topProvinces.length === 0 ? (
-              <div className="text-center text-cc-600 text-xs py-8">
-                Aucune donnée disponible
-              </div>
+            {topProvinces.length === 0 ? (
+              <div className="text-center text-cc-600 text-xs py-8">Aucune donnée disponible</div>
             ) : (
               <div className="space-y-3">
-                {stats.topProvinces.slice(0, 5).map(p => {
-                  const pct = Math.round((p.total / maxTopProvince) * 100);
+                {topProvinces.slice(0, 7).map(p => {
+                  const pct = Math.round((Number(p.total_count) / maxProv) * 100);
                   return (
-                    <div key={p.pcode}>
+                    <div key={p.province_pcode}>
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-gray-300">
-                          {provinceNameFromPcode(p.pcode)}
-                        </span>
+                        <span className="text-xs text-gray-300">{provinceName(p.province_pcode)}</span>
                         <span className="text-xs font-mono text-gray-400">
-                          {p.total.toLocaleString('fr')}
+                          {Number(p.total_count).toLocaleString('fr')}
                         </span>
                       </div>
                       <div className="h-2 bg-cc-700 rounded-full overflow-hidden">
@@ -406,13 +467,11 @@ export function IdpCheckpointPage() {
 
           {/* Info */}
           <div className="cc-card p-4">
-            <div className="text-xs font-mono text-cc-500 uppercase tracking-wider mb-2">
-              À propos
-            </div>
+            <div className="text-xs font-mono text-cc-500 uppercase tracking-wider mb-2">À propos</div>
             <p className="text-xs text-cc-600 leading-relaxed">
-              Ce module permet le suivi des flux de personnes déplacées internes (IDP) aux points
-              de contrôle. Les données alimentent les rapports SitRep et le tableau de bord
-              national en temps réel.
+              Ce module enregistre les flux de déplacés internes (IDP) aux points de contrôle.
+              Les données incluent l'origine, la destination, la cause et le nombre de personnes
+              observées. Elles alimentent les SitReps et le tableau de bord national.
             </p>
             <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-mono text-cc-600">
               <div>• Standard UNHCR/IOM</div>
@@ -423,6 +482,13 @@ export function IdpCheckpointPage() {
           </div>
         </div>
       </div>
+
+      <style>{`
+        .idp-label { display:block; font-size:.7rem; color:#475569; font-family:monospace; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.25rem; }
+        .idp-input { width:100%; background:#1e293b; border:1px solid #334155; border-radius:.5rem; padding:.5rem .75rem; font-size:.875rem; color:#f1f5f9; outline:none; }
+        .idp-input:focus { border-color:#7c3aed; }
+        .idp-input::placeholder { color:#475569; }
+      `}</style>
     </div>
   );
 }
