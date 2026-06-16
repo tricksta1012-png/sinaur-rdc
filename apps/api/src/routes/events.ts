@@ -45,34 +45,40 @@ export async function eventRoutes(fastify: FastifyInstance): Promise<void> {
     const q = filterSchema.parse(request.query);
     const offset = (q.page - 1) * q.limit;
 
-    const rows = await sql`
-      SELECT
-        e.id, e.title, e.hazard_type, e.status, e.severity, e.confidence,
-        e.source, e.location_pcode, e.location_name, e.location_level,
-        e.estimated_affected, e.start_date, e.end_date, e.tags,
-        e.is_flagged_sensitive, e.created_at,
-        ST_AsGeoJSON(e.location_point)::json AS location_point,
-        u.display_name AS reported_by_name
-      FROM disaster_events e
-      LEFT JOIN users u ON u.id = e.reported_by_id
-      WHERE e.deleted_at IS NULL
-        ${q.hazardType ? sql`AND e.hazard_type = ${q.hazardType}::hazard_type` : sql``}
-        ${q.status ? sql`AND e.status = ${q.status}::event_status` : sql``}
-        ${q.severity ? sql`AND e.severity = ${q.severity}::alert_severity` : sql``}
-        ${q.province ? sql`AND (e.location_pcode = ${q.province} OR ${q.province} = ANY(e.affected_pcodes))` : sql``}
-        ${q.dateFrom ? sql`AND e.start_date >= ${q.dateFrom}::timestamptz` : sql``}
-        ${q.dateTo ? sql`AND e.start_date <= ${q.dateTo}::timestamptz` : sql``}
-        ${q.search ? sql`AND (e.title ILIKE ${'%' + q.search + '%'} OR e.description ILIKE ${'%' + q.search + '%'})` : sql``}
-      ORDER BY e.start_date DESC
-      LIMIT ${q.limit} OFFSET ${offset}
-    `;
-
-    const [{ count }] = await sql`
-      SELECT COUNT(*)::int AS count FROM disaster_events
-      WHERE deleted_at IS NULL
-        ${q.hazardType ? sql`AND hazard_type = ${q.hazardType}::hazard_type` : sql``}
-        ${q.status ? sql`AND status = ${q.status}::event_status` : sql``}
-    `;
+    const [rows, [{ count }]] = await Promise.all([
+      sql`
+        SELECT
+          e.id, e.title, e.hazard_type, e.status, e.severity, e.confidence,
+          e.source, e.location_pcode, e.location_name, e.location_level,
+          e.estimated_affected, e.start_date, e.end_date, e.tags,
+          e.is_flagged_sensitive, e.created_at,
+          ST_AsGeoJSON(e.location_point)::json AS location_point,
+          u.display_name AS reported_by_name
+        FROM disaster_events e
+        LEFT JOIN users u ON u.id = e.reported_by_id
+        WHERE e.deleted_at IS NULL
+          ${q.hazardType ? sql`AND e.hazard_type = ${q.hazardType}::hazard_type` : sql``}
+          ${q.status ? sql`AND e.status = ${q.status}::event_status` : sql``}
+          ${q.severity ? sql`AND e.severity = ${q.severity}::alert_severity` : sql``}
+          ${q.province ? sql`AND (e.location_pcode = ${q.province} OR ${q.province} = ANY(e.affected_pcodes))` : sql``}
+          ${q.dateFrom ? sql`AND e.start_date >= ${q.dateFrom}::timestamptz` : sql``}
+          ${q.dateTo ? sql`AND e.start_date <= ${q.dateTo}::timestamptz` : sql``}
+          ${q.search ? sql`AND (e.title ILIKE ${'%' + q.search + '%'} OR e.description ILIKE ${'%' + q.search + '%'})` : sql``}
+        ORDER BY e.start_date DESC
+        LIMIT ${q.limit} OFFSET ${offset}
+      `,
+      sql`
+        SELECT COUNT(*)::int AS count FROM disaster_events
+        WHERE deleted_at IS NULL
+          ${q.hazardType ? sql`AND hazard_type = ${q.hazardType}::hazard_type` : sql``}
+          ${q.status ? sql`AND status = ${q.status}::event_status` : sql``}
+          ${q.severity ? sql`AND severity = ${q.severity}::alert_severity` : sql``}
+          ${q.province ? sql`AND (location_pcode = ${q.province} OR ${q.province} = ANY(affected_pcodes))` : sql``}
+          ${q.dateFrom ? sql`AND start_date >= ${q.dateFrom}::timestamptz` : sql``}
+          ${q.dateTo ? sql`AND start_date <= ${q.dateTo}::timestamptz` : sql``}
+          ${q.search ? sql`AND (title ILIKE ${'%' + q.search + '%'} OR description ILIKE ${'%' + q.search + '%'})` : sql``}
+      `,
+    ]);
 
     return reply.send({
       success: true,

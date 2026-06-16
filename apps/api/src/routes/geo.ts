@@ -50,7 +50,10 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
       ORDER BY level, name_fr
       LIMIT 500
     `;
-    return reply.send({ success: true, data: rows });
+    // Geo data is static — cache aggressively at the CDN/browser layer
+    return reply
+      .header('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400')
+      .send({ success: true, data: rows });
   });
 
   // GET /geo/divisions/:pcode — détail d'une division avec ses enfants

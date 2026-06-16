@@ -1,16 +1,22 @@
-﻿import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { sql } from '../db.js';
 import { requireAuth, requireRole } from '../auth/jwt.js';
 import { getConnectedCount } from '../websocket/broadcast.js';
+import { cGet, cSet } from '../lib/cache.js';
 
 export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
-  // GET /dashboard/stats — indicateurs nationaux
+  // GET /dashboard/stats — indicateurs nationaux (cache 30s)
   fastify.get(
     '/dashboard/stats',
     { preHandler: [requireAuth, requireRole('field_agent', 'local_validator', 'provincial_coordinator', 'territory_admin', 'humanitarian_partner', 'national_decision_maker', 'system_admin')] },
     async (request, reply) => {
       const user = request.jwtUser;
+
+      const cacheKey = `dashboard:stats:${user.scope.join(',') || 'national'}`;
+      const cached = cGet<object>(cacheKey);
+      if (cached) return reply.header('X-Cache', 'HIT').send(cached);
+
       const scopeFilter = user.scope.length > 0
         ? sql`AND (e.location_pcode = ANY(${user.scope}) OR e.affected_pcodes && ${user.scope}::text[])`
         : sql``;
@@ -18,43 +24,50 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
         ? sql`AND (location_pcode = ANY(${user.scope}) OR affected_pcodes && ${user.scope}::text[])`
         : sql``;
 
-      const [counts] = await sql`
-        SELECT
-          COUNT(*) FILTER (WHERE e.status = 'active')                                  AS active_events,
-          COUNT(*) FILTER (WHERE e.status IN ('reported','under_review'))               AS pending_events,
-          COUNT(*) FILTER (WHERE e.severity IN ('Severe','Extreme') AND e.status = 'active') AS critical_events,
-          COUNT(*) FILTER (WHERE e.start_date >= NOW() - INTERVAL '24 hours')           AS events_24h,
-          COUNT(*) FILTER (WHERE e.start_date >= NOW() - INTERVAL '7 days')             AS events_7d,
-          COALESCE(SUM(e.estimated_affected) FILTER (WHERE e.status = 'active'), 0)     AS total_affected
-        FROM disaster_events e
-        WHERE e.deleted_at IS NULL ${scopeFilter}
-      `;
-
-      const hazardBreakdown = await sql`
-        SELECT hazard_type, COUNT(*) AS count
-        FROM disaster_events
-        WHERE status = 'active' AND deleted_at IS NULL ${scopeFilterPlain}
-        GROUP BY hazard_type ORDER BY count DESC
-      `;
-
-      const trend = await sql`
-        SELECT day, SUM(count)::int AS count
-        FROM events_daily_trend
-        GROUP BY day ORDER BY day
-      `;
-
-      const topProvinces = await sql`
-        SELECT pcode, province_name, active_events, severe_events, total_affected
-        FROM province_stats
-        ORDER BY severe_events DESC, active_events DESC
-        LIMIT 10
-      `;
-
-      const [modQueue] = await sql`
-        SELECT COUNT(*) AS pending FROM moderation_queue WHERE resolved_at IS NULL
-      `;
-
-      const [[crisisStats], [demandStats], [stockStats], recentActivity] = await Promise.all([
+      // All 9 queries run in parallel — one round trip to DB instead of 5 sequential + 4 parallel
+      const [
+        [counts],
+        hazardBreakdown,
+        trend,
+        topProvinces,
+        [modQueue],
+        [crisisStats],
+        [demandStats],
+        [stockStats],
+        recentActivity,
+      ] = await Promise.all([
+        sql`
+          SELECT
+            COUNT(*) FILTER (WHERE e.status = 'active')                                       AS active_events,
+            COUNT(*) FILTER (WHERE e.status IN ('reported','under_review'))                    AS pending_events,
+            COUNT(*) FILTER (WHERE e.severity IN ('Severe','Extreme') AND e.status = 'active') AS critical_events,
+            COUNT(*) FILTER (WHERE e.start_date >= NOW() - INTERVAL '24 hours')                AS events_24h,
+            COUNT(*) FILTER (WHERE e.start_date >= NOW() - INTERVAL '7 days')                  AS events_7d,
+            COALESCE(SUM(e.estimated_affected) FILTER (WHERE e.status = 'active'), 0)          AS total_affected
+          FROM disaster_events e
+          WHERE e.deleted_at IS NULL ${scopeFilter}
+        `,
+        sql`
+          SELECT hazard_type, COUNT(*) AS count
+          FROM disaster_events
+          WHERE status = 'active' AND deleted_at IS NULL ${scopeFilterPlain}
+          GROUP BY hazard_type ORDER BY count DESC
+        `,
+        sql`
+          SELECT day, SUM(count)::int AS count
+          FROM events_daily_trend
+          WHERE day >= NOW() - INTERVAL '30 days'
+          GROUP BY day ORDER BY day
+        `,
+        sql`
+          SELECT pcode, province_name, active_events, severe_events, total_affected
+          FROM province_stats
+          ORDER BY severe_events DESC, active_events DESC
+          LIMIT 10
+        `,
+        sql`
+          SELECT COUNT(*) AS pending FROM moderation_queue WHERE resolved_at IS NULL
+        `,
         sql`
           SELECT
             COUNT(*) FILTER (WHERE status = 'active')    AS active_crises,
@@ -94,18 +107,18 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
         `,
       ]);
 
-      return reply.send({
+      const body = {
         success: true,
         data: {
           counts: {
-            activeEvents: Number(counts.activeEvents),
-            pendingEvents: Number(counts.pendingEvents),
-            criticalEvents: Number(counts.criticalEvents),
-            events24h: Number(counts.events24h),
-            events7d: Number(counts.events7d),
-            totalAffected: Number(counts.totalAffected),
-            moderationQueue: Number(modQueue.pending),
-            wsConnected: getConnectedCount(),
+            activeEvents:     Number(counts.activeEvents),
+            pendingEvents:    Number(counts.pendingEvents),
+            criticalEvents:   Number(counts.criticalEvents),
+            events24h:        Number(counts.events24h),
+            events7d:         Number(counts.events7d),
+            totalAffected:    Number(counts.totalAffected),
+            moderationQueue:  Number(modQueue.pending),
+            wsConnected:      getConnectedCount(),
           },
           crisisStats: {
             activeCrises:    Number(crisisStats.activeCrises),
@@ -129,12 +142,14 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
           trend,
           topProvinces,
         },
-      });
+      };
+
+      cSet(cacheKey, body, 30_000);
+      return reply.header('X-Cache', 'MISS').send(body);
     },
   );
 
-  // GET /dashboard/map-data — données légères pour la carte
-  // ?history=true  → inclut les événements résolus (mode historique, jusqu'à 2000 résultats)
+  // GET /dashboard/map-data
   fastify.get('/dashboard/map-data', async (request, reply) => {
     const { history } = (request.query as Record<string, string>);
     const isHistory = history === 'true';
@@ -162,7 +177,7 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.send({ success: true, data: events });
   });
 
-  // GET /dashboard/export.csv — export CSV avec tags HXL
+  // GET /dashboard/export.csv
   fastify.get(
     '/dashboard/export.csv',
     { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'humanitarian_partner', 'national_decision_maker', 'system_admin')] },
@@ -199,7 +214,6 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
         LIMIT 10000
       `;
 
-      // En-têtes HXL (Humanitarian Exchange Language)
       const hxlHeaders = [
         '#id', '#event+type', '#event+name', '#status', '#severity',
         '#adm1+pcode', '#adm1+name', '#affected+num', '#date+occurred',
@@ -230,7 +244,7 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  // POST /dashboard/refresh-stats — rafraîchit les vues matérialisées
+  // POST /dashboard/refresh-stats
   fastify.post(
     '/dashboard/refresh-stats',
     { preHandler: [requireAuth, requireRole('system_admin')] },

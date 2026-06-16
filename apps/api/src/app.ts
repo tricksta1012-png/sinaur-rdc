@@ -11,7 +11,7 @@ import fastifyMultipart from '@fastify/multipart'
 import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
 import { config } from './config.js'
-import { checkDatabaseConnection } from './db.js'
+import { checkDatabaseConnection, startKeepalive } from './db.js'
 import { authRoutes } from './routes/auth.js'
 import { geoRoutes } from './routes/geo.js'
 import { eventRoutes } from './routes/events.js'
@@ -174,6 +174,10 @@ export async function createApp(): Promise<FastifyInstance> {
     registerClient(socket.socket, scope)
     socket.socket.send(JSON.stringify({ type: 'CONNECTED', payload: { message: 'SINAUR-RDC flux temps réel actif' } }))
   })
+
+  fastify.addHook('onReady', async () => {
+    startKeepalive();
+  });
 
   fastify.get('/health', async () => {
     const [, aiOk] = await Promise.allSettled([
