@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import MapGL, { Source, Layer, type MapLayerMouseEvent, type MapRef, Popup } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { apiClient } from '../lib/api.js';
 
 // ── MAP STYLE (same dark theme as ConflitPage) ────────────────────────────────
 
@@ -646,6 +648,31 @@ export function EpidemicPage() {
     setLeftPanel('zones');
   }, []);
 
+  // Cas confirmés par province (pour colorer les polygones)
+  const provinceCases = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const z of ZONES) map[z.province] = (map[z.province] ?? 0) + z.cas_confirmes;
+    return map;
+  }, []);
+
+  // Frontières provinciales depuis l'API geo
+  const { data: geoProvinces } = useQuery({
+    queryKey: ['geo-provinces-epidemic'],
+    queryFn: () => apiClient.get<any>('/geo/divisions?level=1&withGeometry=true').then(r => r.data),
+    staleTime: Infinity,
+  });
+
+  const provincesGeojson = useMemo((): GeoJSON.FeatureCollection => ({
+    type: 'FeatureCollection',
+    features: (geoProvinces?.data ?? [])
+      .filter((p: any) => p.geometry)
+      .map((p: any) => ({
+        type: 'Feature' as const,
+        geometry: p.geometry,
+        properties: { pcode: p.pcode, name: p.name, cases: provinceCases[p.name] ?? 0 },
+      })),
+  }), [geoProvinces, provinceCases]);
+
   const totalCas   = ZONES.reduce((s,z) => s + z.cas_confirmes, 0);
   const totalDeces = ZONES.reduce((s,z) => s + z.deces_confirmes, 0);
   const letalite   = ((totalDeces / totalCas) * 100).toFixed(1);
@@ -864,6 +891,53 @@ export function EpidemicPage() {
             interactiveLayerIds={['epidemic-circles', 'epidemic-heatmap']}
             style={{ width: '100%', height: '100%' }}
           >
+            {/* ── Province boundaries — colored by epidemic severity ── */}
+            <Source id="province-boundaries" type="geojson" data={provincesGeojson}>
+              <Layer
+                id="province-fill"
+                type="fill"
+                paint={{
+                  'fill-color': [
+                    'case',
+                    ['>=', ['get', 'cases'], 200], 'rgba(127,29,29,0.45)',
+                    ['>=', ['get', 'cases'], 50],  'rgba(220,38,38,0.28)',
+                    ['>=', ['get', 'cases'],  1],  'rgba(234,88,12,0.18)',
+                    'rgba(15,23,42,0.12)',
+                  ] as any,
+                  'fill-opacity': 1,
+                }}
+              />
+              <Layer
+                id="province-outline"
+                type="line"
+                paint={{
+                  'line-color': [
+                    'case',
+                    ['>=', ['get', 'cases'], 200], '#ef4444',
+                    ['>=', ['get', 'cases'],  1],  '#f97316',
+                    '#334155',
+                  ] as any,
+                  'line-width': ['case', ['>', ['get', 'cases'], 0], 2, 1] as any,
+                  'line-opacity': 0.85,
+                }}
+              />
+              <Layer
+                id="province-names"
+                type="symbol"
+                maxzoom={8}
+                layout={{
+                  'text-field': ['get', 'name'],
+                  'text-size': 11,
+                  'text-font': ['Open Sans Regular'],
+                }}
+                paint={{
+                  'text-color': ['case', ['>', ['get', 'cases'], 0], '#fca5a5', '#64748b'] as any,
+                  'text-halo-color': '#0d1b2a',
+                  'text-halo-width': 1.5,
+                }}
+              />
+            </Source>
+
             <Source id="epidemic-zones" type="geojson" data={geojson}>
 
               {/* Heatmap (low zoom) */}
@@ -972,20 +1046,33 @@ export function EpidemicPage() {
 
           {/* Map legend */}
           <div className="absolute bottom-4 right-4 bg-cc-900/90 border border-cc-700 rounded-lg p-3 space-y-1.5 backdrop-blur-sm">
-            <div className="text-[9px] font-mono text-cc-500 uppercase mb-2">Cas confirmés</div>
+            <div className="text-[9px] font-mono text-cc-500 uppercase mb-2">Zones épidémiques</div>
             {[
-              { color:'#7f1d1d', label:'≥ 100'       },
-              { color:'#dc2626', label:'50 – 99'      },
-              { color:'#ea580c', label:'20 – 49'      },
-              { color:'#d97706', label:'< 20'         },
-              { color:'#4b5563', label:'Accès bloqué' },
+              { color:'#7f1d1d', label:'≥ 100 cas'    },
+              { color:'#dc2626', label:'50 – 99 cas'   },
+              { color:'#ea580c', label:'20 – 49 cas'   },
+              { color:'#d97706', label:'< 20 cas'      },
+              { color:'#4b5563', label:'Accès bloqué'  },
             ].map(l => (
               <div key={l.label} className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: l.color }} />
                 <span className="text-[9px] text-gray-400">{l.label}</span>
               </div>
             ))}
-            <div className="border-t border-cc-700 pt-1.5 mt-1.5 flex items-center gap-2">
+            <div className="border-t border-cc-700 pt-1.5 mt-1.5 space-y-1.5">
+              <div className="text-[9px] font-mono text-cc-500 uppercase">Provinces</div>
+              {[
+                { color:'rgba(127,29,29,0.6)',  border:'#ef4444', label:'≥ 200 cas' },
+                { color:'rgba(220,38,38,0.35)', border:'#f97316', label:'1 – 199 cas' },
+                { color:'rgba(15,23,42,0.2)',   border:'#334155', label:'Sans cas' },
+              ].map(l => (
+                <div key={l.label} className="flex items-center gap-2">
+                  <div className="w-8 h-3 rounded-sm shrink-0 border" style={{ backgroundColor: l.color, borderColor: l.border }} />
+                  <span className="text-[9px] text-gray-400">{l.label}</span>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-cc-700 pt-1.5 flex items-center gap-2">
               <span className="text-[9px] text-yellow-400">⚔</span>
               <span className="text-[9px] text-gray-400">Groupes armés présents</span>
             </div>
