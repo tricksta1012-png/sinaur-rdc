@@ -26,7 +26,9 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   r => r,
   async err => {
-    if (err.response?.status === 401) {
+    const url: string = err.config?.url ?? '';
+    const isAuthEndpoint = url.includes('/auth/');
+    if (err.response?.status === 401 && !isAuthEndpoint) {
       window.location.href = '/login';
     }
     return Promise.reject(err);
