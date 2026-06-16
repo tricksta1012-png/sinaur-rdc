@@ -147,6 +147,9 @@ function EventCard({ event }: { event: any }) {
 // ── Tabs ────────────────────────────────────────────────────────────────────
 
 function MenacesTab() {
+  const [selectedPcode, setSelectedPcode] = useState<string | null>(null);
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
   const { data, isLoading } = useQuery({
     queryKey: ['rens-threat-assessment'],
     queryFn: () => apiClient.get('/renseignement/threat-assessment').then(r => r.data),
@@ -158,9 +161,6 @@ function MenacesTab() {
 
   if (isLoading) return <LoadingState />;
   if (assessments.length === 0) return <EmptyState icon="🛡️" msg="Aucune évaluation de menace disponible" />;
-
-  const [selectedPcode, setSelectedPcode] = useState<string | null>(null);
-  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const sorted = [...assessments].sort((a, b) => (b.threat_level ?? 0) - (a.threat_level ?? 0));
 
   function scrollToCard(pcode: string) {
