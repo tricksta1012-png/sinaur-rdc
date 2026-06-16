@@ -13,11 +13,15 @@ from agents.veille.connectors.acled import AcledConnector
 from agents.veille.connectors.base import AbstractConnector
 from agents.veille.connectors.fews_net import FewsNetConnector
 from agents.veille.connectors.firms import FirmsConnector
+from agents.veille.connectors.gdelt import GDELTConnector
+from agents.veille.connectors.kivu_security_tracker import KivuSecurityTrackerConnector
 from agents.veille.connectors.mettelsat import MettelSatConnector
 from agents.veille.connectors.ocha_hdx import OchaHdxConnector
+from agents.veille.connectors.ohchr import OHCHRConnector
 from agents.veille.connectors.open_meteo import OpenMeteoConnector
 from agents.veille.connectors.reliefweb import ReliefWebConnector
 from agents.veille.connectors.reliefweb_conflict import ReliefWebConflictConnector
+from agents.veille.connectors.ucdp_ged import UCDPConnector
 from agents.veille.deduplicator import Deduplicator
 from config import settings
 from schemas.events import CanonicalEvent
@@ -48,8 +52,13 @@ class VeilleAgent:
             MettelSatConnector(),
             FirmsConnector(),
             ReliefWebConflictConnector(),
+            # ── Sources conflit multi-sources ──
+            UCDPConnector(),               # contrôle qualité, décès vérifiés (public)
+            GDELTConnector(),              # signal précoce temps réel (public)
+            KivuSecurityTrackerConnector(),# spécialisé Est RDC (public si API dispo)
+            OHCHRConnector(),              # violations droits humains (public via ReliefWeb)
         ]
-        # ACLED only enabled when credentials are configured
+        # ACLED uniquement si credentials configurées
         if settings.acled_api_key:
             connectors.append(AcledConnector())
         self._connectors = connectors

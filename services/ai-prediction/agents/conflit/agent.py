@@ -24,6 +24,7 @@ import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from agents import bus
+from agents.conflit.corroboration_engine import CorroborationEngine
 from agents.conflit.sanitizer import access_level_for_role
 from agents.conflit.schemas.conflict import (
     ArmedActor,
@@ -60,6 +61,7 @@ class ConflitAgent:
 
     def __init__(self) -> None:
         self._scheduler = AsyncIOScheduler(timezone="UTC")
+        self._corroboration_engine = CorroborationEngine()
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -373,7 +375,8 @@ class ConflitAgent:
         ]
         if province:
             result = [e for e in result if e.get("province") == province]
-        return result
+        # Appliquer la corroboration inter-sources
+        return self._corroboration_engine.corroborate(result)
 
     def get_predictions(self, province: str | None = None) -> list[dict]:
         if province:

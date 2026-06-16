@@ -31,10 +31,11 @@ def access_level_for_role(role: str) -> DataClassification:
     return _ROLE_ACCESS.get(role, DataClassification.PUBLIC)
 
 
-def sanitize_conflict_event(event: ConflictEvent, role: str) -> dict:
+def sanitize_conflict_event(event: ConflictEvent, role: str, raw: dict | None = None) -> dict:
     """
     Sérialise un ConflictEvent en filtrant les champs selon le rôle.
     Champs RESTRICTED absents de la réponse pour les rôles inférieurs.
+    `raw` = dict original depuis _EVENT_STORE (contient les métadonnées de corroboration).
     """
     access = access_level_for_role(role)
     result: dict = {}
@@ -46,6 +47,22 @@ def sanitize_conflict_event(event: ConflictEvent, role: str) -> dict:
     result["province"]          = event.province
     result["severity"]          = event.severity
     result["displacement_risk"] = round(event.displacement_risk, 2)
+
+    # Corroboration — PUBLIC (info sur la fiabilité de la donnée)
+    if raw:
+        result["sources_count"]        = raw.get("sources_count", 1)
+        result["sources_list"]         = raw.get("sources_list", [event.source])
+        result["corroboration_score"]  = raw.get("corroboration_score", 0.0)
+        result["corroboration_detail"] = raw.get("corroboration_detail", "")
+        result["needs_corroboration"]  = raw.get("needs_corroboration", False)
+        result["contradictions"]       = raw.get("contradictions", [])
+    else:
+        result["sources_count"]        = 1
+        result["sources_list"]         = [event.source]
+        result["corroboration_score"]  = 0.0
+        result["corroboration_detail"] = ""
+        result["needs_corroboration"]  = False
+        result["contradictions"]       = []
 
     # Champs INTERNAL+
     if access >= DataClassification.INTERNAL:

@@ -42,3 +42,13 @@ class CanonicalEvent(BaseModel):
     raw_data: dict = {}
     fetched_at: datetime
     reliability_score: float = 0.5  # 0.0-1.0
+
+    # Corroboration inter-sources (rempli par Deduplicator + CorroborationEngine)
+    sources_count: int = 1
+    sources_list: list[str] = []
+    corroboration_score: float = 0.0   # bonus calculé sur le croisement de sources
+    needs_corroboration: bool = False  # True = signal précoce (GDELT) non encore confirmé
+
+    # Décès vérifiés (UCDP fournit 3 estimations)
+    fatalities_low: int | None = None
+    fatalities_high: int | None = None

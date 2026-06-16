@@ -369,6 +369,13 @@ interface ConflictEvent {
   fatalities_reported?: number | null;
   raw_notes?: string | null;
   source_url?: string | null;
+  // Corroboration inter-sources
+  sources_count?: number;
+  sources_list?: string[];
+  corroboration_score?: number;
+  corroboration_detail?: string;
+  needs_corroboration?: boolean;
+  contradictions?: string[];
 }
 
 interface DisplacementPrediction {
@@ -737,6 +744,78 @@ function RecsList({ recommendations }: { recommendations: OperationalRec[] }) {
   );
 }
 
+// ── CorroborationBadge ─────────────────────────────────────────────────────
+
+const SOURCE_LABELS: Record<string, string> = {
+  acled:                  'ACLED',
+  ucdp_ged:               'UCDP GED',
+  gdelt:                  'GDELT',
+  kivu_security_tracker:  'KST',
+  ocha_drc:               'OCHA',
+  ocha_hdx:               'HDX',
+  ohchr:                  'OHCHR',
+  unhcr:                  'UNHCR',
+  iom_dtm:                'IOM DTM',
+  monusco:                'MONUSCO',
+  reliefweb:              'ReliefWeb',
+  reliefweb_conflict:     'ReliefWeb',
+  radio_okapi:            'Radio Okapi',
+  sinaur_agents:          'Agents SINAUR',
+  api:                    'Base SINAUR',
+  veille:                 'Veille auto',
+};
+
+function CorroborationBadge({ event }: { event: ConflictEvent }) {
+  const n     = event.sources_count ?? 1;
+  const score = event.corroboration_score ?? 0;
+  const list  = event.sources_list ?? [event.source];
+  const needs = event.needs_corroboration ?? false;
+  const contrs= event.contradictions ?? [];
+
+  const level = n >= 4 ? 'maximale' : n >= 3 ? 'élevée' : n >= 2 ? 'confirmée' : 'à vérifier';
+  const colors: Record<string, string> = {
+    maximale:   'border-green-700 bg-green-950/40 text-green-300',
+    élevée:     'border-emerald-700 bg-emerald-950/30 text-emerald-300',
+    confirmée:  'border-blue-700 bg-blue-950/30 text-blue-300',
+    'à vérifier': needs ? 'border-yellow-700 bg-yellow-950/30 text-yellow-300' : 'border-cc-700 bg-cc-900/20 text-cc-400',
+  };
+
+  const hasAcled = list.includes('acled');
+  const hasUcdp  = list.includes('ucdp_ged');
+
+  return (
+    <div className={`rounded-lg border px-2.5 py-2 text-[9px] font-mono space-y-1 ${colors[level]}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-bold uppercase tracking-wider">
+          🔍 Fiabilité {level}
+        </span>
+        <span className="text-[10px] font-bold">{Math.round(Math.min(1, 0.5 + score) * 100)}%</span>
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {list.map(src => (
+          <span key={src}
+            className="px-1 py-0.5 rounded bg-cc-800/60 border border-cc-700 text-cc-300 text-[8px]">
+            {SOURCE_LABELS[src] ?? src}
+          </span>
+        ))}
+      </div>
+
+      {hasAcled && hasUcdp && (
+        <div className="text-green-400 text-[8px]">✓ ACLED + UCDP concordent — donnée de référence</div>
+      )}
+
+      {needs && (
+        <div className="text-yellow-400 text-[8px]">⚠ Signal précoce — à corroborer avant décision</div>
+      )}
+
+      {contrs.length > 0 && (
+        <div className="text-orange-400 text-[8px]">⚠ {contrs[0]}</div>
+      )}
+    </div>
+  );
+}
+
 // ── ConflictPopup ──────────────────────────────────────────────────────────
 
 interface ConflictPopupProps {
@@ -792,6 +871,11 @@ function ConflictPopup({ event, pixel, prediction, relatedCorridors, actors, onC
       {/* Narrative */}
       <div className="px-3 py-2.5 border-b border-cc-800">
         <p className="text-[10px] text-cc-300 leading-relaxed">{narrative}</p>
+      </div>
+
+      {/* Corroboration */}
+      <div className="px-3 py-2 border-b border-cc-800">
+        <CorroborationBadge event={event} />
       </div>
 
       {/* Actors */}
@@ -907,6 +991,7 @@ export function ConflitPage() {
   const [popupPixel, setPopupPixel]             = useState<{ x: number; y: number } | null>(null);
   const [listFilter, setListFilter]             = useState('');
   const [sevFilter, setSevFilter]               = useState<number | null>(null);
+  const [confirmedOnly, setConfirmedOnly]       = useState(false);
   const [provincePinned, setProvincePinned]     = useState<{ pcode: string; name: string } | null>(null);
   const [hoveredProvince, setHoveredProvince]   = useState<{ pcode: string; name: string; x: number; y: number } | null>(null);
   const selectedItemRef                         = useRef<HTMLDivElement | null>(null);
@@ -1217,6 +1302,7 @@ export function ConflitPage() {
     let res = sortedEvents;
     if (provincePinned) res = res.filter(e => e.p_code === provincePinned.pcode);
     if (sevFilter !== null) res = res.filter(e => (e.severity || 1) === sevFilter);
+    if (confirmedOnly) res = res.filter(e => (e.sources_count ?? 1) >= 2 && !e.needs_corroboration);
     if (listFilter.trim()) {
       const q = listFilter.toLowerCase();
       res = res.filter(e =>
@@ -1227,7 +1313,7 @@ export function ConflitPage() {
       );
     }
     return res;
-  }, [sortedEvents, listFilter, sevFilter, provincePinned]);
+  }, [sortedEvents, listFilter, sevFilter, provincePinned, confirmedOnly]);
 
   const affectedProvinces = useMemo(() => new Set(events.map(e => e.p_code || e.province)).size, [events]);
 
@@ -1740,8 +1826,20 @@ export function ConflitPage() {
                     ))}
                   </div>
 
+                  {/* Filtre corroboration */}
+                  <button
+                    onClick={() => setConfirmedOnly(v => !v)}
+                    className={`mt-1.5 w-full py-0.5 rounded text-[9px] font-mono font-bold border transition-colors flex items-center justify-center gap-1 ${
+                      confirmedOnly
+                        ? 'bg-blue-900/50 border-blue-700 text-blue-300'
+                        : 'border-cc-700 text-cc-500 hover:text-gray-300'
+                    }`}
+                  >
+                    🔍 {confirmedOnly ? '≥ 2 sources (actif)' : 'Afficher ≥ 2 sources seulement'}
+                  </button>
+
                   <div className="flex items-center justify-between mt-1.5">
-                    {(listFilter || sevFilter !== null || provincePinned) ? (
+                    {(listFilter || sevFilter !== null || provincePinned || confirmedOnly) ? (
                       <div className="text-[9px] text-cc-600 font-mono">
                         {filteredSortedEvents.length} / {sortedEvents.length} résultat{filteredSortedEvents.length !== 1 ? 's' : ''}
                       </div>

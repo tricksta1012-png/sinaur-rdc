@@ -60,7 +60,7 @@ async def get_conflict_events(
     for raw in raw_events:
         try:
             ev = ConflictEvent(**raw)
-            result.append(sanitize_conflict_event(ev, role))
+            result.append(sanitize_conflict_event(ev, role, raw=raw))
         except Exception:
             continue
 
