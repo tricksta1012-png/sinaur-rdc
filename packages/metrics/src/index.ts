@@ -48,7 +48,7 @@ export async function registerMetrics(fastify: FastifyInstance, opts: MetricsOpt
     const start = (request as any)._metricStart as bigint | undefined
     if (start) {
       const durationSec = Number(process.hrtime.bigint() - start) / 1e9
-      const route = request.routerPath ?? request.url.split('?')[0] ?? 'unknown'
+      const route = request.routeOptions?.url ?? request.url.split('?')[0] ?? 'unknown'
       const labels = {
         method:      request.method,
         route,
