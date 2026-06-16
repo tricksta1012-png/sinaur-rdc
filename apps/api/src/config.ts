@@ -20,6 +20,7 @@ const envSchema = z.object({
   FIREBASE_PROJECT_ID: z.string().default('sinaur-rdc'),
   RELIEFWEB_API_URL: z.string().url().default('https://api.reliefweb.int/v1'),
   RELIEFWEB_APP_NAME: z.string().default('sinaur-rdc'),
+  DTM_API_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -5,7 +5,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { sql } from '../db.js';
-import { requireAuth, writeAuditLog } from '../auth/jwt.js';
+import { requireAuth, requireRole, writeAuditLog } from '../auth/jwt.js';
+import { importIdpData } from '../services/idp-importer.js';
+import { config } from '../config.js';
 
 const CheckpointSchema = z.object({
   name:           z.string().min(2).max(200),
@@ -155,6 +157,28 @@ export async function idpCheckpointRoutes(fastify: FastifyInstance): Promise<voi
         by_province:        byProvince,
       },
     };
+  });
+
+  // POST /idp-checkpoints/import — import depuis OCHA HDX et IOM DTM
+  fastify.post('/idp-checkpoints/import', {
+    preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker', 'territory_admin')],
+  }, async (request, reply) => {
+    const user = request.jwtUser;
+    const results = await importIdpData({
+      dtmApiKey: config.DTM_API_KEY,
+      importedById: user.sub,
+      requestIp: request.ip,
+    });
+
+    const totalInserted = results.reduce((s, r) => s + r.inserted, 0);
+    const totalSkipped  = results.reduce((s, r) => s + r.skipped, 0);
+
+    await writeAuditLog(user.sub, 'IMPORT', 'idp_flows', null, request, {
+      sources: results.map(r => r.source),
+      totalInserted,
+    });
+
+    return reply.status(200).send({ success: true, data: { results, totalInserted, totalSkipped } });
   });
 
   // GET /idp-checkpoints/audit — journal des actions (système_admin seulement)

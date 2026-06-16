@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../lib/api.js';
+import { useAuthStore } from '../stores/auth.js';
 
 const PROVINCES_DRC = [
   { pcode: 'CD10', name: 'Kinshasa' },
@@ -91,11 +92,25 @@ const defaultForm: FormState = {
   notes: '',
 };
 
+interface ImportSourceResult {
+  source: string;
+  inserted: number;
+  skipped: number;
+  errors: string[];
+}
+
+const IMPORT_ALLOWED_ROLES = ['system_admin', 'national_decision_maker', 'territory_admin'];
+
 export function IdpCheckpointPage() {
   const qc = useQueryClient();
+  const user = useAuthStore(s => s.user);
   const [form, setForm] = useState<FormState>(defaultForm);
   const [submitMsg, setSubmitMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [localEntries, setLocalEntries] = useState<Flow[]>([]);
+  const [importResult, setImportResult] = useState<ImportSourceResult[] | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const canImport = user && IMPORT_ALLOWED_ROLES.includes(user.role);
 
   const { data: flowsData } = useQuery<Flow[]>({
     queryKey: ['idp-flows'],
@@ -174,6 +189,22 @@ export function IdpCheckpointPage() {
 
   const netColor = netDisplacement > 0 ? 'text-red-400' : netDisplacement < 0 ? 'text-green-400' : 'text-gray-400';
 
+  async function handleImport() {
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const res = await apiClient.post('/idp-checkpoints/import', {});
+      const { results } = res.data.data as { results: ImportSourceResult[]; totalInserted: number };
+      setImportResult(results);
+      qc.invalidateQueries({ queryKey: ['idp-flows'] });
+      qc.invalidateQueries({ queryKey: ['idp-checkpoints-stats'] });
+    } catch {
+      setImportResult([{ source: 'Erreur réseau', inserted: 0, skipped: 0, errors: ['Impossible de contacter l\'API'] }]);
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="flex items-center justify-between mb-6">
@@ -181,7 +212,42 @@ export function IdpCheckpointPage() {
           <h1 className="text-xl font-bold text-white">🏕️ Suivi des Déplacés</h1>
           <p className="text-sm text-cc-600 mt-0.5">Enregistrement des flux IDP aux points de contrôle</p>
         </div>
+        {canImport && (
+          <button
+            onClick={handleImport}
+            disabled={importing}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-mono font-semibold
+              bg-blue-900/40 border border-blue-700 text-blue-300 hover:bg-blue-800/50
+              disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {importing ? (
+              <><span className="animate-spin">⟳</span> Import en cours…</>
+            ) : (
+              <>⬇ Importer OCHA / DTM</>
+            )}
+          </button>
+        )}
       </div>
+
+      {/* Résultat d'import */}
+      {importResult && (
+        <div className="mb-4 space-y-2">
+          {importResult.map(r => (
+            <div key={r.source}
+              className={`cc-card p-3 flex items-start gap-3 text-xs font-mono
+                ${r.inserted > 0 ? 'border-green-800 bg-green-950/30' : r.errors.length > 0 ? 'border-red-800 bg-red-950/20' : 'border-cc-700'}`}
+            >
+              <span className="text-cc-500 font-semibold shrink-0">{r.source}</span>
+              <span className="text-green-400">{r.inserted} enregistré(s)</span>
+              {r.skipped > 0 && <span className="text-yellow-500">{r.skipped} déjà existant(s)</span>}
+              {r.errors.length > 0 && (
+                <span className="text-red-400 truncate">{r.errors[0]}</span>
+              )}
+              <button onClick={() => setImportResult(null)} className="ml-auto text-cc-600 hover:text-white">✕</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* ── Panneau gauche ── */}
