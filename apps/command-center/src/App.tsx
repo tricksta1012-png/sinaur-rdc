@@ -15,10 +15,16 @@ import { ConflitPage } from './pages/ConflitPage.js';
 import { RenseignementPage } from './pages/RenseignementPage.js';
 import { IdpCheckpointPage } from './pages/IdpCheckpointPage.js';
 import { EpidemicPage } from './pages/EpidemicPage.js';
+import { AdminPage } from './pages/AdminPage.js';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+}
+
+function RequireRole({ role, children }: { role: string; children: React.ReactNode }) {
+  const user = useAuthStore(s => s.user);
+  return user?.role === role ? <>{children}</> : <Navigate to="/dashboard" replace />;
 }
 
 export default function App() {
@@ -47,6 +53,9 @@ export default function App() {
         <Route path="renseignement"  element={<RenseignementPage />} />
         <Route path="idp"            element={<IdpCheckpointPage />} />
         <Route path="epidemie"       element={<EpidemicPage />} />
+        <Route path="admin" element={
+          <RequireRole role="system_admin"><AdminPage /></RequireRole>
+        } />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
