@@ -88,7 +88,7 @@ export async function crisisRoutes(fastify: FastifyInstance) {
     // Coordinateurs provinciaux : restreindre aux crises de leur province
     const isScoped = user.role !== 'system_admin' && user.role !== 'national_decision_maker' && user.scope.length > 0
     const scopeWhere = isScoped
-      ? sql`AND c.location_pcode = ANY(${sql.array(user.scope)}::text[])`
+      ? sql`AND c.location_pcode = ANY(${user.scope}::text[])`
       : sql``
 
     const rows = await sql`

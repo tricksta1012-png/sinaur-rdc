@@ -76,7 +76,7 @@ export async function idpCheckpointRoutes(fastify: FastifyInstance): Promise<voi
       SELECT f.id, f.checkpoint_name, f.province_pcode, f.direction, f.count,
              f.flow_date, f.origin_province, f.destination, f.notes, f.created_at
       FROM idp_flows f
-      ${effectiveProvinces ? sql`WHERE f.province_pcode = ANY(${sql.array(effectiveProvinces)}::text[])` : sql``}
+      ${effectiveProvinces ? sql`WHERE f.province_pcode = ANY(${effectiveProvinces}::text[])` : sql``}
       ORDER BY f.flow_date DESC, f.created_at DESC
       LIMIT ${limit}
     `;
@@ -118,7 +118,7 @@ export async function idpCheckpointRoutes(fastify: FastifyInstance): Promise<voi
 
     const isScoped = user.role !== 'system_admin' && user.role !== 'national_decision_maker' && user.scope.length > 0;
     const scopeWhere = isScoped
-      ? sql`AND province_pcode = ANY(${sql.array(user.scope)}::text[])`
+      ? sql`AND province_pcode = ANY(${user.scope}::text[])`
       : sql``;
 
     const [totals] = await sql`
