@@ -10,18 +10,10 @@ export const apiClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-apiClient.interceptors.request.use((config) => {
-  const raw = localStorage.getItem('sinaur-cc-auth');
-  if (raw) {
-    try {
-      const { state } = JSON.parse(raw) as { state: { tokens?: { accessToken: string } } };
-      if (state.tokens?.accessToken) {
-        config.headers.Authorization = `Bearer ${state.tokens.accessToken}`;
-      }
-    } catch {}
-  }
-  return config;
-});
+// Authorization header is set on apiClient.defaults.headers.common by:
+//   - auth store login() after successful authentication
+//   - auth store onRehydrateStorage() on page reload
+// No need to re-read localStorage here.
 
 apiClient.interceptors.response.use(
   r => r,
