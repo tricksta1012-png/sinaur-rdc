@@ -216,65 +216,44 @@ export async function importIdpData(options: {
     }
   }
 
-  // ── Fallback : données ReliefWeb (situation reports récents) ──
-  // Utilisé si OCHA HAPI ne retourne rien (endpoint indisponible)
+  // ── Fallback : estimations OCHA consolidées (embarquées) ──
+  // Activé si aucune API externe n'a renvoyé de données
   const totalInserted = results.reduce((s, r) => s + r.inserted, 0)
   if (totalInserted === 0) {
-    try {
-      const rwRows = await fetchReliefWebEstimates()
-      let inserted = 0
-      let skipped = 0
+    let inserted = 0
+    let skipped = 0
 
-      for (const row of rwRows) {
-        const [existing] = await sql`
-          SELECT id FROM idp_flows
-          WHERE province_pcode = ${row.pcode}
-            AND flow_date = ${today}::date
-            AND notes ILIKE '%ReliefWeb%'
-          LIMIT 1
-        `
-        if (existing) { skipped++; continue }
+    for (const row of KNOWN_DRC_IDP_ESTIMATES) {
+      const [existing] = await sql`
+        SELECT id FROM idp_flows
+        WHERE province_pcode = ${row.pcode}
+          AND flow_date = ${today}::date
+          AND notes ILIKE '%OCHA consolidé%'
+        LIMIT 1
+      `
+      if (existing) { skipped++; continue }
 
-        await sql`
-          INSERT INTO idp_flows (
-            checkpoint_name, province_pcode, direction, count,
-            flow_date, notes, recorded_by_id
-          ) VALUES (
-            ${'Estimation ReliefWeb - ' + row.name},
-            ${row.pcode},
-            'entrant',
-            ${row.count},
-            ${today}::date,
-            ${'Source: ReliefWeb — Estimations OCHA basées sur derniers rapports de situation disponibles'},
-            ${options.importedById}::uuid
-          )
-        `
-        inserted++
-      }
-
-      results.push({ source: 'ReliefWeb (fallback)', inserted, skipped, errors: [] })
-    } catch (err) {
-      results.push({ source: 'ReliefWeb (fallback)', inserted: 0, skipped: 0, errors: [String(err)] })
+      await sql`
+        INSERT INTO idp_flows (
+          checkpoint_name, province_pcode, direction, count,
+          flow_date, notes, recorded_by_id
+        ) VALUES (
+          ${'Estimations OCHA - ' + row.name},
+          ${row.pcode},
+          'entrant',
+          ${row.count},
+          ${today}::date,
+          ${'Source: OCHA consolidé DRC juin 2025 — Rapport de situation humanitaire | Déplacés internes par province'},
+          ${options.importedById}::uuid
+        )
+      `
+      inserted++
     }
+
+    results.push({ source: 'OCHA consolidé (embarqué)', inserted, skipped, errors: [] })
   }
 
   return results
-}
-
-// ── Fallback ReliefWeb — dernières estimations publiées ─────────────────────
-// Chiffres OCHA publiés dans les SitReps DRC récents (mis à jour périodiquement)
-async function fetchReliefWebEstimates(): Promise<{ pcode: string; name: string; count: number }[]> {
-  const url = 'https://api.reliefweb.int/v1/reports'
-    + '?appname=sinaur-rdc&filter[field]=country.iso3&filter[value]=COD'
-    + '&filter[conditions][0][field]=theme.name&filter[conditions][0][value]=Refugees+and+Internally+Displaced+Persons'
-    + '&fields[]=title&fields[]=date&fields[]=body&limit=5&sort[]=date:desc'
-
-  const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
-  if (!res.ok) throw new Error(`ReliefWeb HTTP ${res.status}`)
-
-  // Si pas de données structurées, retourner les derniers chiffres OCHA connus
-  // (estimations consolidées du rapport DRC de mars 2025)
-  return KNOWN_DRC_IDP_ESTIMATES
 }
 
 // Dernières estimations OCHA consolidées — DRC (rapport juin 2025)
