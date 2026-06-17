@@ -154,7 +154,12 @@ export async function idpCheckpointRoutes(fastify: FastifyInstance): Promise<voi
         total_sortant:      Number(totals.totalSortant),
         net_displacement:   Number(totals.totalEntrant) - Number(totals.totalSortant),
         active_checkpoints: Number(totals.activeCheckpoints),
-        by_province:        byProvince,
+        // Normaliser en snake_case : postgres.js retourne camelCase (totalCount, provincePcode)
+        // mais l'interface frontend attend snake_case (total_count, province_pcode)
+        by_province: (byProvince as Record<string, unknown>[]).map(r => ({
+          province_pcode: String(r.provincePcode ?? r.province_pcode ?? ''),
+          total_count:    Number(r.totalCount ?? r.total_count) || 0,
+        })),
       },
     };
   });

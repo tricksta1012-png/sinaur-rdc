@@ -58,6 +58,31 @@ export function useRealtimeFeed() {
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tokens = useAuthStore(s => s.tokens)
 
+  // Chargement HTTP initial : évite que le panneau reste vide en attendant un message WebSocket
+  useEffect(() => {
+    if (!tokens?.accessToken) return
+    apiClient
+      .get('/events?limit=30')
+      .then(r => {
+        const rows: any[] = r.data?.data ?? []
+        if (!rows.length) return
+        const initial: (FeedEvent & { receivedAt: string })[] = rows.map(ev => ({
+          type: 'NEW_EVENT' as const,
+          payload: {
+            id:            String(ev.id ?? ''),
+            hazardType:    String(ev.hazardType ?? 'other'),
+            severity:      String(ev.severity ?? 'Unknown'),
+            locationPcode: String(ev.locationPcode ?? ''),
+            title:         String(ev.title ?? `${ev.hazardType ?? 'Événement'} — ${ev.locationPcode ?? ''}`),
+            createdAt:     String(ev.startDate ?? ev.createdAt ?? new Date().toISOString()),
+          },
+          receivedAt: String(ev.startDate ?? ev.createdAt ?? new Date().toISOString()),
+        }))
+        setEvents(prev => prev.length > 0 ? prev : initial.slice(0, MAX_FEED_ITEMS))
+      })
+      .catch(() => {})
+  }, [tokens?.accessToken])
+
   const connect = useCallback(async () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 

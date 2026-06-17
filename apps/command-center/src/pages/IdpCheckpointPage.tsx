@@ -109,6 +109,7 @@ export function IdpCheckpointPage() {
   const [localEntries, setLocalEntries] = useState<Flow[]>([]);
   const [importResult, setImportResult] = useState<ImportSourceResult[] | null>(null);
   const [importing, setImporting] = useState(false);
+  const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
 
   const canImport = user && IMPORT_ALLOWED_ROLES.includes(user.role);
 
@@ -136,7 +137,7 @@ export function IdpCheckpointPage() {
   const activeCheckpoints = rawStats?.active_checkpoints ?? 0;
   const topProvinces    = rawStats?.by_province ?? [];
   const mostAffected    = topProvinces[0]?.province_pcode ?? null;
-  const maxProv         = Math.max(1, ...topProvinces.map(p => Number(p.total_count)));
+  const maxProv         = Math.max(1, ...topProvinces.map(p => Number(p.total_count) || 0));
 
   const createMutation = useMutation({
     mutationFn: (body: object) => apiClient.post('/idp-checkpoints/flows', body),
@@ -420,38 +421,72 @@ export function IdpCheckpointPage() {
             {flows.length === 0 ? (
               <div className="text-center text-cc-600 text-xs py-6">Aucun enregistrement</div>
             ) : (
-              <div className="space-y-2">
-                {flows.map(f => (
-                  <div key={f.id} className="flex items-start gap-3 py-2.5 border-b border-cc-800 last:border-0">
-                    <span className={`mt-0.5 text-xs font-bold shrink-0 ${
-                      f.direction === 'entrant' ? 'text-green-400' : 'text-orange-400'
-                    }`}>
-                      {f.direction === 'entrant' ? '▶' : '◀'}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs text-gray-200 font-medium truncate">{f.checkpoint_name}</div>
-                      <div className="text-[10px] text-cc-600 mt-0.5 font-mono">
-                        {provinceName(f.province_pcode)} · {f.flow_date}
+              <div className="divide-y divide-cc-800">
+                {flows.map(f => {
+                  const isOpen = selectedFlowId === f.id;
+                  // Titre lisible : checkpoint_name en priorité, sinon origine→destination, sinon direction+province
+                  const flowTitle = f.checkpoint_name?.trim()
+                    || (f.origin_province && f.destination
+                        ? `${f.origin_province} → ${f.destination}`
+                        : f.origin_province
+                          ? `De ${f.origin_province}`
+                          : f.destination
+                            ? `Vers ${f.destination}`
+                            : `Flux ${f.direction} — ${provinceName(f.province_pcode)}`);
+
+                  return (
+                    <div
+                      key={f.id}
+                      onClick={() => setSelectedFlowId(v => v === f.id ? null : f.id)}
+                      className={`py-2.5 cursor-pointer transition-colors rounded ${isOpen ? 'bg-cc-800/40' : 'hover:bg-cc-800/25'}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className={`mt-0.5 text-xs font-bold shrink-0 ${
+                          f.direction === 'entrant' ? 'text-green-400' : 'text-orange-400'
+                        }`}>
+                          {f.direction === 'entrant' ? '▶' : '◀'}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs text-gray-200 font-medium truncate">{flowTitle}</div>
+                          <div className="text-[10px] text-cc-600 mt-0.5 font-mono">
+                            {provinceName(f.province_pcode)} · {f.flow_date}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0 flex items-start gap-1.5">
+                          <div>
+                            <div className="text-sm font-bold font-mono text-white">
+                              {Number(f.count).toLocaleString('fr')}
+                            </div>
+                            <div className="text-[10px] text-cc-600">personnes</div>
+                          </div>
+                          <span className="text-[10px] text-cc-700 mt-1">{isOpen ? '▲' : '▼'}</span>
+                        </div>
                       </div>
-                      {(f.origin_province || f.destination) && (
-                        <div className="text-[10px] text-cc-600 mt-0.5">
-                          {f.origin_province && <span>De : {f.origin_province}</span>}
-                          {f.origin_province && f.destination && <span> → </span>}
-                          {f.destination && <span>Vers : {f.destination}</span>}
+
+                      {/* Détail expandable */}
+                      {isOpen && (
+                        <div className="ml-5 mt-2 pt-2 border-t border-cc-800 space-y-1 text-[10px] font-mono text-cc-500">
+                          {f.checkpoint_name?.trim() && (
+                            <div><span className="text-cc-600">Checkpoint :</span> <span className="text-gray-300">{f.checkpoint_name}</span></div>
+                          )}
+                          {f.origin_province && (
+                            <div><span className="text-cc-600">Origine :</span> <span className="text-gray-300">{f.origin_province}</span></div>
+                          )}
+                          {f.destination && (
+                            <div><span className="text-cc-600">Destination :</span> <span className="text-gray-300">{f.destination}</span></div>
+                          )}
+                          {f.notes && (
+                            <div><span className="text-cc-600">Notes :</span> <span className="text-gray-400 italic">{f.notes}</span></div>
+                          )}
+                          <div>
+                            <span className="text-cc-600">Enregistré :</span>{' '}
+                            <span className="text-gray-400">{new Date(f.created_at).toLocaleString('fr-FR')}</span>
+                          </div>
                         </div>
                       )}
-                      {f.notes && (
-                        <div className="text-[10px] text-cc-700 mt-0.5 italic truncate">{f.notes}</div>
-                      )}
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-sm font-bold font-mono text-white">
-                        {f.count.toLocaleString('fr')}
-                      </div>
-                      <div className="text-[10px] text-cc-600">personnes</div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -509,13 +544,14 @@ export function IdpCheckpointPage() {
             ) : (
               <div className="space-y-3">
                 {topProvinces.slice(0, 7).map(p => {
-                  const pct = Math.round((Number(p.total_count) / maxProv) * 100);
+                  const count = Number(p.total_count) || 0;
+                  const pct = maxProv > 0 ? Math.round((count / maxProv) * 100) : 0;
                   return (
-                    <div key={p.province_pcode}>
+                    <div key={p.province_pcode || count}>
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-gray-300">{provinceName(p.province_pcode)}</span>
+                        <span className="text-xs text-gray-300">{provinceName(p.province_pcode) || p.province_pcode || '—'}</span>
                         <span className="text-xs font-mono text-gray-400">
-                          {Number(p.total_count).toLocaleString('fr')}
+                          {count.toLocaleString('fr')}
                         </span>
                       </div>
                       <div className="h-2 bg-cc-700 rounded-full overflow-hidden">
