@@ -82,7 +82,21 @@ export async function idpCheckpointRoutes(fastify: FastifyInstance): Promise<voi
       ORDER BY f.flow_date DESC, f.created_at DESC
       LIMIT ${limit}
     `;
-    return { data: rows };
+    // Normaliser en snake_case : postgres.js (transform: camel) retourne checkpointName, provincePcode…
+    // Le frontend Flow interface attend checkpoint_name, province_pcode, flow_date, origin_province, created_at
+    const data = (rows as Record<string, unknown>[]).map(r => ({
+      id:              r.id,
+      checkpoint_name: String(r.checkpointName ?? r.checkpoint_name ?? ''),
+      province_pcode:  String(r.provincePcode  ?? r.province_pcode  ?? ''),
+      direction:       r.direction,
+      count:           Number(r.count) || 0,
+      flow_date:       String(r.flowDate        ?? r.flow_date       ?? ''),
+      origin_province: (r.originProvince ?? r.origin_province ?? null) as string | null,
+      destination:     (r.destination ?? null) as string | null,
+      notes:           (r.notes ?? null) as string | null,
+      created_at:      String(r.createdAt ?? r.created_at ?? new Date().toISOString()),
+    }));
+    return { data };
   });
 
   // POST /idp-checkpoints/flows — enregistrer un flux
@@ -110,7 +124,19 @@ export async function idpCheckpointRoutes(fastify: FastifyInstance): Promise<voi
       RETURNING id, checkpoint_name, province_pcode, direction, count, flow_date, created_at
     `;
     await writeAuditLog(user.id, 'CREATE', 'idp_flow', row.id, request, { count: body.count, direction: body.direction });
-    return reply.status(201).send({ data: row });
+    const r = row as Record<string, unknown>;
+    return reply.status(201).send({ data: {
+      id:              r.id,
+      checkpoint_name: String(r.checkpointName ?? r.checkpoint_name ?? body.checkpointName),
+      province_pcode:  String(r.provincePcode  ?? r.province_pcode  ?? body.provincePcode),
+      direction:       r.direction ?? body.direction,
+      count:           Number(r.count) || body.count,
+      flow_date:       String(r.flowDate ?? r.flow_date ?? flowDate),
+      origin_province: body.originProvince ?? null,
+      destination:     body.destination    ?? null,
+      notes:           body.notes          ?? null,
+      created_at:      String(r.createdAt  ?? r.created_at ?? new Date().toISOString()),
+    }});
   });
 
   // GET /idp-checkpoints/stats — statistiques agrégées
