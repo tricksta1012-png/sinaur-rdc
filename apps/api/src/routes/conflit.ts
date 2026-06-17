@@ -16,13 +16,14 @@ export async function conflitRoutes(fastify: FastifyInstance): Promise<void> {
     '/conflit/events',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      const { since_days, province } = z.object({
-        since_days: z.coerce.number().int().min(1).max(90).default(30),
-        province: z.string().optional(),
+      const { since_days, province, min_sources } = z.object({
+        since_days:  z.coerce.number().int().min(1).max(90).default(30),
+        province:    z.string().optional(),
+        min_sources: z.coerce.number().int().min(1).max(4).default(1),
       }).parse(request.query);
 
       const userRole = request.jwtUser.role;
-      const params: Record<string, string | number> = { since_days };
+      const params: Record<string, string | number> = { since_days, min_sources };
       if (province) params.province = province;
 
       const { status, data } = await aiGet('/internal/conflit/events', params, { 'X-User-Role': userRole });
