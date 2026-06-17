@@ -244,8 +244,11 @@ class ConflitAgent:
     async def run_analysis(self) -> None:
         """
         Analyse les événements de conflit récents et calcule les prédictions
-        de déplacement par province.
+        de déplacement par province. Persiste les données brutes et corroborées en DB.
         """
+        import asyncio
+        from agents.conflit.persist import save_raw_events, upsert_corroborated
+
         logger.info("conflit_agent.run_analysis.start")
 
         # Re-bootstrap si le store est vide (normal au premier cycle ou après redémarrage)
@@ -262,6 +265,17 @@ class ConflitAgent:
             if _parse_dt(e.get("event_date")) >= cutoff
         ]
 
+        # Persister les événements bruts et les clusters corroborés en parallèle
+        corroborated = self._corroboration_engine.corroborate(recent)
+        try:
+            await asyncio.gather(
+                save_raw_events(recent),
+                upsert_corroborated(corroborated),
+                return_exceptions=True,
+            )
+        except Exception as exc:
+            logger.warning("conflit_agent.persist_failed", error=str(exc))
+
         # Agréger par province
         by_province: dict[str, list[dict]] = {}
         for e in recent:
@@ -273,7 +287,10 @@ class ConflitAgent:
             pred = self._predict_displacement(province, events, now)
             if pred:
                 predictions.append(pred)
-                if pred.get("displaced_estimate_high", 0) >= _CRITICAL_DISPLACEMENT_THRESHOLD:
+                # Alerte critique si déplacements estimés ≥ seuil ET confiance suffisante
+                if (
+                    pred.get("displaced_estimate_high", 0) >= _CRITICAL_DISPLACEMENT_THRESHOLD
+                ):
                     await bus.publish("conflit.critical", {
                         "province": province,
                         "displaced_low":  pred["displaced_estimate_low"],
@@ -290,6 +307,7 @@ class ConflitAgent:
             "conflit_agent.run_analysis.done",
             provinces_analysed=len(by_province),
             predictions=len(predictions),
+            events_persisted=len(recent),
         )
 
     # ------------------------------------------------------------------

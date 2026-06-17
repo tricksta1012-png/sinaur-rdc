@@ -991,7 +991,7 @@ export function ConflitPage() {
   const [popupPixel, setPopupPixel]             = useState<{ x: number; y: number } | null>(null);
   const [listFilter, setListFilter]             = useState('');
   const [sevFilter, setSevFilter]               = useState<number | null>(null);
-  const [confirmedOnly, setConfirmedOnly]       = useState(false);
+  const [minSourcesFilter, setMinSourcesFilter] = useState<1 | 2 | 3>(1);
   const [provincePinned, setProvincePinned]     = useState<{ pcode: string; name: string } | null>(null);
   const [hoveredProvince, setHoveredProvince]   = useState<{ pcode: string; name: string; x: number; y: number } | null>(null);
   const selectedItemRef                         = useRef<HTMLDivElement | null>(null);
@@ -1302,7 +1302,14 @@ export function ConflitPage() {
     let res = sortedEvents;
     if (provincePinned) res = res.filter(e => e.p_code === provincePinned.pcode);
     if (sevFilter !== null) res = res.filter(e => (e.severity || 1) === sevFilter);
-    if (confirmedOnly) res = res.filter(e => (e.sources_count ?? 1) >= 2 && !e.needs_corroboration);
+    if (minSourcesFilter >= 2) {
+      res = res.filter(e => {
+        const n = e.sources_count ?? 1;
+        if (n < minSourcesFilter) return false;
+        if (minSourcesFilter >= 3 && e.needs_corroboration) return false;
+        return true;
+      });
+    }
     if (listFilter.trim()) {
       const q = listFilter.toLowerCase();
       res = res.filter(e =>
@@ -1313,7 +1320,7 @@ export function ConflitPage() {
       );
     }
     return res;
-  }, [sortedEvents, listFilter, sevFilter, provincePinned, confirmedOnly]);
+  }, [sortedEvents, listFilter, sevFilter, provincePinned, minSourcesFilter]);
 
   const affectedProvinces = useMemo(() => new Set(events.map(e => e.p_code || e.province)).size, [events]);
 
@@ -1826,20 +1833,30 @@ export function ConflitPage() {
                     ))}
                   </div>
 
-                  {/* Filtre corroboration */}
-                  <button
-                    onClick={() => setConfirmedOnly(v => !v)}
-                    className={`mt-1.5 w-full py-0.5 rounded text-[9px] font-mono font-bold border transition-colors flex items-center justify-center gap-1 ${
-                      confirmedOnly
-                        ? 'bg-blue-900/50 border-blue-700 text-blue-300'
-                        : 'border-cc-700 text-cc-500 hover:text-gray-300'
-                    }`}
-                  >
-                    🔍 {confirmedOnly ? '≥ 2 sources (actif)' : 'Afficher ≥ 2 sources seulement'}
-                  </button>
+                  {/* Filtres corroboration */}
+                  <div className="mt-1.5 grid grid-cols-3 gap-0.5">
+                    {([
+                      { v: 1 as const, label: 'Toutes',           title: 'Afficher tous les événements' },
+                      { v: 2 as const, label: '≥ 2 sources',      title: 'Événements confirmés par ≥ 2 sources distinctes' },
+                      { v: 3 as const, label: '≥ 3 fiables',      title: 'Haute fiabilité : ≥ 3 sources, sans contradiction' },
+                    ] as const).map(({ v, label, title }) => (
+                      <button
+                        key={v}
+                        title={title}
+                        onClick={() => setMinSourcesFilter(v)}
+                        className={`py-0.5 rounded text-[8px] font-mono font-bold border transition-colors ${
+                          minSourcesFilter === v
+                            ? 'bg-blue-900/60 border-blue-600 text-blue-300'
+                            : 'border-cc-700 text-cc-500 hover:text-gray-300 hover:border-cc-500'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
 
                   <div className="flex items-center justify-between mt-1.5">
-                    {(listFilter || sevFilter !== null || provincePinned || confirmedOnly) ? (
+                    {(listFilter || sevFilter !== null || provincePinned || minSourcesFilter > 1) ? (
                       <div className="text-[9px] text-cc-600 font-mono">
                         {filteredSortedEvents.length} / {sortedEvents.length} résultat{filteredSortedEvents.length !== 1 ? 's' : ''}
                       </div>

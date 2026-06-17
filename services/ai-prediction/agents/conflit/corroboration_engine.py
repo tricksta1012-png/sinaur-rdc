@@ -12,6 +12,10 @@ Score de confiance final :
   +institutional_bonus = source ONU confirme (+0.10)
   +kst_bonus           = KST confirme pour Est RDC (+0.08)
   -contradiction       = divergence de chiffres victimes (-0.05 par tranche)
+
+Clustering géospatial : si deux événements ont des coordonnées à ≤ 15 km l'un
+de l'autre ET sont dans la même fenêtre temporelle, ils sont regroupés même s'ils
+sont dans des territoires différents (geopy requis, fallback sans si absent).
 """
 from __future__ import annotations
 
@@ -23,6 +27,13 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
+try:
+    from geopy.distance import geodesic as _geodesic
+    _GEOPY_AVAILABLE = True
+except ImportError:
+    _GEOPY_AVAILABLE = False
+    logger.warning("corroboration_engine.geopy_unavailable", hint="pip install geopy==2.4.1")
+
 # ── Constantes ───────────────────────────────────────────────────────────────
 
 _CORROBORATION_BONUS: dict[int, float] = {1: 0.0, 2: 0.12, 3: 0.20, 4: 0.26}
@@ -33,6 +44,10 @@ _ACADEMIC_SOURCES = frozenset({"acled", "ucdp_ged"})
 
 # Fenêtre temporelle : deux événements dans la même province + 48h = même incident
 _CLUSTER_WINDOW_HOURS = 48
+
+# Rayon géospatial (km) en-deça duquel deux événements avec coordonnées sont
+# considérés comme le même incident (même province + même type + même fenêtre 48h)
+_GEO_CLUSTER_RADIUS_KM = 15.0
 
 
 # ── Modèle de données ─────────────────────────────────────────────────────────
@@ -128,7 +143,7 @@ class CorroborationEngine:
 
     def _same_incident(self, a: dict, b: dict) -> bool:
         """Deux événements décrivent-ils le même incident ?"""
-        # Même province
+        # Même province (ou P-code)
         if (a.get("province") or a.get("p_code")) != (b.get("province") or b.get("p_code")):
             return False
         # Même type normalisé
@@ -138,6 +153,10 @@ class CorroborationEngine:
         ta = _parse_dt(a.get("event_date"))
         tb = _parse_dt(b.get("event_date"))
         if abs((ta - tb).total_seconds()) > _CLUSTER_WINDOW_HOURS * 3600:
+            return False
+        # Vérification géospatiale : si les deux événements ont des coordonnées,
+        # ils doivent être à ≤ 15 km l'un de l'autre pour former le même cluster.
+        if not _within_geo_radius(a, b):
             return False
         return True
 
@@ -274,6 +293,26 @@ class CorroborationEngine:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _within_geo_radius(a: dict, b: dict) -> bool:
+    """
+    Retourne True si les deux événements sont à ≤ _GEO_CLUSTER_RADIUS_KM l'un de l'autre.
+    Si l'un des deux n'a pas de coordonnées, ou si geopy est absent, on ne bloque pas le clustering.
+    coordinates sont stockées en [lng, lat] (format GeoJSON).
+    """
+    if not _GEOPY_AVAILABLE:
+        return True
+    ca = a.get("coordinates")
+    cb = b.get("coordinates")
+    if not ca or not cb:
+        return True
+    try:
+        # geodesic prend (lat, lng)
+        dist_km = _geodesic((ca[1], ca[0]), (cb[1], cb[0])).kilometers
+        return dist_km <= _GEO_CLUSTER_RADIUS_KM
+    except Exception:
+        return True
+
 
 def _normalize_type(t: str) -> str:
     t = t.lower()

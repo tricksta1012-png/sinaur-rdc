@@ -8,7 +8,7 @@ Si absent, le niveau d'accès PUBLIC est appliqué par défaut.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, Query, status
 
 from agents.conflit.agent import _EVENT_STORE, conflit_agent
 from agents.conflit.data.armed_actors_rdc import ARMED_ACTORS_RDC
@@ -46,18 +46,23 @@ def _require_restricted(role: str) -> None:
 async def get_conflict_events(
     province: str | None = None,
     since_days: int = 7,
+    min_sources: int = Query(default=1, ge=1, le=4, description="Nombre minimum de sources distinctes pour inclure un événement"),
     x_user_role: str = Header(default="citizen", alias="X-User-Role"),
 ):
     """
-    Événements de conflit filtrés selon le rôle.
+    Événements de conflit filtrés selon le rôle et le niveau de corroboration.
     PUBLIC : province + sévérité + displacement_risk.
     RESTRICTED : acteurs nommés + coordonnées + notes brutes.
+    min_sources : filtre corroboration (1=toutes, 2=confirmées, 3=haute fiabilité).
     """
     raw_events = conflit_agent.get_events(province=province, since_days=since_days)
     role = x_user_role.lower()
 
     result = []
     for raw in raw_events:
+        # Filtre corroboration avant sérialisation RBAC
+        if min_sources > 1 and raw.get("sources_count", 1) < min_sources:
+            continue
         try:
             ev = ConflictEvent(**raw)
             result.append(sanitize_conflict_event(ev, role, raw=raw))
