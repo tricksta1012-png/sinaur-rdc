@@ -29,6 +29,7 @@ from agents.anomalie_stocks.router import router as anomalie_stocks_router
 from agents.antifraud.router import router as antifraud_router
 from agents.auto_crisis.router import router as auto_crisis_router
 from agents.conflit.router import router as conflit_router
+from agents.etd.router import router as etd_router
 from agents.renseignement.router import router as renseignement_router
 from agents.epidemie.router import router as epidemie_router
 from agents.logistique.router import router as logistique_router
@@ -339,6 +340,7 @@ app.include_router(reporting_router)
 app.include_router(logistique_router)
 app.include_router(epidemie_router)
 app.include_router(conflit_router)
+app.include_router(etd_router)
 app.include_router(renseignement_router)
 app.include_router(auto_crisis_router)
 app.include_router(virus_emergents_router)

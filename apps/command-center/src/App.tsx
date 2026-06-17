@@ -15,6 +15,7 @@ import { ConflitPage } from './pages/ConflitPage.js';
 import { RenseignementPage } from './pages/RenseignementPage.js';
 import { IdpCheckpointPage } from './pages/IdpCheckpointPage.js';
 import { EpidemicPage } from './pages/EpidemicPage.js';
+import { EtdPage } from './pages/EtdPage.js';
 import { AdminPage } from './pages/AdminPage.js';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="ai"             element={<AiPage />} />
         <Route path="conflit"          element={<ConflitPage />} />
         <Route path="renseignement"  element={<RenseignementPage />} />
+        <Route path="etd"            element={<EtdPage />} />
         <Route path="idp"            element={<IdpCheckpointPage />} />
         <Route path="epidemie"       element={<EpidemicPage />} />
         <Route path="admin" element={
