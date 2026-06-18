@@ -133,34 +133,32 @@ export async function responsablesRoutes(fastify: FastifyInstance): Promise<void
     const entityName    = String(entity.nameFr ?? entity.name_fr ?? pcode);
     const action        = ancienNom ? 'MODIFICATION' : 'CREATION';
 
+    const contact     = (body.contact ?? null) as string | null;
+    const source      = (body.source  ?? null) as string | null;
+    const statut      = (body.statut  ?? null) as string | null;
+    const userEmail   = String(user.email ?? user.id);
+
     // Historiser
-    await sql`
-      INSERT INTO responsable_history (
+    await sql.unsafe(
+      `INSERT INTO responsable_history (
         pcode, entity_name,
         ancien_nom, ancien_titre, ancien_contact,
         nouveau_nom, nouveau_titre, nouveau_contact,
         modifie_par, source_info, action
-      ) VALUES (
-        ${pcode}, ${entityName},
-        ${ancienNom}, ${ancienTitre}, ${ancienContact},
-        ${body.nom}, ${body.titre}, ${body.contact ?? null},
-        ${user.email}, ${body.source ?? null}, ${action}
-      )
-    `;
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [pcode, entityName, ancienNom, ancienTitre, ancienContact,
+       body.nom, body.titre, contact, userEmail, source, action],
+    );
 
-    // Mettre à jour l'entité
-    await sql`
-      UPDATE admin_divisions
-      SET
-        responsable_nom    = ${body.nom},
-        responsable_titre  = ${body.titre},
-        responsable_contact = ${body.contact ?? null},
-        responsable_source = ${body.source ?? null},
-        responsable_maj_par = ${user.email},
-        responsable_maj_le  = NOW()
-        ${body.statut ? sql`, statut_situation = ${body.statut}` : sql``}
-      WHERE pcode = ${pcode}
-    `;
+    // Mettre à jour l'entité (COALESCE pour statut optionnel)
+    await sql.unsafe(
+      `UPDATE admin_divisions
+       SET responsable_nom = $1, responsable_titre = $2, responsable_contact = $3,
+           responsable_source = $4, responsable_maj_par = $5, responsable_maj_le = NOW(),
+           statut_situation = COALESCE($6::text, statut_situation)
+       WHERE pcode = $7`,
+      [body.nom, body.titre, contact, source, userEmail, statut, pcode],
+    );
 
     await writeAuditLog(user.id, 'UPDATE', 'admin_divisions', pcode, request, {
       action, nom: body.nom, titre: body.titre,
@@ -191,31 +189,24 @@ export async function responsablesRoutes(fastify: FastifyInstance): Promise<void
     const ancienContact = (entity.responsableContact ?? entity.responsable_contact ?? null) as string | null;
     const entityName    = String(entity.nameFr ?? entity.name_fr ?? pcode);
 
-    await sql`
-      INSERT INTO responsable_history (
+    await sql.unsafe(
+      `INSERT INTO responsable_history (
         pcode, entity_name,
         ancien_nom, ancien_titre, ancien_contact,
         nouveau_nom, nouveau_titre, nouveau_contact,
         modifie_par, action
-      ) VALUES (
-        ${pcode}, ${entityName},
-        ${ancienNom}, ${ancienTitre}, ${ancienContact},
-        NULL, NULL, NULL,
-        ${user.email}, 'SUPPRESSION'
-      )
-    `;
+      ) VALUES ($1,$2,$3,$4,$5,NULL,NULL,NULL,$6,'SUPPRESSION')`,
+      [pcode, entityName, ancienNom, ancienTitre, ancienContact, String(user.email ?? user.id)],
+    );
 
-    await sql`
-      UPDATE admin_divisions
-      SET
-        responsable_nom     = NULL,
-        responsable_titre   = NULL,
-        responsable_contact = NULL,
-        responsable_source  = NULL,
-        responsable_maj_par = ${user.email},
-        responsable_maj_le  = NOW()
-      WHERE pcode = ${pcode}
-    `;
+    await sql.unsafe(
+      `UPDATE admin_divisions
+       SET responsable_nom = NULL, responsable_titre = NULL,
+           responsable_contact = NULL, responsable_source = NULL,
+           responsable_maj_par = $1, responsable_maj_le = NOW()
+       WHERE pcode = $2`,
+      [String(user.email ?? user.id), pcode],
+    );
 
     await writeAuditLog(user.id, 'DELETE', 'admin_divisions', pcode, request, { action: 'SUPPRESSION' });
 
