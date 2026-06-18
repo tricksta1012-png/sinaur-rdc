@@ -53,6 +53,8 @@ const NAV_ITEMS = [
   { to: '/cartographie',  icon: '🗺️', labelKey: 'nav_cartographie' },
   { to: '/responsables',  icon: '👤', labelKey: 'nav_responsables',
     roles: ['system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin'] },
+  { to: '/rues',          icon: '🏙️', labelKey: 'nav_rues',
+    roles: ['field_agent', 'local_validator', 'territory_admin', 'provincial_coordinator', 'national_decision_maker', 'system_admin'] },
   { to: '/conflit',       icon: '⚔️', labelKey: 'nav_conflit',
     roles: ['system_admin', 'national_decision_maker', 'territory_admin', 'humanitarian_partner'] },
   { to: '/renseignement', icon: '🔎', labelKey: 'nav_renseignement',
