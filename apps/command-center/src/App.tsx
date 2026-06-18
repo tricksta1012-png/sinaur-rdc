@@ -18,6 +18,7 @@ import { EpidemicPage } from './pages/EpidemicPage.js';
 import { EtdPage } from './pages/EtdPage.js';
 import { AdminPage } from './pages/AdminPage.js';
 import { CartographiePage } from './pages/CartographiePage.js';
+import { ResponsablesPage } from './pages/ResponsablesPage.js';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="idp"            element={<IdpCheckpointPage />} />
         <Route path="epidemie"       element={<EpidemicPage />} />
         <Route path="cartographie"   element={<CartographiePage />} />
+        <Route path="responsables"   element={<ResponsablesPage />} />
         <Route path="admin" element={
           <RequireRole role="system_admin"><AdminPage /></RequireRole>
         } />
