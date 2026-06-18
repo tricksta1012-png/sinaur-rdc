@@ -18,6 +18,7 @@ Niveau hiérarchique: 6 (ETD) dans la chaîne 1=central, 2=province, 6=ETD,
 from __future__ import annotations
 
 import hashlib
+import json
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -449,7 +450,117 @@ class AgentETD:
             "destinataire":           "PROVINCE",
         }
 
-    # ── 6. Métriques du flux bidirectionnel ───────────────────────────────
+    # ── 6. Alertes automatiques — auto-escalade + remontée accélérée ─────
+
+    async def declencher_alertes_automatiques(self, etd_pcode: str) -> dict:
+        """
+        Vérifie les seuils et crée automatiquement des flux_message pour chaque dépassement.
+        Dédup 24h : un seul message par indicateur+ETD dans la fenêtre.
+        Remontée accélérée : CRITIQUE/ELEVEE → alerte simultanée Province ET Pouvoir Central.
+        """
+        seuils = await self.verifier_seuils(etd_pcode)
+        depasses = [s for s in seuils if s["depasse"]]
+
+        if not depasses:
+            return {
+                "etd_pcode":              etd_pcode,
+                "alertes_creees":         0,
+                "alertes_deja_transmises": 0,
+                "remontee_acceleree":     False,
+                "details":                [],
+                "generated_at":           _utcnow().isoformat(),
+            }
+
+        province_pcode = etd_pcode[:4]
+        created: list[dict] = []
+        skipped: list[str] = []
+        remontee_acceleree = False
+
+        try:
+            async with engine.connect() as conn:
+                for seuil in depasses:
+                    indicateur = seuil["indicateur"]
+                    gravite    = seuil.get("gravite") or "MOYENNE"
+                    priorite   = 5 if gravite == "CRITIQUE" else 4 if gravite == "ELEVEE" else 3
+
+                    # Dédup : pas de doublon dans les 24h pour ce couple (ETD, indicateur)
+                    existing = await conn.execute(text("""
+                        SELECT id FROM flux_message
+                        WHERE entite_origine_pcode = :pcode
+                          AND direction = 'ASCENDANT'
+                          AND type_flux = 'ALERTE'
+                          AND contenu->>'indicateur' = :indicateur
+                          AND created_at > NOW() - INTERVAL '24 hours'
+                        LIMIT 1
+                    """), {"pcode": etd_pcode, "indicateur": indicateur})
+
+                    if existing.fetchone():
+                        skipped.append(indicateur)
+                        continue
+
+                    contenu = {
+                        "indicateur":     indicateur,
+                        "label":          seuil["label"],
+                        "valeur_actuelle": seuil["valeur_actuelle"],
+                        "seuil":          seuil["seuil"],
+                        "gravite":        gravite,
+                        "auto_genere":    True,
+                    }
+
+                    # Flux ASCENDANT → Province (niveau 2)
+                    await conn.execute(text("""
+                        INSERT INTO flux_message (
+                            type_flux, direction, element_type,
+                            niveau_origine, niveau_destination,
+                            entite_origine_pcode, entite_destination_pcode,
+                            contenu, priorite, statut
+                        ) VALUES (
+                            'ALERTE', 'ASCENDANT', 'SEUIL_ALERTE',
+                            6, 2, :pcode, :dest,
+                            :contenu::jsonb, :prio, 'TRANSMIS'
+                        )
+                    """), {"pcode": etd_pcode, "dest": province_pcode,
+                           "contenu": json.dumps(contenu), "prio": priorite})
+
+                    detail: dict = {"indicateur": indicateur, "priorite": priorite, "destination": province_pcode}
+
+                    # Remontée accélérée : CRITIQUE ou ELEVEE → aussi vers Pouvoir Central (niveau 1)
+                    if priorite >= 4:
+                        remontee_acceleree = True
+                        contenu_c = {**contenu, "remontee_acceleree": True}
+                        await conn.execute(text("""
+                            INSERT INTO flux_message (
+                                type_flux, direction, element_type,
+                                niveau_origine, niveau_destination,
+                                entite_origine_pcode, entite_destination_pcode,
+                                contenu, priorite, statut
+                            ) VALUES (
+                                'ALERTE', 'ASCENDANT', 'SEUIL_ALERTE',
+                                6, 1, :pcode, 'CD',
+                                :contenu::jsonb, :prio, 'TRANSMIS'
+                            )
+                        """), {"pcode": etd_pcode,
+                               "contenu": json.dumps(contenu_c), "prio": priorite})
+                        detail["remontee_acceleree"] = True
+                        detail["destinations"] = [province_pcode, "CD"]
+
+                    created.append(detail)
+
+                await conn.commit()
+
+        except Exception as exc:
+            logger.error("etd_agent.alerter.error", etd=etd_pcode, error=str(exc))
+
+        return {
+            "etd_pcode":              etd_pcode,
+            "alertes_creees":         len(created),
+            "alertes_deja_transmises": len(skipped),
+            "remontee_acceleree":     remontee_acceleree,
+            "details":                created,
+            "generated_at":           _utcnow().isoformat(),
+        }
+
+    # ── 7. Métriques du flux bidirectionnel ───────────────────────────────
 
     async def metriques_flux(self, etd_pcode: str | None = None) -> dict:
         try:
@@ -474,27 +585,81 @@ class AgentETD:
                     {where_clause}
                 """), params)
                 row = q.fetchone()
+
+                total_a = 0
+                total_d = 0
+                total_e = 0
+                en_attente = 0
+                delai_accuse = 0.0
+                delai_exec   = 0.0
+
                 if row:
                     d = dict(row._mapping)
-                    total_e = int(d.get("total_executes") or 0)
-                    total_a = int(d.get("total_ascendant") or 0)
-                    total_d = int(d.get("total_descendant") or 0)
-                    total   = max(total_a + total_d, 1)
-                    return {
-                        "total_ascendant":    total_a,
-                        "total_descendant":   total_d,
-                        "taux_execution":     round(total_e / total * 100, 1),
-                        "en_attente_24h":     int(d.get("en_attente_24h") or 0),
-                        "delai_moyen_accuse_h": round(float(d.get("delai_moy_accuse_h") or 0), 1),
-                        "delai_moyen_exec_h": round(float(d.get("delai_moy_exec_h") or 0), 1),
-                        "generated_at":       _utcnow().isoformat(),
+                    total_e    = int(d.get("total_executes") or 0)
+                    total_a    = int(d.get("total_ascendant") or 0)
+                    total_d    = int(d.get("total_descendant") or 0)
+                    en_attente = int(d.get("en_attente_24h") or 0)
+                    delai_accuse = round(float(d.get("delai_moy_accuse_h") or 0), 1)
+                    delai_exec   = round(float(d.get("delai_moy_exec_h") or 0), 1)
+
+                total = max(total_a + total_d, 1)
+
+                # Goulots : entités où des messages bloquent > 24h sans accusé réception
+                q_goulots = await conn.execute(text("""
+                    SELECT entite_destination_pcode AS pcode, COUNT(*) AS nb_bloques
+                    FROM flux_message
+                    WHERE statut IN ('TRANSMIS', 'RECU')
+                      AND created_at < NOW() - INTERVAL '24 hours'
+                    GROUP BY entite_destination_pcode
+                    ORDER BY nb_bloques DESC
+                    LIMIT 5
+                """))
+                goulots = [
+                    {"pcode": r._mapping["pcode"], "nb_bloques": int(r._mapping["nb_bloques"])}
+                    for r in q_goulots
+                ]
+
+                # Classement réactivité : ETD par délai moyen d'accusé réception (croissant = plus réactif)
+                q_classement = await conn.execute(text("""
+                    SELECT entite_destination_pcode AS pcode,
+                           ROUND(AVG(EXTRACT(EPOCH FROM (accuse_reception_le - created_at))/3600)::numeric, 1) AS delai_moy_h,
+                           COUNT(*) AS nb_messages
+                    FROM flux_message
+                    WHERE accuse_reception_le IS NOT NULL
+                      AND created_at > NOW() - INTERVAL '30 days'
+                    GROUP BY entite_destination_pcode
+                    HAVING COUNT(*) >= 2
+                    ORDER BY delai_moy_h ASC
+                    LIMIT 10
+                """))
+                classement = [
+                    {
+                        "pcode":       r._mapping["pcode"],
+                        "delai_moy_h": float(r._mapping["delai_moy_h"] or 0),
+                        "nb_messages": int(r._mapping["nb_messages"]),
                     }
+                    for r in q_classement
+                ]
+
+                return {
+                    "total_ascendant":        total_a,
+                    "total_descendant":       total_d,
+                    "taux_execution":         round(total_e / total * 100, 1),
+                    "en_attente_24h":         en_attente,
+                    "delai_moyen_accuse_h":   delai_accuse,
+                    "delai_moyen_exec_h":     delai_exec,
+                    "goulots":                goulots,
+                    "classement_reactivite":  classement,
+                    "generated_at":           _utcnow().isoformat(),
+                }
+
         except Exception as exc:
             logger.warning("etd_agent.metriques.error", error=str(exc))
 
         return {
             "total_ascendant": 0, "total_descendant": 0, "taux_execution": 0.0,
             "en_attente_24h": 0, "delai_moyen_accuse_h": 0.0, "delai_moyen_exec_h": 0.0,
+            "goulots": [], "classement_reactivite": [],
             "generated_at": _utcnow().isoformat(), "_source": "fallback",
         }
 

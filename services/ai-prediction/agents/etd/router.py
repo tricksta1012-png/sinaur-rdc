@@ -95,6 +95,20 @@ async def incoherences_etd(pcode: str) -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.post("/{pcode}/alerter")
+async def alerter_automatique(pcode: str) -> dict:
+    """
+    Déclenche les alertes automatiques si des seuils sont dépassés.
+    Crée les flux_message correspondants (dédup 24h) et active la remontée
+    accélérée vers le Pouvoir Central si la gravité est CRITIQUE ou ELEVEE.
+    """
+    try:
+        return await etd_agent.declencher_alertes_automatiques(pcode)
+    except Exception as exc:
+        logger.error("etd_router.alerter.error", pcode=pcode, error=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.get("/flux/metriques")
 async def metriques_flux(pcode: str | None = Query(default=None)) -> dict:
     """

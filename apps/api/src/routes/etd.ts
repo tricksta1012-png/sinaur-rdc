@@ -13,7 +13,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { sql } from '../db.js';
 import { requireAuth, requireRole, writeAuditLog } from '../auth/jwt.js';
-import { aiGet } from '../services/aiClient.js';
+import { aiGet, aiPost } from '../services/aiClient.js';
 
 const ETD_ROLES = ['territory_admin', 'provincial_coordinator', 'national_decision_maker', 'humanitarian_partner', 'system_admin'] as const;
 
@@ -234,6 +234,19 @@ export async function etdRoutes(fastify: FastifyInstance): Promise<void> {
 
     await writeAuditLog(user.id, 'UPDATE', 'flux_message', id, request, { statut: 'EXECUTE' });
     return { success: true, data: { id, statut: r.statut, execute_le: r.executeLe ?? r.execute_le } };
+  });
+
+  // POST /etd/:pcode/alerter — déclenche les alertes auto si des seuils sont dépassés
+  fastify.post('/etd/:pcode/alerter', {
+    preHandler: [requireAuth, requireRole(...ETD_ROLES)],
+  }, async (request, reply) => {
+    const { pcode } = request.params as { pcode: string };
+    const user = request.jwtUser;
+    if (!scopeCheck(user, pcode)) {
+      return reply.status(403).send({ success: false, error: { code: 'SCOPE_DENIED', message: 'Accès restreint à votre périmètre' } });
+    }
+    const { status, data } = await aiPost(`/internal/etd/${encodeURIComponent(pcode)}/alerter`);
+    return reply.status(status).send({ success: true, data });
   });
 
   // GET /etd/flux/metriques — métriques de performance du flux

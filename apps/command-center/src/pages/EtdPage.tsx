@@ -5,7 +5,7 @@
  * Affiche l'analyse locale, les seuils, les besoins, les incohérences
  * et la circulation bidirectionnelle de l'information (ascendant / descendant).
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../lib/api.js';
 import { useAuthStore } from '../stores/auth.js';
@@ -61,6 +61,31 @@ interface FluxMessage {
   accuse_reception_le: string | null;
   execute_le: string | null;
   created_at: string;
+}
+
+interface AlerteResult {
+  etd_pcode: string;
+  alertes_creees: number;
+  alertes_deja_transmises: number;
+  remontee_acceleree: boolean;
+  details: {
+    indicateur: string;
+    priorite: number;
+    destination?: string;
+    remontee_acceleree?: boolean;
+    destinations?: string[];
+  }[];
+}
+
+interface MetriquesFlux {
+  total_ascendant: number;
+  total_descendant: number;
+  taux_execution: number;
+  en_attente_24h: number;
+  delai_moyen_accuse_h: number;
+  delai_moyen_exec_h: number;
+  goulots: { pcode: string; nb_bloques: number }[];
+  classement_reactivite: { pcode: string; delai_moy_h: number; nb_messages: number }[];
 }
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -128,6 +153,10 @@ export function EtdPage() {
     type_flux: 'SIGNALEMENT', texte: '', priorite: 1,
   });
   const [directionFilter, setDirectionFilter] = useState<'ALL' | 'ASCENDANT' | 'DESCENDANT'>('ALL');
+  const [showMetriques, setShowMetriques] = useState(false);
+  const [alerteResult, setAlerteResult]   = useState<AlerteResult | null>(null);
+
+  useEffect(() => { setAlerteResult(null); }, [pcode]);
 
   const isAdmin = ['system_admin', 'national_decision_maker'].includes(user?.role ?? '');
   const pcodeLabel = PROVINCE_NAMES[pcode] ?? pcode;
@@ -186,6 +215,22 @@ export function EtdPage() {
   const executerMutation = useMutation({
     mutationFn: (id: string) => apiClient.put(`/etd/flux/${id}/executer`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['etd-flux'] }),
+  });
+
+  const alerterMutation = useMutation({
+    mutationFn: () => apiClient.post<{ success: boolean; data: AlerteResult }>(`/etd/${pcode}/alerter`, {}),
+    onSuccess: (res) => {
+      setAlerteResult(res.data.data);
+      qc.invalidateQueries({ queryKey: ['etd-flux', pcode] });
+    },
+  });
+
+  const { data: metriquesData, isLoading: loadingMetriques } = useQuery({
+    queryKey: ['etd-metriques', pcode],
+    queryFn: () => apiClient.get<{ success: boolean; data: MetriquesFlux }>(`/etd/flux/metriques?pcode=${pcode}`)
+      .then(r => r.data.data),
+    enabled: showMetriques,
+    staleTime: 2 * 60 * 1000,
   });
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -256,6 +301,12 @@ export function EtdPage() {
               {pcodeLabel} · {pcode}
             </span>
           )}
+          <button
+            onClick={() => setShowMetriques(v => !v)}
+            className="px-3 py-1 text-xs bg-purple-800 hover:bg-purple-700 text-white rounded font-medium transition-colors"
+          >
+            📊 Métriques flux
+          </button>
           <button
             onClick={() => setShowRapport(v => !v)}
             className="px-3 py-1 text-xs bg-sinaur-700 hover:bg-sinaur-600 text-white rounded font-medium transition-colors"
@@ -488,6 +539,42 @@ export function EtdPage() {
             )}
           </div>
 
+          {/* Auto-escalade */}
+          {seuils?.alerte_active && (
+            <div className="bg-cc-900 border border-red-900 rounded-lg p-3">
+              <div className="text-[10px] text-red-500 font-mono mb-2 uppercase tracking-wide">Auto-escalade</div>
+              {alerteResult ? (
+                <div className="space-y-1.5">
+                  <div className="text-xs text-gray-300">
+                    {alerteResult.alertes_creees > 0
+                      ? <span className="text-green-400">✓ {alerteResult.alertes_creees} alerte{alerteResult.alertes_creees > 1 ? 's' : ''} transmise{alerteResult.alertes_creees > 1 ? 's' : ''}</span>
+                      : <span className="text-gray-500">Déjà transmis ({alerteResult.alertes_deja_transmises})</span>
+                    }
+                  </div>
+                  {alerteResult.remontee_acceleree && (
+                    <div className="text-[10px] text-red-400 font-mono flex items-center gap-1">
+                      <span className="animate-pulse">⚡</span>
+                      Remontée accélérée activée — Province + Pouvoir Central alertés
+                    </div>
+                  )}
+                  {alerteResult.alertes_deja_transmises > 0 && alerteResult.alertes_creees === 0 && (
+                    <div className="text-[10px] text-gray-500 font-mono">
+                      {alerteResult.alertes_deja_transmises} alerte{alerteResult.alertes_deja_transmises > 1 ? 's' : ''} déjà en cours (dédup 24h)
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button
+                  onClick={() => alerterMutation.mutate()}
+                  disabled={alerterMutation.isPending}
+                  className="w-full px-3 py-1.5 text-xs bg-red-900 hover:bg-red-800 disabled:opacity-40 text-red-200 rounded font-medium transition-colors flex items-center justify-center gap-1.5"
+                >
+                  {alerterMutation.isPending ? '⏳ Transmission...' : '🚨 Déclencher alertes automatiques'}
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Recommandation */}
           {rapportData && (
             <div className={`rounded-lg p-3 border ${
@@ -627,6 +714,99 @@ export function EtdPage() {
         </div>
 
       </div>
+
+      {/* ── Métriques flux (accordéon) ────────────────────────────────── */}
+      {showMetriques && (
+        <div className="bg-cc-900 border border-purple-900 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-purple-300 font-medium text-sm">Métriques de performance du flux</h3>
+            <span className="text-[10px] text-gray-500 font-mono">30 derniers jours · {pcodeLabel}</span>
+          </div>
+
+          {loadingMetriques ? (
+            <div className="text-gray-600 text-xs text-center py-4">Calcul en cours…</div>
+          ) : metriquesData ? (
+            <div className="space-y-4">
+
+              {/* KPIs */}
+              <div className="grid grid-cols-4 gap-3">
+                {[
+                  { label: 'Remontées', value: metriquesData.total_ascendant, color: 'text-orange-400', icon: '⬆' },
+                  { label: 'Directives', value: metriquesData.total_descendant, color: 'text-blue-400', icon: '⬇' },
+                  { label: 'Taux exécution', value: `${metriquesData.taux_execution} %`, color: 'text-green-400', icon: '✓' },
+                  { label: 'En attente +24h', value: metriquesData.en_attente_24h, color: metriquesData.en_attente_24h > 0 ? 'text-red-400' : 'text-gray-400', icon: '⏳' },
+                ].map((kpi, i) => (
+                  <div key={i} className="bg-cc-800 rounded p-2.5 text-center">
+                    <div className={`text-lg font-bold ${kpi.color}`}>{kpi.icon} {kpi.value}</div>
+                    <div className="text-[10px] text-gray-500 font-mono mt-0.5">{kpi.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Délais moyens */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-cc-800 rounded p-2.5">
+                  <div className="text-[10px] text-gray-500 font-mono mb-1">Délai moyen accusé réception</div>
+                  <div className="text-sm font-mono text-yellow-400">
+                    {metriquesData.delai_moyen_accuse_h > 0 ? `${metriquesData.delai_moyen_accuse_h}h` : '—'}
+                  </div>
+                  <div className="text-[10px] text-gray-600 mt-0.5">Terrain → accusé</div>
+                </div>
+                <div className="bg-cc-800 rounded p-2.5">
+                  <div className="text-[10px] text-gray-500 font-mono mb-1">Délai moyen exécution</div>
+                  <div className="text-sm font-mono text-yellow-400">
+                    {metriquesData.delai_moyen_exec_h > 0 ? `${metriquesData.delai_moyen_exec_h}h` : '—'}
+                  </div>
+                  <div className="text-[10px] text-gray-600 mt-0.5">Terrain → exécuté</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {/* Goulots d'étranglement */}
+                <div className="bg-cc-800 rounded p-2.5">
+                  <div className="text-[10px] text-gray-500 font-mono mb-1.5 uppercase tracking-wide">
+                    Goulots d'étranglement
+                  </div>
+                  {metriquesData.goulots.length === 0 ? (
+                    <div className="text-[10px] text-green-500">✓ Aucun blocage détecté</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {metriquesData.goulots.map((g, i) => (
+                        <div key={i} className="flex justify-between text-xs">
+                          <span className="text-gray-400 font-mono">{g.pcode}</span>
+                          <span className="text-red-400 font-mono">{g.nb_bloques} bloqué{g.nb_bloques > 1 ? 's' : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Classement réactivité */}
+                <div className="bg-cc-800 rounded p-2.5">
+                  <div className="text-[10px] text-gray-500 font-mono mb-1.5 uppercase tracking-wide">
+                    Classement réactivité
+                  </div>
+                  {metriquesData.classement_reactivite.length === 0 ? (
+                    <div className="text-[10px] text-gray-600">Données insuffisantes</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {metriquesData.classement_reactivite.slice(0, 5).map((c, i) => (
+                        <div key={i} className="flex justify-between text-xs">
+                          <span className="text-gray-400 font-mono">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`} {c.pcode}</span>
+                          <span className="text-green-400 font-mono">{c.delai_moy_h}h moy.</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+          ) : (
+            <div className="text-gray-600 text-xs text-center py-4">Aucune donnée disponible</div>
+          )}
+        </div>
+      )}
 
       {/* ── Légende chaîne hiérarchique ───────────────────────────────── */}
       <div className="bg-cc-900 border border-cc-700 rounded-lg p-3">
