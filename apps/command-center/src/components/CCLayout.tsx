@@ -50,6 +50,7 @@ const NAV_ITEMS = [
   { to: '/rapports',      icon: '📄', labelKey: 'nav_reports'       },
   { to: '/ai',            icon: '🤖', labelKey: 'nav_ai',
     roles: ['system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin', 'humanitarian_partner'] },
+  { to: '/cartographie',  icon: '🗺️', labelKey: 'nav_cartographie' },
   { to: '/conflit',       icon: '⚔️', labelKey: 'nav_conflit',
     roles: ['system_admin', 'national_decision_maker', 'territory_admin', 'humanitarian_partner'] },
   { to: '/renseignement', icon: '🔎', labelKey: 'nav_renseignement',

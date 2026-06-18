@@ -107,4 +107,104 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
     if (!found) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Aucune division trouvée pour ces coordonnées' } });
     return reply.send({ success: true, data: found });
   });
+
+  // GET /geo/cartographie — GeoJSON choroplèthe pour la cartographie administrative
+  fastify.get('/geo/cartographie', async (request, reply) => {
+    const query = z.object({
+      level:      z.coerce.number().int().min(0).max(6).default(1),
+      parentPcode: z.string().optional(),
+    }).parse(request.query);
+
+    const postgis = await geoMode();
+
+    const rows = await sql`
+      SELECT
+        ad.pcode,
+        ad.name_fr,
+        ad.level,
+        ad.parent_pcode,
+        ad.population,
+        ad.responsable_nom,
+        ad.responsable_titre,
+        ad.responsable_contact,
+        ad.statut_situation,
+        ${postgis ? sql`ST_AsGeoJSON(ad.geometry)::json AS geometry,` : sql`ad.geometry,`}
+        COALESCE((
+          SELECT COUNT(*)::int
+          FROM disaster_events de
+          WHERE de.location_pcode LIKE ad.pcode || '%'
+            AND de.created_at >= NOW() - INTERVAL '30 days'
+        ), 0) AS nb_incidents
+      FROM admin_divisions ad
+      WHERE ad.is_active = TRUE
+        AND ad.level = ${query.level}
+        ${query.parentPcode ? sql`AND ad.parent_pcode = ${query.parentPcode}` : sql``}
+      ORDER BY ad.name_fr
+      LIMIT 1000
+    `;
+
+    type GeoFeature = {
+      type: 'Feature';
+      geometry: unknown;
+      properties: Record<string, unknown>;
+    };
+
+    const features: GeoFeature[] = [];
+    for (const r of rows) {
+      const geom = r.geometry ?? null;
+      if (!geom) continue; // skip features without geometry
+
+      features.push({
+        type: 'Feature',
+        geometry: geom,
+        properties: {
+          pcode:               r.pcode,
+          name:                r.nameFr ?? r.name_fr,
+          level:               r.level,
+          parent_pcode:        r.parentPcode ?? r.parent_pcode,
+          population:          r.population,
+          responsable_nom:     r.responsableNom ?? r.responsable_nom ?? null,
+          responsable_titre:   r.responsableTitre ?? r.responsable_titre ?? null,
+          responsable_contact: r.responsableContact ?? r.responsable_contact ?? null,
+          statut:              r.statutSituation ?? r.statut_situation ?? 'NORMAL',
+          nb_incidents:        Number(r.nbIncidents ?? r.nb_incidents ?? 0),
+        },
+      });
+    }
+
+    const featureCollection = {
+      type: 'FeatureCollection' as const,
+      features,
+      _meta: { total: rows.length, withGeometry: features.length },
+    };
+
+    return reply
+      .header('Cache-Control', 'public, max-age=300')
+      .send(featureCollection);
+  });
+
+  // GET /geo/couverture — taux de couverture en responsables par niveau
+  fastify.get('/geo/couverture', async (request, reply) => {
+    const rows = await sql`
+      SELECT
+        level,
+        COUNT(*)::int                  AS total,
+        COUNT(responsable_nom)::int    AS avec_responsable
+      FROM admin_divisions
+      WHERE is_active = TRUE
+      GROUP BY level
+      ORDER BY level
+    `;
+
+    const data = rows.map(r => ({
+      level:            r.level,
+      total:            Number(r.total),
+      avec_responsable: Number(r.avecResponsable ?? r.avec_responsable ?? 0),
+      sans_responsable: Number(r.total) - Number(r.avecResponsable ?? r.avec_responsable ?? 0),
+    }));
+
+    return reply
+      .header('Cache-Control', 'public, max-age=300')
+      .send({ success: true, data });
+  });
 }
