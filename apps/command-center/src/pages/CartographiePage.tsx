@@ -1,8 +1,9 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import MapGL, { Source, Layer, type MapLayerMouseEvent, type MapRef } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { apiClient } from '../lib/api.js';
+import { useAuthStore } from '../stores/auth.js';
 
 // ── TYPES ─────────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,14 @@ interface BreadcrumbItem {
   level: number;
 }
 
+interface EntityBounds {
+  pcode: string;
+  name: string;
+  level: number;
+  bounds: [[number, number], [number, number]];
+  center: [number, number];
+}
+
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 
 const NIVEAU_LABELS: Record<number, string> = {
@@ -51,16 +60,19 @@ const NIVEAU_ENFANTS: Record<number, string> = {
   3: 'les groupements',
 };
 
-const ETD_LEVELS = new Set([3]); // niveau 3 = ETD (personnalité juridique)
+const ETD_LEVELS = new Set([3]);
 
 const STATUT_STYLE: Record<string, { cls: string; dot: string }> = {
-  NORMAL:    { cls: 'bg-green-900/60 text-green-300 border-green-700',  dot: 'bg-green-400'  },
-  VIGILANCE: { cls: 'bg-yellow-900/60 text-yellow-300 border-yellow-700', dot: 'bg-yellow-400' },
-  ALERTE:    { cls: 'bg-orange-900/60 text-orange-300 border-orange-700', dot: 'bg-orange-400' },
-  CRISE:     { cls: 'bg-red-900/60 text-red-300 border-red-700',          dot: 'bg-red-500 animate-pulse' },
+  NORMAL:    { cls: 'bg-green-900/60 text-green-300 border-green-700',    dot: 'bg-green-400'              },
+  VIGILANCE: { cls: 'bg-yellow-900/60 text-yellow-300 border-yellow-700', dot: 'bg-yellow-400'             },
+  ALERTE:    { cls: 'bg-orange-900/60 text-orange-300 border-orange-700', dot: 'bg-orange-400'             },
+  CRISE:     { cls: 'bg-red-900/60 text-red-300 border-red-700',          dot: 'bg-red-500 animate-pulse'  },
 };
 
-// ── MAP STYLE (dark theme, same as EpidemicPage) ──────────────────────────────
+// Full RDC bounds [west, south, east, north]
+const RDC_BOUNDS: [[number, number], [number, number]] = [[11.8, -13.5], [31.3, 5.4]];
+
+// ── MAP STYLE ─────────────────────────────────────────────────────────────────
 
 const MAP_STYLE = {
   version: 8 as const,
@@ -80,6 +92,85 @@ const MAP_STYLE = {
     }},
   ],
 };
+
+// ── UTILITIES ─────────────────────────────────────────────────────────────────
+
+function getFeatureBounds(feature: GeoJSON.Feature): [[number, number], [number, number]] | null {
+  const geom = feature.geometry as any;
+  if (!geom?.coordinates) return null;
+  let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+  function scan(c: any): void {
+    if (typeof c[0] === 'number') {
+      if (c[0] < w) w = c[0]; if (c[0] > e) e = c[0];
+      if (c[1] < s) s = c[1]; if (c[1] > n) n = c[1];
+    } else { (c as any[]).forEach(scan); }
+  }
+  scan(geom.coordinates);
+  return isFinite(w) ? [[w, s], [e, n]] : null;
+}
+
+function unionBounds(features: GeoJSON.Feature[]): [[number, number], [number, number]] | null {
+  let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+  for (const f of features) {
+    const b = getFeatureBounds(f);
+    if (!b) continue;
+    if (b[0][0] < w) w = b[0][0]; if (b[1][0] > e) e = b[1][0];
+    if (b[0][1] < s) s = b[0][1]; if (b[1][1] > n) n = b[1][1];
+  }
+  return isFinite(w) ? [[w, s], [e, n]] : null;
+}
+
+// ── ZOOM CONTROLS ─────────────────────────────────────────────────────────────
+
+function ZoomControls({
+  onRDC, onMyZone, onCrises, onSurveillance, onBack,
+  hasCrises, survMode, hasScope, canBack, survIndex, crisisCount,
+}: {
+  onRDC:          () => void;
+  onMyZone:       () => void;
+  onCrises:       () => void;
+  onSurveillance: () => void;
+  onBack:         () => void;
+  hasCrises:    boolean;
+  survMode:     boolean;
+  hasScope:     boolean;
+  canBack:      boolean;
+  survIndex:    number;
+  crisisCount:  number;
+}) {
+  const btn = 'w-9 h-9 flex items-center justify-center rounded-lg border text-sm transition-colors bg-cc-900/90 border-cc-700 hover:bg-cc-800 backdrop-blur-sm cursor-pointer select-none';
+  return (
+    <div className="absolute top-3 right-3 flex flex-col gap-1.5 z-10">
+      <button onClick={onRDC} className={btn} title="Vue nationale RDC">🌍</button>
+      {hasScope && (
+        <button onClick={onMyZone} className={btn} title="Ma zone de responsabilité">📍</button>
+      )}
+      {hasCrises && (
+        <>
+          <button
+            onClick={onCrises}
+            className={`${btn} border-red-800 text-red-400 hover:bg-red-900/60`}
+            title="Zoomer sur toutes les crises/alertes"
+          >
+            🚨
+          </button>
+          <button
+            onClick={onSurveillance}
+            className={`${btn} ${survMode ? 'bg-red-900/80 border-red-700 text-red-300' : 'text-cc-400'}`}
+            title={survMode
+              ? `Surveillance ${survIndex + 1}/${crisisCount} — cliquer pour stopper`
+              : 'Mode surveillance automatique (cycle 8s)'}
+          >
+            {survMode ? '⏸' : '▶'}
+          </button>
+        </>
+      )}
+      {canBack && (
+        <button onClick={onBack} className={btn} title="Remonter d'un niveau">⬆</button>
+      )}
+    </div>
+  );
+}
 
 // ── SIDE PANEL ────────────────────────────────────────────────────────────────
 
@@ -150,9 +241,7 @@ function EntityPanel({
             ? 'bg-blue-950/60 text-blue-300 border-blue-800'
             : 'bg-cc-800 text-cc-500 border-cc-700'
         }`}>
-          {isEtd
-            ? 'ETD · Entité Territoriale Décentralisée'
-            : 'Entité déconcentrée'}
+          {isEtd ? 'ETD · Entité Territoriale Décentralisée' : 'Entité déconcentrée'}
         </div>
       </div>
 
@@ -252,14 +341,29 @@ function CouverturePanel({ data }: { data: CouvertureRow[] }) {
 
 export function CartographiePage() {
   const mapRef = useRef<MapRef>(null);
-  const [level, setLevel]               = useState(1);
-  const [parentPcode, setParentPcode]   = useState<string | null>(null);
-  const [breadcrumb, setBreadcrumb]     = useState<BreadcrumbItem[]>([
+
+  // Navigation state
+  const [level, setLevel]             = useState(1);
+  const [parentPcode, setParentPcode] = useState<string | null>(null);
+  const [breadcrumb, setBreadcrumb]   = useState<BreadcrumbItem[]>([
     { pcode: null, name: 'RDC', level: 0 },
   ]);
-  const [selected, setSelected]         = useState<EntityProps | null>(null);
-  const [colorMode, setColorMode]       = useState<ColorMode>('statut');
+  const [selected, setSelected]       = useState<EntityProps | null>(null);
+  const [colorMode, setColorMode]     = useState<ColorMode>('statut');
   const [showCouverture, setShowCouverture] = useState(false);
+
+  // Zoom state
+  const [survMode, setSurvMode]   = useState(false);
+  const [survIndex, setSurvIndex] = useState(0);
+  const [pulseOn, setPulseOn]     = useState(false);
+  const survTimerRef              = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Auth
+  const user     = useAuthStore(s => s.user);
+  const hasScope = !!user
+    && !['system_admin', 'national_decision_maker'].includes(user.role)
+    && user.scope.length > 0;
+  const userScopePcode = hasScope ? user!.scope[0] : null;
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -288,22 +392,24 @@ export function CartographiePage() {
 
   const entities: EntityProps[] = useMemo(() => {
     if (!geojson?.features) return [];
-    return geojson.features
-      .map(f => f.properties as EntityProps)
-      .filter(Boolean);
+    return geojson.features.map(f => f.properties as EntityProps).filter(Boolean);
   }, [geojson]);
-
-  const allEntities: EntityProps[] = useMemo(() => {
-    // Also include entities from rows (including those without geometry)
-    // The API returns total vs withGeometry in _meta
-    // For the table, we need to fetch the full list including no-geometry entries
-    return entities;
-  }, [entities]);
 
   const hasGeometry = useMemo(() => {
     if (!geojson) return false;
     return (geojson._meta?.withGeometry ?? geojson.features?.length ?? 0) > 0;
   }, [geojson]);
+
+  // Crisis/alert features for pulse + surveillance
+  const crisisFeatures = useMemo(() =>
+    geojson?.features?.filter(f => ['CRISE', 'ALERTE'].includes(String(f.properties?.statut))) ?? [],
+    [geojson]
+  );
+  const crisisGeoJson = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: crisisFeatures,
+  }), [crisisFeatures]);
+  const hasCrises = crisisFeatures.length > 0;
 
   // ── Fill color expression ──────────────────────────────────────────────────
 
@@ -314,7 +420,7 @@ export function CartographiePage() {
         'ALERTE',    '#ea580c',
         'VIGILANCE', '#eab308',
         'NORMAL',    '#16a34a',
-        /* default */ '#64748b',
+        '#64748b',
       ] as unknown as string;
     }
     return ['interpolate', ['linear'], ['get', 'nb_incidents'],
@@ -324,7 +430,98 @@ export function CartographiePage() {
     ] as unknown as string;
   }, [colorMode]);
 
+  // ── Zoom functions ─────────────────────────────────────────────────────────
+
+  // Zoom to full RDC extent
+  const zoomToRDC = useCallback(() => {
+    mapRef.current?.fitBounds(RDC_BOUNDS, {
+      padding: { top: 40, bottom: 40, left: selected ? 310 : 40, right: 40 },
+      duration: 1000,
+    });
+  }, [selected]);
+
+  // Zoom to entity from the API bounds endpoint (for pcodes not in current view)
+  const zoomToPcode = useCallback(async (pcode: string, leftPad = 80) => {
+    if (!mapRef.current) return;
+    try {
+      const res = await apiClient.get<{ success: boolean; data: EntityBounds }>(
+        `/geo/entity/${encodeURIComponent(pcode)}/bounds`
+      );
+      if (res.data.success) {
+        mapRef.current.fitBounds(res.data.data.bounds as [[number, number], [number, number]], {
+          padding: { top: 80, bottom: 80, left: leftPad, right: 80 },
+          duration: 1000,
+          maxZoom: 10,
+        });
+      }
+    } catch { /* no geometry — ignore */ }
+  }, []);
+
+  // Zoom to a feature already in the current GeoJSON
+  const zoomToFeature = useCallback((pcode: string) => {
+    if (!mapRef.current || !geojson) return;
+    const feature = geojson.features.find(f => f.properties?.pcode === pcode);
+    if (!feature) return;
+    const bounds = getFeatureBounds(feature);
+    if (!bounds) return;
+    mapRef.current.fitBounds(bounds, {
+      padding: { top: 80, bottom: 80, left: selected ? 310 : 80, right: 80 },
+      duration: 800,
+      maxZoom: 12,
+    });
+  }, [geojson, selected]);
+
+  // Zoom to encompass all CRISE/ALERTE entities
+  const zoomToCrises = useCallback(() => {
+    if (!hasCrises || !mapRef.current) return;
+    const bounds = unionBounds(crisisFeatures);
+    if (!bounds) return;
+    mapRef.current.fitBounds(bounds, {
+      padding: { top: 80, bottom: 80, left: selected ? 310 : 80, right: 80 },
+      duration: 800,
+      maxZoom: 10,
+    });
+  }, [crisisFeatures, hasCrises, selected]);
+
+  // ── Surveillance mode ──────────────────────────────────────────────────────
+
+  const toggleSurveillance = useCallback(() => setSurvMode(v => !v), []);
+
+  // Keep a ref so the interval closure always calls the latest zoomToFeature
+  const zoomToFeatureRef = useRef(zoomToFeature);
+  useEffect(() => { zoomToFeatureRef.current = zoomToFeature; }, [zoomToFeature]);
+
+  useEffect(() => {
+    if (!survMode || crisisFeatures.length === 0) return;
+    let idx = 0;
+    setSurvIndex(idx);
+    const first = crisisFeatures[idx];
+    if (first) zoomToFeatureRef.current(String(first.properties?.pcode ?? ''));
+    const id = setInterval(() => {
+      idx = (idx + 1) % crisisFeatures.length;
+      setSurvIndex(idx);
+      const f = crisisFeatures[idx];
+      if (f) zoomToFeatureRef.current(String(f.properties?.pcode ?? ''));
+    }, 8000);
+    survTimerRef.current = id;
+    return () => { clearInterval(id); survTimerRef.current = null; };
+  }, [survMode, crisisFeatures]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-stop surveillance if crises disappear
+  useEffect(() => { if (!hasCrises) setSurvMode(false); }, [hasCrises]);
+
+  // Pulse animation for crisis layer
+  useEffect(() => {
+    if (!hasCrises) { setPulseOn(false); return; }
+    const id = setInterval(() => setPulseOn(v => !v), 600);
+    return () => clearInterval(id);
+  }, [hasCrises]);
+
   // ── Handlers ──────────────────────────────────────────────────────────────
+
+  const onMapLoad = useCallback(() => {
+    if (userScopePcode) zoomToPcode(userScopePcode);
+  }, [userScopePcode, zoomToPcode]);
 
   const onDrillDown = useCallback((entity: EntityProps) => {
     const nextLevel = entity.level + 1;
@@ -335,16 +532,22 @@ export function CartographiePage() {
       { pcode: entity.pcode, name: entity.name, level: entity.level },
     ]);
     setSelected(null);
-  }, []);
+    zoomToFeature(entity.pcode);
+  }, [zoomToFeature]);
 
   const onBreadcrumbClick = useCallback((idx: number, item: BreadcrumbItem) => {
-    // Navigate back to this breadcrumb level
     const newCrumbs = breadcrumb.slice(0, idx + 1);
     setBreadcrumb(newCrumbs);
     setLevel(item.level + 1);
     setParentPcode(item.pcode);
     setSelected(null);
-  }, [breadcrumb]);
+    if (item.pcode) {
+      // Zoom to the selected ancestor via API (it won't be in current geojson)
+      void zoomToPcode(item.pcode, 80);
+    } else {
+      zoomToRDC();
+    }
+  }, [breadcrumb, zoomToPcode, zoomToRDC]);
 
   const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     const features = e.features;
@@ -355,11 +558,21 @@ export function CartographiePage() {
     const f = features[0];
     if (f.layer?.id === 'carto-fill' || f.layer?.id === 'carto-outline') {
       const props = f.properties as EntityProps;
-      if (props?.pcode) {
-        setSelected(props);
-      }
+      if (props?.pcode) setSelected(props);
     }
   }, []);
+
+  const remonter = useCallback(() => {
+    if (breadcrumb.length <= 1) return;
+    const idx = breadcrumb.length - 2;
+    const item = breadcrumb[idx]!;
+    const newCrumbs = breadcrumb.slice(0, idx + 1);
+    setBreadcrumb(newCrumbs);
+    setLevel(item.level + 1);
+    setParentPcode(item.pcode);
+    setSelected(null);
+    if (item.pcode) { void zoomToPcode(item.pcode, 80); } else { zoomToRDC(); }
+  }, [breadcrumb, zoomToPcode, zoomToRDC]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -374,6 +587,13 @@ export function CartographiePage() {
           <div className="text-cc-500 text-[10px] font-mono">Qui gère quoi sur le territoire de la RDC</div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {/* Surveillance badge */}
+          {survMode && (
+            <span className="flex items-center gap-1.5 bg-red-900/60 border border-red-700 rounded-lg px-2 py-1 text-[9px] font-mono text-red-300">
+              <span className="animate-pulse">●</span>
+              SURVEILLANCE {survIndex + 1}/{crisisFeatures.length}
+            </span>
+          )}
           {/* Color mode toggle */}
           <div className="flex rounded-lg overflow-hidden border border-cc-700">
             {(['statut', 'sinistres'] as ColorMode[]).map(mode => (
@@ -427,8 +647,6 @@ export function CartographiePage() {
 
       {/* ── BODY ── */}
       <div className="flex-1 flex overflow-hidden min-h-0">
-
-        {/* ── MAP + PANEL ── */}
         <div className="flex flex-1 overflow-hidden min-h-0">
 
           {/* Map */}
@@ -439,6 +657,7 @@ export function CartographiePage() {
                 mapStyle={MAP_STYLE}
                 initialViewState={{ longitude: 24.5, latitude: -3.0, zoom: 4.5 }}
                 onClick={onMapClick}
+                onLoad={onMapLoad}
                 interactiveLayerIds={['carto-fill']}
                 style={{ width: '100%', height: '100%' }}
               >
@@ -493,9 +712,22 @@ export function CartographiePage() {
                     />
                   </Source>
                 )}
+
+                {/* Crisis pulse overlay */}
+                {crisisGeoJson.features.length > 0 && (
+                  <Source id="crisis-pulse" type="geojson" data={crisisGeoJson}>
+                    <Layer
+                      id="crisis-pulse-layer"
+                      type="fill"
+                      paint={{
+                        'fill-color': '#dc2626',
+                        'fill-opacity': pulseOn ? 0.45 : 0.10,
+                      }}
+                    />
+                  </Source>
+                )}
               </MapGL>
             ) : (
-              /* Fallback quand pas de polygones */
               <div className="w-full h-full bg-cc-950 flex flex-col items-center justify-center gap-3">
                 <span className="text-4xl opacity-30">🗺️</span>
                 <div className="text-center">
@@ -503,6 +735,23 @@ export function CartographiePage() {
                   <div className="text-cc-700 text-[10px] font-mono mt-1">Consultez la liste ci-dessous</div>
                 </div>
               </div>
+            )}
+
+            {/* Zoom controls overlay */}
+            {hasGeometry && (
+              <ZoomControls
+                onRDC={zoomToRDC}
+                onMyZone={() => userScopePcode && void zoomToPcode(userScopePcode, selected ? 310 : 80)}
+                onCrises={zoomToCrises}
+                onSurveillance={toggleSurveillance}
+                onBack={remonter}
+                hasCrises={hasCrises}
+                survMode={survMode}
+                hasScope={hasScope}
+                canBack={breadcrumb.length > 1}
+                survIndex={survIndex}
+                crisisCount={crisisFeatures.length}
+              />
             )}
 
             {/* Legend */}
@@ -562,7 +811,7 @@ export function CartographiePage() {
       <div className="shrink-0 border-t border-cc-700 bg-cc-900">
         <div className="px-4 py-1.5 border-b border-cc-800 flex items-center gap-2">
           <span className="text-[9px] font-mono text-cc-500 uppercase">
-            {allEntities.length} entités — {NIVEAU_LABELS[level] ?? `Niveau ${level}`}
+            {entities.length} entités — {NIVEAU_LABELS[level] ?? `Niveau ${level}`}
           </span>
         </div>
         <div className="max-h-52 overflow-y-auto">
@@ -578,7 +827,7 @@ export function CartographiePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-cc-800/50">
-              {allEntities.map(entity => {
+              {entities.map(entity => {
                 const statut = STATUT_STYLE[entity.statut] ?? STATUT_STYLE['NORMAL']!;
                 const isSelected = selected?.pcode === entity.pcode;
                 return (
@@ -614,7 +863,7 @@ export function CartographiePage() {
                   </tr>
                 );
               })}
-              {allEntities.length === 0 && !isLoading && (
+              {entities.length === 0 && !isLoading && (
                 <tr>
                   <td colSpan={6} className="px-3 py-4 text-center text-cc-600 text-[10px] font-mono italic">
                     Aucune entité trouvée pour ce niveau

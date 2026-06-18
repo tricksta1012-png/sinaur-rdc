@@ -183,6 +183,74 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
       .send(featureCollection);
   });
 
+  // GET /geo/entity/:pcode/bounds — bounding box pour le zoom automatique de la carte
+  fastify.get('/geo/entity/:pcode/bounds', async (request, reply) => {
+    const { pcode } = request.params as { pcode: string };
+    const postgis = await geoMode();
+
+    if (postgis) {
+      const rows = await sql`
+        SELECT
+          name_fr,
+          level,
+          ARRAY[
+            ST_XMin(ST_Envelope(geometry)),
+            ST_YMin(ST_Envelope(geometry)),
+            ST_XMax(ST_Envelope(geometry)),
+            ST_YMax(ST_Envelope(geometry))
+          ] AS bounds,
+          ARRAY[
+            ST_X(ST_Centroid(geometry)),
+            ST_Y(ST_Centroid(geometry))
+          ] AS center
+        FROM admin_divisions
+        WHERE pcode = ${pcode}
+          AND geometry IS NOT NULL
+      ` as unknown as Record<string, unknown>[];
+
+      const r = rows[0];
+      if (r?.bounds) {
+        const b = r.bounds as number[];
+        return reply.header('Cache-Control', 'public, max-age=3600').send({
+          success: true,
+          data: {
+            pcode,
+            name:   String(r.nameFr ?? r.name_fr ?? pcode),
+            level:  Number(r.level ?? 0),
+            bounds: [[b[0], b[1]], [b[2], b[3]]],
+            center: r.center as [number, number],
+          },
+        });
+      }
+    }
+
+    // Fallback: bbox colonne (pré-calculé à l'import)
+    const rows2 = await sql`
+      SELECT name_fr, level, bbox FROM admin_divisions WHERE pcode = ${pcode}
+    ` as unknown as Record<string, unknown>[];
+
+    const r2 = rows2[0];
+    if (!r2) {
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Entité introuvable' } });
+    }
+
+    const bbox = r2.bbox as number[] | null;
+    if (!bbox || bbox.length < 4) {
+      return reply.status(404).send({ success: false, error: { code: 'NO_GEOMETRY', message: 'Aucune géométrie disponible' } });
+    }
+
+    return reply.header('Cache-Control', 'public, max-age=3600').send({
+      success: true,
+      data: {
+        pcode,
+        name:   String(r2.nameFr ?? r2.name_fr ?? pcode),
+        level:  Number(r2.level ?? 0),
+        bounds: [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
+        center: [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2],
+      },
+    });
+  });
+
   // GET /geo/couverture — taux de couverture en responsables par niveau
   fastify.get('/geo/couverture', async (request, reply) => {
     const rows = await sql`
