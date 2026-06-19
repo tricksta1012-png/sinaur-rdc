@@ -129,6 +129,7 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
         ad.responsable_contact,
         ad.statut_situation,
         ${postgis ? sql`ST_AsGeoJSON(ad.geometry)::json AS geometry,` : sql`ad.geometry,`}
+        ${postgis ? sql`ST_AsGeoJSON(ad.centroid)::json AS centroid,` : sql`ad.centroid,`}
         COALESCE((
           SELECT COUNT(*)::int
           FROM disaster_events de
@@ -151,12 +152,15 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
 
     const features: GeoFeature[] = [];
     for (const r of rows) {
-      const geom = r.geometry ?? null;
-      if (!geom) continue; // skip features without geometry
+      const geom     = r.geometry ?? null;
+      const centroid = r.centroid ?? null;
+      // Level 4 entries have only a centroid (point from OSM) — use it as fallback
+      const effectiveGeom = geom ?? centroid;
+      if (!effectiveGeom) continue;
 
       features.push({
         type: 'Feature',
-        geometry: geom,
+        geometry: effectiveGeom,
         properties: {
           pcode:               r.pcode,
           name:                r.nameFr ?? r.name_fr,
@@ -168,6 +172,7 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
           responsable_contact: r.responsableContact ?? r.responsable_contact ?? null,
           statut:              r.statutSituation ?? r.statut_situation ?? 'NORMAL',
           nb_incidents:        Number(r.nbIncidents ?? r.nb_incidents ?? 0),
+          _is_point:           !geom && !!centroid,
         },
       });
     }

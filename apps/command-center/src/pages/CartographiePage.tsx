@@ -19,6 +19,7 @@ interface EntityProps {
   responsable_contact: string | null;
   statut: 'NORMAL' | 'VIGILANCE' | 'ALERTE' | 'CRISE';
   nb_incidents: number;
+  _is_point?: boolean;
 }
 
 type ColorMode = 'statut' | 'sinistres';
@@ -405,14 +406,24 @@ export function CartographiePage() {
     return geojson.features.map(f => f.properties as EntityProps).filter(Boolean);
   }, [geojson]);
 
-  const hasGeometry = useMemo(() => {
-    if (!geojson) return false;
-    return (geojson._meta?.withGeometry ?? geojson.features?.length ?? 0) > 0;
-  }, [geojson]);
+  const hasGeometry = useMemo(() => (geojson?.features?.length ?? 0) > 0, [geojson]);
 
-  // Crisis/alert features for pulse + surveillance
+  // Split polygon features (levels 1-3) from point features (level 4 — centroid only)
+  const polygonGeojson = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: geojson?.features?.filter(f => !f.properties?._is_point) ?? [],
+  }), [geojson]);
+
+  const pointGeojson = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: geojson?.features?.filter(f => f.properties?._is_point) ?? [],
+  }), [geojson]);
+
+  // Crisis/alert features for pulse — polygon only (fill layer doesn't apply to points)
   const crisisFeatures = useMemo(() =>
-    geojson?.features?.filter(f => ['CRISE', 'ALERTE'].includes(String(f.properties?.statut))) ?? [],
+    geojson?.features?.filter(f =>
+      ['CRISE', 'ALERTE'].includes(String(f.properties?.statut)) && !f.properties?._is_point
+    ) ?? [],
     [geojson]
   );
   const crisisGeoJson = useMemo(() => ({
@@ -604,7 +615,7 @@ export function CartographiePage() {
       return;
     }
     const f = features[0];
-    if (f.layer?.id === 'carto-fill' || f.layer?.id === 'carto-outline') {
+    if (f.layer?.id === 'carto-fill' || f.layer?.id === 'carto-outline' || f.layer?.id === 'carto-points') {
       const props = f.properties as EntityProps;
       if (props?.pcode) {
         setSelected(props);
@@ -708,11 +719,11 @@ export function CartographiePage() {
               initialViewState={{ longitude: 24.5, latitude: -3.0, zoom: 4.5 }}
               onClick={onMapClick}
               onLoad={onMapLoad}
-              interactiveLayerIds={hasGeometry ? ['carto-fill'] : []}
+              interactiveLayerIds={hasGeometry ? ['carto-fill', 'carto-points'] : []}
               style={{ width: '100%', height: '100%' }}
             >
-              {hasGeometry && geojson && (
-                <Source id="carto" type="geojson" data={geojson}>
+              {polygonGeojson.features.length > 0 && (
+                <Source id="carto" type="geojson" data={polygonGeojson}>
                   {/* Fill */}
                   <Layer
                     id="carto-fill"
@@ -772,6 +783,52 @@ export function CartographiePage() {
                     paint={{
                       'fill-color': '#dc2626',
                       'fill-opacity': pulseOn ? 0.45 : 0.10,
+                    }}
+                  />
+                </Source>
+              )}
+
+              {/* Niveau 4 — quartiers comme cercles (centroïdes OSM, pas de polygones) */}
+              {pointGeojson.features.length > 0 && (
+                <Source id="carto-pts" type="geojson" data={pointGeojson}>
+                  <Layer
+                    id="carto-points"
+                    type="circle"
+                    paint={{
+                      'circle-radius': [
+                        'case',
+                        ['==', ['get', 'pcode'], selected?.pcode ?? ''], 8,
+                        5,
+                      ] as any,
+                      'circle-color': fillColorExpr as any,
+                      'circle-opacity': 0.9,
+                      'circle-stroke-color': [
+                        'case',
+                        ['==', ['get', 'pcode'], selected?.pcode ?? ''], '#ffffff',
+                        '#334155',
+                      ] as any,
+                      'circle-stroke-width': [
+                        'case',
+                        ['==', ['get', 'pcode'], selected?.pcode ?? ''], 2,
+                        1,
+                      ] as any,
+                    }}
+                  />
+                  <Layer
+                    id="carto-points-labels"
+                    type="symbol"
+                    layout={{
+                      'text-field': ['get', 'name'],
+                      'text-size': 9,
+                      'text-font': ['Open Sans Regular'],
+                      'text-offset': [0, 1.2],
+                      'text-anchor': 'top',
+                      'text-max-width': 6,
+                    }}
+                    paint={{
+                      'text-color': '#e2e8f0',
+                      'text-halo-color': '#0d1b2a',
+                      'text-halo-width': 1.5,
                     }}
                   />
                 </Source>
