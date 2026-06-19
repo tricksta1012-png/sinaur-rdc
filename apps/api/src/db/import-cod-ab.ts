@@ -230,6 +230,7 @@ async function importCodAb(): Promise<void> {
     [1, ['cod_admin1.geojson', 'cod_admin1_em.geojson']],
     [2, ['cod_admin2.geojson', 'cod_admin2_em.geojson']],
     [3, ['cod_admin3.geojson', 'cod_admin3_em.geojson']],
+    [4, ['cod_admin4.geojson', 'cod_admin4_em.geojson']],
   ];
 
   let usedPreExtracted = false;
@@ -239,8 +240,8 @@ async function importCodAb(): Promise<void> {
       const found = names.map(n => join(dir, n)).find(p => existsSync(p));
       if (found) paths.push([level, found]);
     }
-    if (paths.length === 3) {
-      console.log(`▶  Fichiers pré-extraits trouvés dans ${dir}\n`);
+    if (paths.length >= 3) {
+      console.log(`▶  Fichiers pré-extraits trouvés dans ${dir} (${paths.length} niveaux)\n`);
       for (const [level, path] of paths) await importFromGeojsonFile(level, path);
       usedPreExtracted = true;
       break;
@@ -274,6 +275,15 @@ async function importCodAb(): Promise<void> {
       const [, names] = levelCandidates[level - 1];
       const z = await getZip();
       await importFromZip(level, z, names, hasCdZip ? cdZip : null);
+    }
+
+    // Niveau 4 (groupements/quartiers) — optionnel, pas toujours dans le package COD-AB
+    try {
+      const [, names4] = levelCandidates[3];
+      const z = await getZip();
+      await importFromZip(4, z, names4, hasCdZip ? cdZip : null);
+    } catch {
+      console.log('ℹ  Niveau 4 (groupements/quartiers) non trouvé dans ce COD-AB — import ignoré');
     }
   }
 

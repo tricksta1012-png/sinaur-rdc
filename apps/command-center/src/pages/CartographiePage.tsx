@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import MapGL, { Source, Layer, type MapLayerMouseEvent, type MapRef } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { apiClient } from '../lib/api.js';
+import { whenMapReady } from '../lib/mapReady.js';
 import { useAuthStore } from '../stores/auth.js';
 
 // ── TYPES ─────────────────────────────────────────────────────────────────────
@@ -39,7 +40,7 @@ interface EntityBounds {
   pcode: string;
   name: string;
   level: number;
-  bounds: [[number, number], [number, number]];
+  bounds: [[number, number], [number, number]] | null;
   center: [number, number];
 }
 
@@ -118,6 +119,14 @@ function unionBounds(features: GeoJSON.Feature[]): [[number, number], [number, n
     if (b[0][1] < s) s = b[0][1]; if (b[1][1] > n) n = b[1][1];
   }
   return isFinite(w) ? [[w, s], [e, n]] : null;
+}
+
+function boundsValides(bounds: [[number, number], [number, number]] | null | undefined): bounds is [[number, number], [number, number]] {
+  if (!bounds || !Array.isArray(bounds) || bounds.length !== 2) return false;
+  const [[ouest, sud], [est, nord]] = bounds;
+  if (![ouest, sud, est, nord].every(n => Number.isFinite(n))) return false;
+  if (ouest >= est || sud >= nord) return false;
+  return true;
 }
 
 // ── ZOOM CONTROLS ─────────────────────────────────────────────────────────────
@@ -357,6 +366,7 @@ export function CartographiePage() {
   const [survIndex, setSurvIndex] = useState(0);
   const [pulseOn, setPulseOn]     = useState(false);
   const survTimerRef              = useRef<ReturnType<typeof setInterval> | null>(null);
+  const zoomEnCours               = useRef<AbortController | null>(null);
 
   // Auth
   const user     = useAuthStore(s => s.user);
@@ -441,29 +451,58 @@ export function CartographiePage() {
   }, [selected]);
 
   // Zoom to entity from the API bounds endpoint (for pcodes not in current view)
-  const zoomToPcode = useCallback(async (pcode: string, leftPad = 80) => {
+  const zoomToPcode = useCallback(async (pcode: string, leftPad = 80, signal?: AbortSignal): Promise<void> => {
     if (!mapRef.current) return;
-    try {
-      const res = await apiClient.get<{ success: boolean; data: EntityBounds }>(
-        `/geo/entity/${encodeURIComponent(pcode)}/bounds`
-      );
-      if (res.data.success) {
-        mapRef.current.fitBounds(res.data.data.bounds as [[number, number], [number, number]], {
-          padding: { top: 80, bottom: 80, left: leftPad, right: 80 },
-          duration: 1000,
-          maxZoom: 10,
-        });
+
+    // Cause #1 — attendre que la carte soit prête avant tout appel fitBounds
+    await whenMapReady(mapRef.current);
+    if (signal?.aborted || !mapRef.current) return;
+
+    // Cause #3 — retry pour le cold start Neon (backoff 300ms/600ms/1200ms)
+    let data: EntityBounds | null = null;
+    for (let i = 0; i < 3; i++) {
+      try {
+        const res = await apiClient.get<{ success: boolean; data: EntityBounds }>(
+          `/geo/entity/${encodeURIComponent(pcode)}/bounds`
+        );
+        if (res.data.success) { data = res.data.data; break; }
+      } catch {
+        if (i < 2) await new Promise<void>(r => setTimeout(r, 300 * Math.pow(2, i)));
       }
-    } catch { /* no geometry — ignore */ }
+    }
+
+    if (signal?.aborted || !mapRef.current) return;
+
+    // Cause #2 — ne zoomer que sur des bounds valides
+    if (data && boundsValides(data.bounds)) {
+      mapRef.current.fitBounds(data.bounds, {
+        padding: { top: 80, bottom: 80, left: leftPad, right: 80 },
+        duration: 1000,
+        maxZoom: 10,
+      });
+    } else if (data?.center && Number.isFinite(data.center[0]) && Number.isFinite(data.center[1])) {
+      // Fallback centroïde — entité sans polygone COD-AB
+      const zoomParNiveau: Record<number, number> = { 1: 7, 2: 9, 3: 11, 4: 13 };
+      mapRef.current.flyTo({
+        center: data.center,
+        zoom: zoomParNiveau[data.level] ?? 8,
+        duration: 800,
+      });
+    } else {
+      console.warn(`[zoom] Aucune position pour ${pcode}, retour vue nationale`);
+      mapRef.current.fitBounds(RDC_BOUNDS, { padding: 40, duration: 800 });
+    }
   }, []);
 
   // Zoom to a feature already in the current GeoJSON
-  const zoomToFeature = useCallback((pcode: string) => {
+  const zoomToFeature = useCallback(async (pcode: string) => {
     if (!mapRef.current || !geojson) return;
     const feature = geojson.features.find(f => f.properties?.pcode === pcode);
     if (!feature) return;
     const bounds = getFeatureBounds(feature);
     if (!bounds) return;
+    await whenMapReady(mapRef.current);
+    if (!mapRef.current) return;
     mapRef.current.fitBounds(bounds, {
       padding: { top: 80, bottom: 80, left: selected ? 310 : 80, right: 80 },
       duration: 800,
@@ -482,6 +521,15 @@ export function CartographiePage() {
       maxZoom: 10,
     });
   }, [crisisFeatures, hasCrises, selected]);
+
+  // Zoom avec debounce (annule le zoom précédent si un nouveau clic arrive avant la fin)
+  const zoomToEntityDebounced = useCallback(async (pcode: string) => {
+    if (zoomEnCours.current) zoomEnCours.current.abort();
+    const ac = new AbortController();
+    zoomEnCours.current = ac;
+    // Le panel sera ouvert — toujours laisser 310px à gauche
+    await zoomToPcode(pcode, 310, ac.signal);
+  }, [zoomToPcode]);
 
   // ── Surveillance mode ──────────────────────────────────────────────────────
 
@@ -520,7 +568,7 @@ export function CartographiePage() {
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   const onMapLoad = useCallback(() => {
-    if (userScopePcode) zoomToPcode(userScopePcode);
+    if (userScopePcode) void zoomToPcode(userScopePcode);
   }, [userScopePcode, zoomToPcode]);
 
   const onDrillDown = useCallback((entity: EntityProps) => {
@@ -558,9 +606,12 @@ export function CartographiePage() {
     const f = features[0];
     if (f.layer?.id === 'carto-fill' || f.layer?.id === 'carto-outline') {
       const props = f.properties as EntityProps;
-      if (props?.pcode) setSelected(props);
+      if (props?.pcode) {
+        setSelected(props);
+        void zoomToEntityDebounced(props.pcode);
+      }
     }
-  }, []);
+  }, [zoomToEntityDebounced]);
 
   const remonter = useCallback(() => {
     if (breadcrumb.length <= 1) return;
@@ -651,86 +702,86 @@ export function CartographiePage() {
 
           {/* Map */}
           <div className="flex-1 relative">
-            {hasGeometry ? (
-              <MapGL
-                ref={mapRef}
-                mapStyle={MAP_STYLE}
-                initialViewState={{ longitude: 24.5, latitude: -3.0, zoom: 4.5 }}
-                onClick={onMapClick}
-                onLoad={onMapLoad}
-                interactiveLayerIds={['carto-fill']}
-                style={{ width: '100%', height: '100%' }}
-              >
-                {geojson && (
-                  <Source id="carto" type="geojson" data={geojson}>
-                    {/* Fill */}
-                    <Layer
-                      id="carto-fill"
-                      type="fill"
-                      paint={{
-                        'fill-color': fillColorExpr as any,
-                        'fill-opacity': [
-                          'case',
-                          ['==', ['get', 'pcode'], selected?.pcode ?? ''], 0.85,
-                          0.65,
-                        ] as any,
-                      }}
-                    />
-                    {/* Outline */}
-                    <Layer
-                      id="carto-outline"
-                      type="line"
-                      paint={{
-                        'line-color': [
-                          'case',
-                          ['==', ['get', 'pcode'], selected?.pcode ?? ''], '#ffffff',
-                          '#334155',
-                        ] as any,
-                        'line-width': [
-                          'case',
-                          ['==', ['get', 'pcode'], selected?.pcode ?? ''], 2.5,
-                          0.8,
-                        ] as any,
-                        'line-opacity': 0.9,
-                      }}
-                    />
-                    {/* Labels */}
-                    <Layer
-                      id="carto-labels"
-                      type="symbol"
-                      layout={{
-                        'text-field': ['get', 'name'],
-                        'text-size': 10,
-                        'text-font': ['Open Sans Regular'],
-                        'text-max-width': 8,
-                      }}
-                      paint={{
-                        'text-color': '#e2e8f0',
-                        'text-halo-color': '#0d1b2a',
-                        'text-halo-width': 1.5,
-                      }}
-                    />
-                  </Source>
-                )}
+            <MapGL
+              ref={mapRef}
+              mapStyle={MAP_STYLE}
+              initialViewState={{ longitude: 24.5, latitude: -3.0, zoom: 4.5 }}
+              onClick={onMapClick}
+              onLoad={onMapLoad}
+              interactiveLayerIds={hasGeometry ? ['carto-fill'] : []}
+              style={{ width: '100%', height: '100%' }}
+            >
+              {hasGeometry && geojson && (
+                <Source id="carto" type="geojson" data={geojson}>
+                  {/* Fill */}
+                  <Layer
+                    id="carto-fill"
+                    type="fill"
+                    paint={{
+                      'fill-color': fillColorExpr as any,
+                      'fill-opacity': [
+                        'case',
+                        ['==', ['get', 'pcode'], selected?.pcode ?? ''], 0.85,
+                        0.65,
+                      ] as any,
+                    }}
+                  />
+                  {/* Outline */}
+                  <Layer
+                    id="carto-outline"
+                    type="line"
+                    paint={{
+                      'line-color': [
+                        'case',
+                        ['==', ['get', 'pcode'], selected?.pcode ?? ''], '#ffffff',
+                        '#334155',
+                      ] as any,
+                      'line-width': [
+                        'case',
+                        ['==', ['get', 'pcode'], selected?.pcode ?? ''], 2.5,
+                        0.8,
+                      ] as any,
+                      'line-opacity': 0.9,
+                    }}
+                  />
+                  {/* Labels */}
+                  <Layer
+                    id="carto-labels"
+                    type="symbol"
+                    layout={{
+                      'text-field': ['get', 'name'],
+                      'text-size': 10,
+                      'text-font': ['Open Sans Regular'],
+                      'text-max-width': 8,
+                    }}
+                    paint={{
+                      'text-color': '#e2e8f0',
+                      'text-halo-color': '#0d1b2a',
+                      'text-halo-width': 1.5,
+                    }}
+                  />
+                </Source>
+              )}
 
-                {/* Crisis pulse overlay */}
-                {crisisGeoJson.features.length > 0 && (
-                  <Source id="crisis-pulse" type="geojson" data={crisisGeoJson}>
-                    <Layer
-                      id="crisis-pulse-layer"
-                      type="fill"
-                      paint={{
-                        'fill-color': '#dc2626',
-                        'fill-opacity': pulseOn ? 0.45 : 0.10,
-                      }}
-                    />
-                  </Source>
-                )}
-              </MapGL>
-            ) : (
-              <div className="w-full h-full bg-cc-950 flex flex-col items-center justify-center gap-3">
-                <span className="text-4xl opacity-30">🗺️</span>
-                <div className="text-center">
+              {/* Crisis pulse overlay */}
+              {crisisGeoJson.features.length > 0 && (
+                <Source id="crisis-pulse" type="geojson" data={crisisGeoJson}>
+                  <Layer
+                    id="crisis-pulse-layer"
+                    type="fill"
+                    paint={{
+                      'fill-color': '#dc2626',
+                      'fill-opacity': pulseOn ? 0.45 : 0.10,
+                    }}
+                  />
+                </Source>
+              )}
+            </MapGL>
+
+            {/* No-geometry notice — overlay on top of the map, never replaces it */}
+            {!hasGeometry && !isLoading && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="bg-cc-900/85 backdrop-blur-sm rounded-xl px-5 py-4 text-center border border-cc-700">
                   <div className="text-cc-500 text-sm font-medium">Polygones COD-AB non disponibles</div>
                   <div className="text-cc-700 text-[10px] font-mono mt-1">Consultez la liste ci-dessous</div>
                 </div>
@@ -738,21 +789,19 @@ export function CartographiePage() {
             )}
 
             {/* Zoom controls overlay */}
-            {hasGeometry && (
-              <ZoomControls
-                onRDC={zoomToRDC}
-                onMyZone={() => userScopePcode && void zoomToPcode(userScopePcode, selected ? 310 : 80)}
-                onCrises={zoomToCrises}
-                onSurveillance={toggleSurveillance}
-                onBack={remonter}
-                hasCrises={hasCrises}
-                survMode={survMode}
-                hasScope={hasScope}
-                canBack={breadcrumb.length > 1}
-                survIndex={survIndex}
-                crisisCount={crisisFeatures.length}
-              />
-            )}
+            <ZoomControls
+              onRDC={zoomToRDC}
+              onMyZone={() => userScopePcode && void zoomToPcode(userScopePcode, selected ? 310 : 80)}
+              onCrises={zoomToCrises}
+              onSurveillance={toggleSurveillance}
+              onBack={remonter}
+              hasCrises={hasCrises}
+              survMode={survMode}
+              hasScope={hasScope}
+              canBack={breadcrumb.length > 1}
+              survIndex={survIndex}
+              crisisCount={crisisFeatures.length}
+            />
 
             {/* Legend */}
             {hasGeometry && (

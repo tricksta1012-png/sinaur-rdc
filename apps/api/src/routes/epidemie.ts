@@ -142,7 +142,7 @@ export async function epidemieRoutes(fastify: FastifyInstance): Promise<void> {
             acces_bloque: r.accesHumanitaire === 'BLOQUE',
           },
         }));
-        return reply.send({ type: 'FeatureCollection', features });
+        return reply.header('Cache-Control', 'no-store').send({ type: 'FeatureCollection', features });
       } catch (err: any) {
         if (err.code === '42P01') return reply.send({ type: 'FeatureCollection', features: [], _no_migration: true });
         throw err;
@@ -164,7 +164,7 @@ export async function epidemieRoutes(fastify: FastifyInstance): Promise<void> {
           WHERE maladie = ${maladie}
           ORDER BY date_rapport ASC
         `;
-        return reply.send({ maladie, data: rows });
+        return reply.header('Cache-Control', 'no-store').send({ maladie, data: rows });
       } catch (err: any) {
         if (err.code === '42P01') return reply.send({ maladie, data: [] });
         throw err;

@@ -235,18 +235,55 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     const bbox = r2.bbox as number[] | null;
-    if (!bbox || bbox.length < 4) {
-      return reply.status(404).send({ success: false, error: { code: 'NO_GEOMETRY', message: 'Aucune géométrie disponible' } });
+    const name  = String((r2 as any).nameFr ?? (r2 as any).name_fr ?? pcode);
+    const level = Number(r2.level ?? 0);
+
+    if (bbox && bbox.length >= 4) {
+      return reply.header('Cache-Control', 'public, max-age=3600').send({
+        success: true,
+        data: {
+          pcode, name, level,
+          bounds: [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
+          center: [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2],
+        },
+      });
     }
 
-    return reply.header('Cache-Control', 'public, max-age=3600').send({
+    // Correction 7 — pas de géométrie directe : centroïde calculé depuis les enfants
+    const enfants = await sql`
+      SELECT bbox FROM admin_divisions
+      WHERE parent_pcode = ${pcode} AND bbox IS NOT NULL
+    ` as unknown as Record<string, unknown>[];
+
+    if (enfants.length > 0) {
+      let totalLon = 0, totalLat = 0, count = 0;
+      for (const e of enfants) {
+        const b = e.bbox as number[] | null;
+        if (b && b.length >= 4) {
+          totalLon += (b[0] + b[2]) / 2;
+          totalLat += (b[1] + b[3]) / 2;
+          count++;
+        }
+      }
+      if (count > 0) {
+        return reply.header('Cache-Control', 'public, max-age=3600').send({
+          success: true,
+          data: {
+            pcode, name, level,
+            bounds: null,
+            center: [totalLon / count, totalLat / count] as [number, number],
+          },
+        });
+      }
+    }
+
+    // Dernier recours : centroïde RDC
+    return reply.header('Cache-Control', 'public, max-age=60').send({
       success: true,
       data: {
-        pcode,
-        name:   String(r2.nameFr ?? r2.name_fr ?? pcode),
-        level:  Number(r2.level ?? 0),
-        bounds: [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
-        center: [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2],
+        pcode, name, level,
+        bounds: null,
+        center: [24.5, -3.0] as [number, number],
       },
     });
   });

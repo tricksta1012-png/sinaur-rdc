@@ -44,58 +44,39 @@ interface EpiZone {
   lat: number;
 }
 
-const ZONES: EpiZone[] = [
-  { id:'CD-IT-BN', zone_sante:'Bunia',     territoire:'Bunia',      province:'Ituri',     cas_confirmes:142, cas_suspects:89,  deces_confirmes:28, deces_suspects:34, statut:'ACTIF',  date_premier_cas:'2026-05-12', groupes_armes:{CODECO:true},       acces_humanitaire:'PARTIEL',   lng:30.25, lat:1.56  },
-  { id:'CD-IT-RW', zone_sante:'Rwampara',  territoire:'Bunia',      province:'Ituri',     cas_confirmes:98,  cas_suspects:67,  deces_confirmes:19, deces_suspects:28, statut:'ACTIF',  date_premier_cas:'2026-05-12', groupes_armes:{},                   acces_humanitaire:'BON',       lng:30.31, lat:1.48  },
-  { id:'CD-IT-MG', zone_sante:'Mongbwalu', territoire:'Djugu',      province:'Ituri',     cas_confirmes:76,  cas_suspects:54,  deces_confirmes:14, deces_suspects:22, statut:'ACTIF',  date_premier_cas:'2026-05-13', groupes_armes:{CODECO:true},       acces_humanitaire:'DIFFICILE', lng:30.02, lat:1.95  },
-  { id:'CD-IT-MB', zone_sante:'Mambasa',   territoire:'Mambasa',    province:'Ituri',     cas_confirmes:34,  cas_suspects:28,  deces_confirmes:8,  deces_suspects:11, statut:'ACTIF',  date_premier_cas:'2026-05-18', groupes_armes:{ADF:true},          acces_humanitaire:'BLOQUE',    lng:29.04, lat:1.20  },
-  { id:'CD-IT-KO', zone_sante:'Komanda',   territoire:'Mambasa',    province:'Ituri',     cas_confirmes:28,  cas_suspects:19,  deces_confirmes:5,  deces_suspects:9,  statut:'ACTIF',  date_premier_cas:'2026-05-20', groupes_armes:{ADF:true},          acces_humanitaire:'BLOQUE',    lng:29.74, lat:1.43  },
-  { id:'CD-IT-NY', zone_sante:'Nyankunde', territoire:'Irumu',      province:'Ituri',     cas_confirmes:22,  cas_suspects:15,  deces_confirmes:4,  deces_suspects:7,  statut:'ACTIF',  date_premier_cas:'2026-05-21', groupes_armes:{},                   acces_humanitaire:'BON',       lng:30.42, lat:1.18  },
-  { id:'CD-IT-LO', zone_sante:'Logo',      territoire:'Aru',        province:'Ituri',     cas_confirmes:18,  cas_suspects:12,  deces_confirmes:3,  deces_suspects:5,  statut:'ACTIF',  date_premier_cas:'2026-05-28', groupes_armes:{},                   acces_humanitaire:'BON',       lng:30.75, lat:3.60  },
-  { id:'CD-IT-NI', zone_sante:'Nizi',      territoire:'Djugu',      province:'Ituri',     cas_confirmes:15,  cas_suspects:10,  deces_confirmes:3,  deces_suspects:4,  statut:'ACTIF',  date_premier_cas:'2026-05-29', groupes_armes:{CODECO:true},       acces_humanitaire:'DIFFICILE', lng:30.12, lat:2.10  },
-  { id:'CD-IT-AU', zone_sante:'Aungba',    territoire:'Aru',        province:'Ituri',     cas_confirmes:12,  cas_suspects:8,   deces_confirmes:2,  deces_suspects:3,  statut:'ACTIF',  date_premier_cas:'2026-05-31', groupes_armes:{},                   acces_humanitaire:'BON',       lng:30.52, lat:3.42  },
-  { id:'CD-NK-BT', zone_sante:'Butembo',   territoire:'Butembo',    province:'Nord-Kivu', cas_confirmes:32,  cas_suspects:24,  deces_confirmes:6,  deces_suspects:9,  statut:'ACTIF',  date_premier_cas:'2026-05-22', groupes_armes:{ADF:true},          acces_humanitaire:'PARTIEL',   lng:29.29, lat:0.13  },
-  { id:'CD-NK-BE', zone_sante:'Beni',      territoire:'Beni',       province:'Nord-Kivu', cas_confirmes:24,  cas_suspects:18,  deces_confirmes:4,  deces_suspects:7,  statut:'ACTIF',  date_premier_cas:'2026-05-23', groupes_armes:{ADF:true},          acces_humanitaire:'DIFFICILE', lng:29.47, lat:0.50  },
-  { id:'CD-NK-GO', zone_sante:'Goma',      territoire:'Nyiragongo', province:'Nord-Kivu', cas_confirmes:8,   cas_suspects:6,   deces_confirmes:1,  deces_suspects:2,  statut:'ACTIF',  date_premier_cas:'2026-05-26', groupes_armes:{M23_AFC:true},      acces_humanitaire:'PARTIEL',   lng:29.23, lat:-1.68 },
-  { id:'CD-NK-OI', zone_sante:'Oicha',     territoire:'Beni',       province:'Nord-Kivu', cas_confirmes:14,  cas_suspects:10,  deces_confirmes:3,  deces_suspects:4,  statut:'ACTIF',  date_premier_cas:'2026-05-25', groupes_armes:{ADF:true},          acces_humanitaire:'BLOQUE',    lng:29.52, lat:0.71  },
-  { id:'CD-SK-UV', zone_sante:'Uvira',     territoire:'Uvira',      province:'Sud-Kivu',  cas_confirmes:3,   cas_suspects:4,   deces_confirmes:0,  deces_suspects:1,  statut:'ALERTE', date_premier_cas:'2026-06-02', groupes_armes:{Twirwaneho:true},   acces_humanitaire:'DIFFICILE', lng:29.13, lat:-3.39 },
-];
+interface TsPoint { date: string; cas: number; }
 
-const TIMESERIES = [
-  { date:'15 mai',  cas:8   },
-  { date:'17 mai',  cas:10  },
-  { date:'20 mai',  cas:51  },
-  { date:'23 mai',  cas:80  },
-  { date:'27 mai',  cas:140 },
-  { date:'31 mai',  cas:282 },
-  { date:'8 juin',  cas:515 },
-];
+const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
-function buildGeojson(zones: EpiZone[]): GeoJSON.FeatureCollection {
-  return {
-    type: 'FeatureCollection',
-    features: zones.map(z => ({
-      type: 'Feature' as const,
-      geometry: { type: 'Point' as const, coordinates: [z.lng, z.lat] },
-      properties: {
-        id: z.id,
-        zone_sante: z.zone_sante,
-        territoire: z.territoire,
-        province: z.province,
-        cas_confirmes: z.cas_confirmes,
-        cas_suspects: z.cas_suspects,
-        deces_confirmes: z.deces_confirmes,
-        deces_suspects: z.deces_suspects,
-        statut: z.statut,
-        date_premier_cas: z.date_premier_cas,
-        groupes_armes: JSON.stringify(z.groupes_armes),
-        has_armed_groups: Object.values(z.groupes_armes).some(Boolean),
-        armed_groups_label: Object.entries(z.groupes_armes).filter(([,v])=>v).map(([k])=>k.replace('_','/')).join(', '),
-        acces_humanitaire: z.acces_humanitaire,
-        acces_bloque: z.acces_humanitaire === 'BLOQUE',
-      },
-    })),
-  };
+function featuresToZones(fc: GeoJSON.FeatureCollection | undefined): EpiZone[] {
+  if (!fc?.features) return [];
+  return fc.features.flatMap(f => {
+    const p = f.properties ?? {};
+    if (f.geometry?.type !== 'Point') return [];
+    const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
+    let groupes_armes: Record<string, boolean> = {};
+    try {
+      groupes_armes = typeof p.groupes_armes === 'string'
+        ? JSON.parse(p.groupes_armes)
+        : (p.groupes_armes ?? {});
+    } catch {}
+    return [{
+      id:               String(p.id ?? p.p_code ?? ''),
+      zone_sante:       String(p.zone_sante ?? ''),
+      territoire:       String(p.territoire ?? ''),
+      province:         String(p.province ?? ''),
+      cas_confirmes:    Number(p.cas_confirmes ?? 0),
+      cas_suspects:     Number(p.cas_suspects ?? 0),
+      deces_confirmes:  Number(p.deces_confirmes ?? 0),
+      deces_suspects:   Number(p.deces_suspects ?? 0),
+      statut:           (p.statut ?? 'ACTIF') as EpiZone['statut'],
+      date_premier_cas: String(p.date_premier_cas ?? ''),
+      groupes_armes,
+      acces_humanitaire:(p.acces_humanitaire ?? 'BON') as EpiZone['acces_humanitaire'],
+      lng,
+      lat,
+    }];
+  });
 }
 
 // ── DISEASE CARDS CONFIG ──────────────────────────────────────────────────────
@@ -465,14 +446,17 @@ function ProtocolModal({ onClose }: { onClose: () => void }) {
 
 // ── EPIDEMIC CURVE (mini SVG) ─────────────────────────────────────────────────
 
-function EpiCurve() {
-  const maxCas = Math.max(...TIMESERIES.map(t => t.cas));
+function EpiCurve({ data }: { data: TsPoint[] }) {
+  if (data.length < 2) return (
+    <div className="px-3 pb-3 text-[9px] text-cc-600 font-mono animate-pulse">Chargement de la courbe…</div>
+  );
+  const maxCas = Math.max(...data.map(t => t.cas));
   const W = 280; const H = 80; const PAD = { t:8, b:20, l:28, r:8 };
   const chartW = W - PAD.l - PAD.r;
   const chartH = H - PAD.t - PAD.b;
 
-  const points = TIMESERIES.map((t, i) => {
-    const x = PAD.l + (i / (TIMESERIES.length - 1)) * chartW;
+  const points = data.map((t, i) => {
+    const x = PAD.l + (i / (data.length - 1)) * chartW;
     const y = PAD.t + chartH - (t.cas / maxCas) * chartH;
     return { x, y, ...t };
   });
@@ -484,24 +468,21 @@ function EpiCurve() {
     `L ${points[points.length-1].x},${PAD.t + chartH}`,
     'Z',
   ].join(' ');
+  const yLabels = [0, Math.round(maxCas / 2), maxCas];
 
   return (
     <div className="px-3 pb-3">
       <div className="text-[9px] font-mono text-cc-500 uppercase mb-2">Courbe épidémique — Cas confirmés cumulés</div>
       <svg width={W} height={H} className="w-full">
-        {/* Area fill */}
         <path d={area} fill="rgba(220,38,38,0.15)" />
-        {/* Line */}
         <polyline points={polyline} fill="none" stroke="#dc2626" strokeWidth="1.5" />
-        {/* Points */}
         {points.map((p,i) => (
           <g key={i}>
             <circle cx={p.x} cy={p.y} r="3" fill="#dc2626" stroke="#0d1b2a" strokeWidth="1" />
             <text x={p.x} y={H - PAD.b + 10} textAnchor="middle" fontSize="7" fill="#6b7280">{p.date.split(' ')[0]}</text>
           </g>
         ))}
-        {/* Y axis labels */}
-        {[0, 250, 515].map(v => {
+        {yLabels.map(v => {
           const y = PAD.t + chartH - (v / maxCas) * chartH;
           return (
             <text key={v} x={PAD.l - 3} y={y + 3} textAnchor="end" fontSize="7" fill="#6b7280">{v}</text>
@@ -625,12 +606,48 @@ export function EpidemicPage() {
   const [showProtocol, setShowProtocol] = useState(false);
   const [leftPanel, setLeftPanel]       = useState<LeftPanel>('maladies');
 
+  // ── Live queries ──────────────────────────────────────────────────────────
+
+  const { data: zonesGeoJson, dataUpdatedAt: zonesTs, isFetching: zonesFetching } = useQuery({
+    queryKey: ['epidemie-zones', 'EBOLA'],
+    queryFn: () => apiClient.get<GeoJSON.FeatureCollection>('/epidemie/zones?maladie=EBOLA').then(r => r.data),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+    staleTime: 20_000,
+  });
+
+  const { data: tsRaw } = useQuery({
+    queryKey: ['epidemie-timeseries', 'EBOLA'],
+    queryFn: () => apiClient.get<{ maladie: string; data: { date_rapport: string; cas_confirmes_cumul: number }[] }>('/epidemie/timeseries?maladie=EBOLA').then(r => r.data),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    staleTime: 50_000,
+  });
+
+  // Frontières provinciales depuis l'API geo (once)
+  const { data: geoProvinces } = useQuery({
+    queryKey: ['geo-provinces-epidemic'],
+    queryFn: () => apiClient.get<any>('/geo/divisions?level=1&withGeometry=true').then(r => r.data),
+    staleTime: Infinity,
+  });
+
+  // ── Données dérivées ───────────────────────────────────────────────────────
+
+  const zones = useMemo(() => featuresToZones(zonesGeoJson), [zonesGeoJson]);
+  const geojson: GeoJSON.FeatureCollection = zonesGeoJson ?? EMPTY_FC;
+
   const selectedZone = useMemo(
-    () => popup ? ZONES.find(z => z.id === popup.zoneId) ?? null : null,
-    [popup],
+    () => popup ? zones.find(z => z.id === popup.zoneId) ?? null : null,
+    [popup, zones],
   );
 
-  const geojson = useMemo(() => buildGeojson(ZONES), []);
+  const tsData: TsPoint[] = useMemo(() =>
+    (tsRaw?.data ?? []).map(r => ({
+      date: new Date(r.date_rapport + 'T00:00:00Z').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
+      cas: r.cas_confirmes_cumul,
+    })),
+    [tsRaw],
+  );
 
   const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     const features = e.features;
@@ -651,16 +668,9 @@ export function EpidemicPage() {
   // Cas confirmés par province (pour colorer les polygones)
   const provinceCases = useMemo(() => {
     const map: Record<string, number> = {};
-    for (const z of ZONES) map[z.province] = (map[z.province] ?? 0) + z.cas_confirmes;
+    for (const z of zones) map[z.province] = (map[z.province] ?? 0) + z.cas_confirmes;
     return map;
-  }, []);
-
-  // Frontières provinciales depuis l'API geo
-  const { data: geoProvinces } = useQuery({
-    queryKey: ['geo-provinces-epidemic'],
-    queryFn: () => apiClient.get<any>('/geo/divisions?level=1&withGeometry=true').then(r => r.data),
-    staleTime: Infinity,
-  });
+  }, [zones]);
 
   const provincesGeojson = useMemo((): GeoJSON.FeatureCollection => ({
     type: 'FeatureCollection',
@@ -673,9 +683,15 @@ export function EpidemicPage() {
       })),
   }), [geoProvinces, provinceCases]);
 
-  const totalCas   = ZONES.reduce((s,z) => s + z.cas_confirmes, 0);
-  const totalDeces = ZONES.reduce((s,z) => s + z.deces_confirmes, 0);
-  const letalite   = ((totalDeces / totalCas) * 100).toFixed(1);
+  const totalCas      = zones.reduce((s,z) => s + z.cas_confirmes, 0);
+  const totalDeces    = zones.reduce((s,z) => s + z.deces_confirmes, 0);
+  const letalite      = totalCas > 0 ? ((totalDeces / totalCas) * 100).toFixed(1) : '0';
+  const provinceCount = Object.values(provinceCases).filter(v => v > 0).length;
+
+  const diseasesWithLive = useMemo(() => DISEASES.map(d => {
+    if (d.id !== 'EBOLA_BUNDIBUGYO' || zones.length === 0) return d;
+    return { ...d, zones_actives: zones.length, cas_confirmes: totalCas, deces: totalDeces };
+  }), [zones, totalCas, totalDeces]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -694,17 +710,24 @@ export function EpidemicPage() {
         {/* KPIs */}
         <div className="flex items-center gap-4 shrink-0">
           {[
-            { v: totalCas.toLocaleString('fr-FR'),  l: 'cas confirmés', cls: 'text-red-200'  },
-            { v: String(totalDeces),                l: 'décès',         cls: 'text-gray-200' },
-            { v: `${letalite}%`,                   l: 'létalité',      cls: 'text-orange-300'},
-            { v: '25',                             l: 'zones',         cls: 'text-yellow-200'},
-            { v: '3',                              l: 'provinces',     cls: 'text-blue-200'  },
+            { v: totalCas.toLocaleString('fr-FR'),   l: 'cas confirmés', cls: 'text-red-200'   },
+            { v: String(totalDeces),                 l: 'décès',         cls: 'text-gray-200'  },
+            { v: `${letalite}%`,                    l: 'létalité',      cls: 'text-orange-300' },
+            { v: String(zones.length || '…'),        l: 'zones',         cls: 'text-yellow-200'},
+            { v: String(provinceCount || '…'),       l: 'provinces',     cls: 'text-blue-200'  },
           ].map(k => (
             <div key={k.l} className="text-center hidden sm:block">
               <div className={`text-base font-bold leading-tight ${k.cls}`}>{k.v}</div>
               <div className="text-[8px] text-red-600 font-mono uppercase">{k.l}</div>
             </div>
           ))}
+          {/* Indicateur de fraîcheur */}
+          {zonesTs > 0 && (
+            <div className="hidden sm:flex items-center gap-1 text-[9px] text-red-700 font-mono border-l border-red-900 pl-3 shrink-0" title="Dernière synchronisation avec la base de données">
+              <span className={zonesFetching ? 'animate-spin' : 'animate-pulse'}>⟳</span>
+              <span>{new Date(zonesTs).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -738,7 +761,7 @@ export function EpidemicPage() {
 
             {leftPanel === 'maladies' && (
               <div className="p-2 space-y-2">
-                {DISEASES.map(d => (
+                {diseasesWithLive.map(d => (
                   <DiseaseCard
                     key={d.id}
                     d={d}
@@ -831,10 +854,10 @@ export function EpidemicPage() {
             {leftPanel === 'zones' && (
               <div>
                 <div className="px-3 py-2 border-b border-cc-700 flex items-center justify-between">
-                  <span className="text-[10px] font-mono text-cc-500 uppercase">{ZONES.length} zones affectées</span>
+                  <span className="text-[10px] font-mono text-cc-500 uppercase">{zones.length} zones affectées</span>
                   <span className="text-[9px] text-cc-600">Cliquez pour centrer</span>
                 </div>
-                {[...ZONES].sort((a,b) => b.cas_confirmes - a.cas_confirmes).map(z => (
+                {[...zones].sort((a,b) => b.cas_confirmes - a.cas_confirmes).map(z => (
                   <ZoneItem
                     key={z.id}
                     z={z}
@@ -847,7 +870,7 @@ export function EpidemicPage() {
 
             {leftPanel === 'courbe' && (
               <div className="p-2 space-y-3">
-                <EpiCurve />
+                <EpiCurve data={tsData} />
                 <div className="px-1 space-y-1.5">
                   <div className="text-[9px] font-mono text-cc-500 uppercase mb-2">Facteurs aggravants</div>
                   {[
