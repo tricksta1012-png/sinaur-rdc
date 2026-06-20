@@ -980,6 +980,9 @@ export function ConflitPage() {
   const [selectedId, setSelectedId]             = useState<string | null>(null);
   const [selectedCorridorId, setCorridorId]     = useState<string | null>(null);
   const [activeTab, setActiveTab]               = useState<SidebarTab>('incidents');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [warnOpen, setWarnOpen]                 = useState(true);
+  const [predOpen, setPredOpen]                 = useState(false);
   const [replayMode, setReplayMode]             = useState(false);
   const [replayIndex, setReplayIndex]           = useState(0);
   const [expandedActorId, setExpandedActorId]   = useState<string | null>(null);
@@ -1542,10 +1545,10 @@ export function ConflitPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full">
+    <div className="flex h-full relative">
 
       {/* ── Left Sidebar ────────────────────────────────────────────── */}
-      <div className="w-80 shrink-0 border-r border-cc-700 flex flex-col bg-cc-900 overflow-hidden">
+      <div className={`shrink-0 border-r border-cc-700 flex flex-col bg-cc-900 overflow-hidden transition-[width] duration-200 ${sidebarCollapsed ? 'w-0 border-r-0' : 'w-80'}`}>
 
         {/* Header */}
         <div className="px-4 pt-3 pb-2.5 border-b border-cc-700 shrink-0">
@@ -1652,93 +1655,129 @@ export function ConflitPage() {
           )}
         </div>
 
-        {/* Early warnings */}
-        {earlyWarnings.length > 0 && (
-          <div className="px-3 py-2.5 border-b border-cc-700 shrink-0">
-            <div className="text-[10px] font-mono text-orange-400 uppercase tracking-wider mb-2">
-              ⚠️ Système d'alerte précoce
-            </div>
-            <div className="space-y-1.5">
-              {earlyWarnings.slice(0, 3).map(w => (
-                <div
-                  key={w.id}
-                  className={`rounded-lg px-2.5 py-1.5 border ${WARN_BG[w.level]} ${WARN_BORDER[w.level]}`}
-                >
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[11px] text-gray-200 font-medium truncate">{w.province}</span>
-                    <span className={`text-[9px] font-mono font-bold ml-1 shrink-0 ${WARN_TEXT[w.level]}`}
-                      style={{ color: WARN_COLOR[w.level] }}>
-                      {WARN_LABEL[w.level]}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-cc-400">{w.message}</div>
-                  {w.indicators.length > 0 && (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {w.indicators.slice(0, 2).map((ind, i) => (
-                        <span key={i} className="text-[9px] bg-cc-800 text-cc-400 px-1.5 py-0.5 rounded font-mono">{ind}</span>
-                      ))}
+        {/* ── ZONE 2 — Alertes + Prédictions (défile si trop long) ── */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+
+          {/* Alertes précoces — pliable */}
+          {earlyWarnings.length > 0 && (
+            <div className="border-b border-cc-700">
+              <button
+                onClick={() => setWarnOpen(v => !v)}
+                className="w-full px-3 py-2 flex items-center justify-between hover:bg-cc-800/50 transition-colors"
+              >
+                <span className="text-[10px] font-mono text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
+                  ⚠️ Alerte précoce
+                  <span className="bg-orange-900/60 border border-orange-800 px-1.5 py-px rounded text-[9px] text-orange-300 font-bold">
+                    {earlyWarnings.length}
+                  </span>
+                </span>
+                <span className={`text-cc-500 text-[9px] transition-transform duration-150 ${warnOpen ? 'rotate-90' : ''}`}>▶</span>
+              </button>
+              {warnOpen && (
+                <div className="px-3 pb-2.5 space-y-1.5">
+                  {earlyWarnings.slice(0, 3).map(w => (
+                    <div
+                      key={w.id}
+                      className={`rounded-lg px-2.5 py-1.5 border ${WARN_BG[w.level]} ${WARN_BORDER[w.level]}`}
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[11px] text-gray-200 font-medium truncate">{w.province}</span>
+                        <span className={`text-[9px] font-mono font-bold ml-1 shrink-0 ${WARN_TEXT[w.level]}`}
+                          style={{ color: WARN_COLOR[w.level] }}>
+                          {WARN_LABEL[w.level]}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-cc-400">{w.message}</div>
+                      {w.indicators.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {w.indicators.slice(0, 2).map((ind, i) => (
+                            <span key={i} className="text-[9px] bg-cc-800 text-cc-400 px-1.5 py-0.5 rounded font-mono">{ind}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
+                  ))}
+                  {earlyWarnings.length > 3 && (
+                    <div className="text-[9px] text-cc-600 font-mono text-center">+{earlyWarnings.length - 3} alertes</div>
                   )}
                 </div>
-              ))}
-              {earlyWarnings.length > 3 && (
-                <div className="text-[9px] text-cc-600 font-mono text-center">+{earlyWarnings.length - 3} alertes supplémentaires</div>
               )}
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Displacement predictions */}
-        {predictions.length > 0 && (
-          <div className="px-3 py-2.5 border-b border-cc-700 shrink-0">
-            <div className="text-[10px] font-mono text-orange-500 uppercase tracking-wider mb-2">
-              🏃 Prédictions de déplacement
+          {/* Prédictions déplacement — pliable */}
+          {predictions.length > 0 && (
+            <div className="border-b border-cc-700">
+              <button
+                onClick={() => setPredOpen(v => !v)}
+                className="w-full px-3 py-2 flex items-center justify-between hover:bg-cc-800/50 transition-colors"
+              >
+                <span className="text-[10px] font-mono text-orange-500 uppercase tracking-wider flex items-center gap-1.5">
+                  🏃 Prédictions déplacement
+                  <span className="bg-cc-800 border border-cc-700 px-1.5 py-px rounded text-[9px] text-cc-400 font-bold">
+                    {predictions.length}
+                  </span>
+                </span>
+                <span className={`text-cc-500 text-[9px] transition-transform duration-150 ${predOpen ? 'rotate-90' : ''}`}>▶</span>
+              </button>
+              {predOpen && (
+                <div className="px-3 pb-2.5 space-y-1.5">
+                  {predictions
+                    .sort((a, b) => b.displaced_estimate_high - a.displaced_estimate_high)
+                    .slice(0, 3)
+                    .map(p => (
+                      <div key={p.prediction_id} className="bg-cc-800/80 rounded-lg px-2.5 py-1.5">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[11px] text-gray-200 font-medium">{p.province}</span>
+                          <span className={`text-[9px] font-mono ${p.confidence >= 0.7 ? 'text-yellow-400' : 'text-cc-500'}`}>
+                            {Math.round(p.confidence * 100)}%
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-cc-400 font-mono">
+                          {(p.displaced_estimate_low / 1000).toFixed(0)}k–{(p.displaced_estimate_high / 1000).toFixed(0)}k pers.
+                        </div>
+                        <div className="mt-1 h-0.5 bg-cc-700 rounded-full overflow-hidden">
+                          <div className="h-full bg-orange-500 rounded-full" style={{ width: `${p.confidence * 100}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
-            <div className="space-y-1.5">
-              {predictions
-                .sort((a, b) => b.displaced_estimate_high - a.displaced_estimate_high)
-                .slice(0, 3)
-                .map(p => (
-                  <div key={p.prediction_id} className="bg-cc-800/80 rounded-lg px-2.5 py-1.5">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[11px] text-gray-200 font-medium">{p.province}</span>
-                      <span className={`text-[9px] font-mono ${p.confidence >= 0.7 ? 'text-yellow-400' : 'text-cc-500'}`}>
-                        {Math.round(p.confidence * 100)}%
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-cc-400 font-mono">
-                      {(p.displaced_estimate_low / 1000).toFixed(0)}k–{(p.displaced_estimate_high / 1000).toFixed(0)}k pers.
-                    </div>
-                    <div className="mt-1 h-0.5 bg-cc-700 rounded-full overflow-hidden">
-                      <div className="h-full bg-orange-500 rounded-full" style={{ width: `${p.confidence * 100}%` }} />
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
+          )}
 
-        {/* Tab bar */}
-        <div className="flex border-b border-cc-700 shrink-0">
-          {([
-            { key: 'incidents', label: `Incidents (${events.length})` },
-            { key: 'threats',   label: 'Menaces'   },
-            { key: 'acteurs',   label: `Acteurs (${actors.length})` },
-          ] as { key: SidebarTab; label: string }[]).map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex-1 py-1.5 text-[10px] font-mono transition-colors border-b-2 ${
-                activeTab === tab.key
-                  ? 'text-red-300 border-red-600'
-                  : 'text-cc-500 border-transparent hover:text-gray-300'
-              }`}
-            >{tab.label}</button>
-          ))}
         </div>
+        {/* ── FIN ZONE 2 ── */}
 
-        {/* Tab content */}
-        <div className="flex-1 overflow-y-auto flex flex-col">
+        {/* ── ZONE 3 — Onglets ancrés en bas avec défilement propre ── */}
+        <div className="flex flex-col border-t border-cc-700" style={{ maxHeight: '42vh', minHeight: '160px' }}>
+
+          {/* Tab bar — plus grand, avec badges */}
+          <div className="flex shrink-0 bg-cc-900">
+            {([
+              { key: 'incidents', label: 'Incidents',  count: events.length             },
+              { key: 'threats',   label: 'Menaces',    count: threatPredictions.length  },
+              { key: 'acteurs',   label: 'Acteurs',    count: actors.length             },
+            ] as { key: SidebarTab; label: string; count: number }[]).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex-1 py-2.5 text-[10px] font-mono transition-colors border-b-2 flex items-center justify-center gap-1.5 ${
+                  activeTab === tab.key
+                    ? 'text-red-300 border-red-600 bg-red-950/20'
+                    : 'text-cc-500 border-transparent hover:text-gray-300 hover:bg-cc-800/40'
+                }`}
+              >
+                {tab.label}
+                <span className={`text-[9px] px-1.5 py-px rounded-full font-bold leading-none ${
+                  activeTab === tab.key ? 'bg-red-600 text-white' : 'bg-cc-700 text-cc-400'
+                }`}>{tab.count}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content — défile dans la zone */}
+          <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
 
           {/* ── Incidents tab ── */}
           {activeTab === 'incidents' && (
@@ -2073,7 +2112,10 @@ export function ConflitPage() {
               })}
             </div>
           )}
+          </div>
+          {/* ── FIN tab content ── */}
         </div>
+        {/* ── FIN ZONE 3 ── */}
 
         {/* Disclaimer */}
         <div className="px-3 py-2 border-t border-cc-700 shrink-0 bg-red-950/20">
@@ -2083,6 +2125,16 @@ export function ConflitPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Toggle panneau ── */}
+      <button
+        onClick={() => setSidebarCollapsed(v => !v)}
+        title={sidebarCollapsed ? 'Afficher le panneau' : 'Masquer le panneau'}
+        className="absolute z-20 top-1/2 -translate-y-1/2 bg-cc-800 hover:bg-cc-700 border border-cc-600 text-cc-400 hover:text-gray-200 transition-all duration-200 rounded-r px-1 py-4 text-[10px] font-mono"
+        style={{ left: sidebarCollapsed ? 0 : '320px' }}
+      >
+        {sidebarCollapsed ? '▶' : '◀'}
+      </button>
 
       {/* ── Map ──────────────────────────────────────────────────────── */}
       <div className="flex-1 relative">
