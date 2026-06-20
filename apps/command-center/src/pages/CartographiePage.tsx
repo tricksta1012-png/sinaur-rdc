@@ -45,6 +45,14 @@ interface EntityBounds {
   center: [number, number];
 }
 
+interface SearchResult {
+  pcode: string;
+  name: string;
+  level: number;
+  parentPcode: string | null;
+  population: number | null;
+}
+
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 
 const NIVEAU_LABELS: Record<number, string> = {
@@ -362,6 +370,12 @@ export function CartographiePage() {
   const [colorMode, setColorMode]     = useState<ColorMode>('statut');
   const [showCouverture, setShowCouverture] = useState(false);
 
+  // Search state
+  const [searchQuery, setSearchQuery]           = useState('');
+  const [debouncedSearch, setDebouncedSearch]   = useState('');
+  const [searchFocused, setSearchFocused]       = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
   // Zoom state
   const [survMode, setSurvMode]   = useState(false);
   const [survIndex, setSurvIndex] = useState(0);
@@ -387,6 +401,34 @@ export function CartographiePage() {
         )
         .then(r => r.data),
     staleTime: 5 * 60 * 1000,
+  });
+
+  // Debounce search input
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  // Close search dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node))
+        setSearchFocused(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const { data: searchResults } = useQuery({
+    queryKey: ['geo-search', debouncedSearch],
+    queryFn: () =>
+      apiClient
+        .get<{ success: boolean; data: SearchResult[] }>(
+          `/geo/divisions?search=${encodeURIComponent(debouncedSearch)}&withGeometry=false`
+        )
+        .then(r => r.data.data?.slice(0, 15) ?? []),
+    enabled: debouncedSearch.length >= 2,
+    staleTime: 60_000,
   });
 
   const { data: couvertureData } = useQuery({
@@ -624,6 +666,30 @@ export function CartographiePage() {
     }
   }, [zoomToEntityDebounced]);
 
+  const navigerVersResult = useCallback((result: SearchResult) => {
+    setLevel(result.level);
+    setParentPcode(result.parentPcode ?? null);
+    setBreadcrumb([
+      { pcode: null, name: 'RDC', level: 0 },
+      { pcode: result.pcode, name: result.name, level: result.level },
+    ]);
+    setSelected({
+      pcode: result.pcode,
+      name: result.name,
+      level: result.level,
+      parent_pcode: result.parentPcode ?? null,
+      population: result.population ?? null,
+      responsable_nom: null,
+      responsable_titre: null,
+      responsable_contact: null,
+      statut: 'NORMAL',
+      nb_incidents: 0,
+    });
+    setSearchQuery('');
+    setSearchFocused(false);
+    void zoomToPcode(result.pcode, 310);
+  }, [zoomToPcode]);
+
   const remonter = useCallback(() => {
     if (breadcrumb.length <= 1) return;
     const idx = breadcrumb.length - 2;
@@ -644,10 +710,54 @@ export function CartographiePage() {
       {/* ── HEADER ── */}
       <div className="bg-cc-900 border-b border-cc-700 px-4 py-2.5 flex items-center gap-3 shrink-0">
         <span className="text-lg">🗺️</span>
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 hidden sm:block">
           <div className="text-white font-bold text-sm leading-tight">Cartographie Administrative</div>
           <div className="text-cc-500 text-[10px] font-mono">Qui gère quoi sur le territoire de la RDC</div>
         </div>
+
+        {/* ── Recherche globale ── */}
+        <div ref={searchRef} className="relative flex-1 max-w-xs mx-2">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            placeholder="Rechercher une division…"
+            className="w-full bg-cc-800 border border-cc-700 rounded-lg px-3 py-1.5 text-[11px] text-gray-200 placeholder-cc-600 font-mono focus:outline-none focus:border-sinaur-600 transition-colors"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => { setSearchQuery(''); setSearchFocused(false); }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-cc-600 hover:text-gray-300 text-[10px]"
+            >✕</button>
+          )}
+          {searchFocused && searchResults && searchResults.length > 0 && (
+            <div className="absolute top-full left-0 mt-1 w-full min-w-[280px] bg-cc-800 border border-cc-700 rounded-lg shadow-xl z-50 overflow-hidden max-h-72 overflow-y-auto">
+              {searchResults.map(r => (
+                <button
+                  key={r.pcode}
+                  onMouseDown={() => navigerVersResult(r)}
+                  className="w-full px-3 py-2 text-left hover:bg-cc-700 flex items-center gap-2 border-b border-cc-700/40 last:border-0"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-white font-medium truncate">{r.name}</div>
+                    <div className="text-[9px] font-mono text-cc-500">
+                      {NIVEAU_LABELS[r.level] ?? `Niveau ${r.level}`} · {r.pcode}
+                    </div>
+                  </div>
+                  {r.population != null && r.population > 0 && (
+                    <div className="text-[9px] font-mono text-cc-600 shrink-0">
+                      {r.population >= 1000
+                        ? `${Math.round(r.population / 1000)}k`
+                        : r.population} hab.
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="flex items-center gap-2 shrink-0">
           {/* Surveillance badge */}
           {survMode && (

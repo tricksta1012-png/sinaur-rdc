@@ -1,6 +1,6 @@
 """
-Import des quartiers/groupements (niveau 4) depuis OpenStreetMap via Overpass API.
-Source : OSM place=suburb|neighbourhood|quarter pour chaque province RDC.
+Import des quartiers/groupements/villages (niveau 4) depuis OpenStreetMap via Overpass API.
+Source : OSM place=suburb|neighbourhood|quarter|village|hamlet pour chaque province RDC.
 Rattachement : ST_Contains contre le niveau 3 (commune/zone de sante) en base.
 
 Usage :
@@ -18,12 +18,18 @@ DATABASE_URL = os.environ['DATABASE_URL']
 OVERPASS    = "https://overpass-api.de/api/interpreter"
 HEADERS     = {"User-Agent": "SINAUR-RDC/1.0 (plateforme humanitaire RDC; contact@sinaur-rdc.cd)"}
 
-# Mots-cles identifies comme du bruit (pas de vrais quartiers)
+# Mots-cles identifies comme du bruit (pas de vrais quartiers/villages)
 BRUIT = {
+    # Infrastructures urbaines
     'rond point', 'echangeur', 'television', 'abatoire', 'bureau du quartier',
     'bureau du', 'regideso', 'cite oms', 'belle vue', 'le concorde', 'donbosco',
     'salongo', 'cimetiere', 'marche central', 'hopital', 'eglise', 'ecole',
     'stade', 'aeroport', 'universite', 'campus', 'camp militaire',
+    # Zones generiques rurales
+    'carriere', 'plantation', 'ferme', 'mine', 'chantier', 'foret', 'savane',
+    'riviere', 'fleuve', 'lac', 'montagne', 'colline', 'plaine',
+    # Noms trop generiques
+    'zone', 'area', 'quartier inconnu', 'unknown', 'sans nom', 'village',
 }
 
 # ── Utilitaires ──────────────────────────────────────────────────────────────
@@ -46,8 +52,8 @@ def overpass_query(bbox_str: str, timeout: int = 180) -> list:
     query = f"""
 [out:json][timeout:{timeout}][maxsize:536870912];
 (
-  node["place"~"suburb|neighbourhood|quarter"]({bbox_str});
-  way["place"~"suburb|neighbourhood|quarter"]({bbox_str});
+  node["place"~"suburb|neighbourhood|quarter|village|hamlet"]({bbox_str});
+  way["place"~"suburb|neighbourhood|quarter|village|hamlet"]({bbox_str});
 );
 out center;
 """
