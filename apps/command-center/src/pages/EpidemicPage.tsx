@@ -688,10 +688,20 @@ export function EpidemicPage() {
   const letalite      = totalCas > 0 ? ((totalDeces / totalCas) * 100).toFixed(1) : '0';
   const provinceCount = Object.values(provinceCases).filter(v => v > 0).length;
 
+  const liveUpdateDate = zonesTs > 0
+    ? new Date(zonesTs).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : null;
+
   const diseasesWithLive = useMemo(() => DISEASES.map(d => {
     if (d.id !== 'EBOLA_BUNDIBUGYO' || zones.length === 0) return d;
-    return { ...d, zones_actives: zones.length, cas_confirmes: totalCas, deces: totalDeces };
-  }), [zones, totalCas, totalDeces]);
+    return {
+      ...d,
+      zones_actives: zones.length,
+      cas_confirmes: totalCas,
+      deces: totalDeces,
+      ...(liveUpdateDate ? { source: 'DB live', maj: liveUpdateDate } : {}),
+    };
+  }), [zones, totalCas, totalDeces, liveUpdateDate]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
