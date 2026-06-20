@@ -53,12 +53,12 @@ async def save_raw_events(events: list[dict]) -> int:
                              source_reliability, needs_corroboration, raw_payload)
                         VALUES
                             (:source, :external_id, :province, :p_code, :territoire,
-                             :event_type, :event_date::timestamptz, :severity, :displacement_risk,
+                             :event_type, CAST(:event_date AS timestamptz), :severity, :displacement_risk,
                              CASE WHEN :geom IS NULL THEN NULL
                                   ELSE ST_GeomFromEWKT(:geom) END,
                              :fatalities_low, :fatalities_high,
-                             :actors_raw::jsonb, :raw_notes, :source_url,
-                             :source_reliability, :needs_corroboration, :raw_payload::jsonb)
+                             CAST(:actors_raw AS jsonb), :raw_notes, :source_url,
+                             :source_reliability, :needs_corroboration, CAST(:raw_payload AS jsonb))
                         ON CONFLICT (source, external_id) DO NOTHING
                     """),
                     {
@@ -128,13 +128,13 @@ async def upsert_corroborated(events: list[dict]) -> int:
                              fatalities_reported, fatalities_low, fatalities_high,
                              actors_consolidated, coordinates, raw_event_ids)
                         VALUES
-                            (:cluster_hash, :province, :event_type, :event_date::timestamptz,
+                            (:cluster_hash, :province, :event_type, CAST(:event_date AS timestamptz),
                              :severity, :displacement_risk,
-                             :sources_count, :sources_list::jsonb, :corroboration_score,
+                             :sources_count, CAST(:sources_list AS jsonb), :corroboration_score,
                              :corroboration_detail, :academic_concordance,
-                             :needs_corroboration, :contradictions::jsonb,
+                             :needs_corroboration, CAST(:contradictions AS jsonb),
                              :fatalities_reported, :fatalities_low, :fatalities_high,
-                             :actors_consolidated::jsonb, :coordinates::jsonb, '[]'::jsonb)
+                             CAST(:actors_consolidated AS jsonb), CAST(:coordinates AS jsonb), '[]'::jsonb)
                         ON CONFLICT (cluster_hash) DO UPDATE SET
                             sources_count        = EXCLUDED.sources_count,
                             sources_list         = EXCLUDED.sources_list,
