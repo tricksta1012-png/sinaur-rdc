@@ -653,15 +653,46 @@ export function EpidemicPage() {
     const features = e.features;
     if (!features || features.length === 0) { setPopup(null); return; }
     const f = features[0];
-    if (f.layer?.id === 'epidemic-circles') {
-      const id = String(f.properties?.id ?? '');
-      setPopup({ lng: e.lngLat.lng, lat: e.lngLat.lat, zoneId: id });
+    if (f.layer?.id !== 'epidemic-circles') return;
+
+    const id     = String(f.properties?.id ?? '');
+    const coords: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+    const openPopup = () => setPopup({ lng: coords[0], lat: coords[1], zoneId: id });
+
+    const map = mapRef.current?.getMap();
+    if (!map) { openPopup(); return; }
+
+    const { x: px, y: py } = map.project(coords);
+    const canvasW = map.getCanvas().clientWidth;
+
+    const POPUP_H  = 340;  // ZonePopupContent height + MapLibre offset
+    const BARRE_H  = 80;   // urgency banner + margin
+    const HALF_W   = 150;  // half of w-72 (288px / 2) + margin
+
+    // negative panY → content moves DOWN (more room above point)
+    const panY = py < POPUP_H + BARRE_H ? -(POPUP_H + BARRE_H - py) : 0;
+    // negative panX → content moves LEFT (point moves away from right edge)
+    const panX = px > canvasW - HALF_W  ? canvasW - HALF_W - px      : 0;
+
+    if (panX !== 0 || panY !== 0) {
+      map.panBy([panX, panY], { duration: 350 });
+      map.once('moveend', openPopup);
+    } else {
+      openPopup();
     }
   }, []);
 
   const flyToZone = useCallback((z: EpiZone) => {
-    mapRef.current?.getMap().flyTo({ center: [z.lng, z.lat], zoom: 9, duration: 700 });
-    setPopup({ lng: z.lng, lat: z.lat, zoneId: z.id });
+    const map = mapRef.current?.getMap();
+    if (!map) {
+      setPopup({ lng: z.lng, lat: z.lat, zoneId: z.id });
+      setLeftPanel('zones');
+      return;
+    }
+    // Fly with a downward offset so the zone renders in the lower half,
+    // leaving room above the point for the popup.
+    map.flyTo({ center: [z.lng, z.lat], zoom: 9, offset: [0, 120], duration: 700 });
+    map.once('moveend', () => setPopup({ lng: z.lng, lat: z.lat, zoneId: z.id }));
     setLeftPanel('zones');
   }, []);
 

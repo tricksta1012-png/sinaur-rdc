@@ -23,6 +23,17 @@
   .cc-btn-danger  { @apply cc-btn bg-red-800 hover:bg-red-700 text-white; }
 }
 
+/* ── MapLibre epidemic popup ─────────────────────────────────────────────── */
+.epidemic-popup .maplibregl-popup-content {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+}
+.epidemic-popup .maplibregl-popup-tip { border-top-color: #334155; }
+
 @media print {
   .no-print { display: none !important; }
   body { @apply bg-white text-gray-900; }
