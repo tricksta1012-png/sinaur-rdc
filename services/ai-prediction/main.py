@@ -114,6 +114,14 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("lifespan.epidemie_agent_start_failed", error=str(exc))
 
+    # Start OMS Scraper agent (WHO/ReliefWeb/HDX epidemic data — every 4h)
+    try:
+        from agents.epidemie.oms_scraper import oms_scraper_agent
+        await oms_scraper_agent.start()
+        logger.info("lifespan.oms_scraper_agent_started")
+    except Exception as exc:
+        logger.warning("lifespan.oms_scraper_agent_start_failed", error=str(exc))
+
     # Start AutoCrisisEngine (automatic crisis creation from multi-source reports)
     try:
         from agents.auto_crisis.engine import auto_crisis_engine
@@ -192,6 +200,12 @@ async def lifespan(app: FastAPI):
     try:
         from agents.epidemie.agent import epidemie_agent
         await epidemie_agent.stop()
+    except Exception:
+        pass
+
+    try:
+        from agents.epidemie.oms_scraper import oms_scraper_agent
+        await oms_scraper_agent.stop()
     except Exception:
         pass
 
@@ -474,6 +488,27 @@ async def agents_status():
         ))
     except Exception as exc:
         agents.append(_agent_entry("epidemie", "Surveillance Épidémique", "", status="error", metrics={"error": str(exc)}))
+
+    # Agent 8b — OMS Scraper
+    try:
+        from agents.epidemie.oms_scraper import oms_scraper_agent
+        st = oms_scraper_agent.get_status()
+        has_errors = bool(st.get("errors"))
+        agents.append(_agent_entry(
+            "oms_scraper", "Scraper OMS/ReliefWeb/HDX",
+            "Surveillance épidémique officielle — WHO DON RSS, ReliefWeb Health, OCHA HDX (cadence 4h)",
+            last_run=st.get("last_run"),
+            metrics={
+                "runs_total": st.get("runs_total", 0),
+                "timeseries_updated": st.get("timeseries_updated", 0),
+                "zones_updated": st.get("zones_updated", 0),
+                "last_results": st.get("last_results", {}),
+                "errors": st.get("errors", []),
+            },
+            status="degraded" if has_errors else "ok",
+        ))
+    except Exception as exc:
+        agents.append(_agent_entry("oms_scraper", "Scraper OMS/ReliefWeb/HDX", "", status="error", metrics={"error": str(exc)}))
 
     # Agent 9 — Conflit
     try:

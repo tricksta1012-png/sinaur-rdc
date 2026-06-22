@@ -23,6 +23,7 @@ interface EntityProps {
 }
 
 type ColorMode = 'statut' | 'sinistres';
+type FondType = 'plan' | 'satellite' | 'hybride';
 
 interface CouvertureRow {
   level: number;
@@ -82,25 +83,80 @@ const STATUT_STYLE: Record<string, { cls: string; dot: string }> = {
 // Full RDC bounds [west, south, east, north]
 const RDC_BOUNDS: [[number, number], [number, number]] = [[11.8, -13.5], [31.3, 5.4]];
 
-// ── MAP STYLE ─────────────────────────────────────────────────────────────────
+// ── FONDS DE CARTE ────────────────────────────────────────────────────────────
 
-const MAP_STYLE = {
-  version: 8 as const,
-  sources: {
-    osm: {
-      type: 'raster' as const,
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      attribution: '© OpenStreetMap',
+const FONDS_CARTE: Record<FondType, {
+  label: string;
+  icon: string;
+  darkText: boolean;  // true = halo sombre (sur fond clair/plan), false = halo blanc (sur fond sombre/sat)
+  style: object;
+}> = {
+  plan: {
+    label: 'Plan',
+    icon: '🗺',
+    darkText: true,
+    style: {
+      version: 8,
+      sources: {
+        osm: {
+          type: 'raster',
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '© OpenStreetMap',
+        },
+      },
+      layers: [
+        { id: 'osm', type: 'raster', source: 'osm' },
+      ],
     },
   },
-  layers: [
-    { id: 'bg',  type: 'background' as const, paint: { 'background-color': '#0d1b2a' } },
-    { id: 'osm', type: 'raster'     as const, source: 'osm', paint: {
-      'raster-saturation': -1, 'raster-brightness-max': 0.30,
-      'raster-opacity': 0.80,  'raster-contrast': 0.05,
-    }},
-  ],
+  satellite: {
+    label: 'Satellite',
+    icon: '🛰',
+    darkText: false,
+    style: {
+      version: 8,
+      sources: {
+        'esri-sat': {
+          type: 'raster',
+          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+          tileSize: 256,
+          attribution: '© Esri World Imagery',
+        },
+      },
+      layers: [
+        { id: 'bg',  type: 'background', paint: { 'background-color': '#000000' } },
+        { id: 'sat', type: 'raster', source: 'esri-sat' },
+      ],
+    },
+  },
+  hybride: {
+    label: 'Hybride',
+    icon: '📍',
+    darkText: false,
+    style: {
+      version: 8,
+      sources: {
+        'esri-sat': {
+          type: 'raster',
+          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+          tileSize: 256,
+          attribution: '© Esri World Imagery',
+        },
+        'carto-labels': {
+          type: 'raster',
+          tiles: ['https://a.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '© Carto',
+        },
+      },
+      layers: [
+        { id: 'bg',     type: 'background', paint: { 'background-color': '#000000' } },
+        { id: 'sat',    type: 'raster', source: 'esri-sat' },
+        { id: 'labels', type: 'raster', source: 'carto-labels', paint: { 'raster-opacity': 0.85 } },
+      ],
+    },
+  },
 };
 
 // ── UTILITIES ─────────────────────────────────────────────────────────────────
@@ -368,6 +424,8 @@ export function CartographiePage() {
   ]);
   const [selected, setSelected]       = useState<EntityProps | null>(null);
   const [colorMode, setColorMode]     = useState<ColorMode>('statut');
+  const [fondActuel, setFondActuel]   = useState<FondType>('plan');
+  const [mapZoom, setMapZoom]         = useState(4.5);
   const [showCouverture, setShowCouverture] = useState(false);
 
   // Search state
@@ -441,6 +499,17 @@ export function CartographiePage() {
     staleTime: 10 * 60 * 1000,
   });
 
+  // Tous les quartiers (niveau 4) — chargés une fois quand le zoom s'approche
+  const { data: quartiersGlobalRaw } = useQuery({
+    queryKey: ['quartiers-global'],
+    queryFn: () =>
+      apiClient
+        .get<GeoJSON.FeatureCollection>('/geo/cartographie?level=4')
+        .then(r => r.data),
+    enabled: mapZoom >= 11,
+    staleTime: 30 * 60 * 1000,
+  });
+
   // ── Derived data ───────────────────────────────────────────────────────────
 
   const entities: EntityProps[] = useMemo(() => {
@@ -474,6 +543,15 @@ export function CartographiePage() {
   }), [crisisFeatures]);
   const hasCrises = crisisFeatures.length > 0;
 
+  // Points quartiers globaux (niveau 4 sans drill-down) — visible zoom ≥ 12
+  const quartiersGlobalGeoJson = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: quartiersGlobalRaw?.features?.filter(f => f.properties?._is_point) ?? [],
+  }), [quartiersGlobalRaw]);
+
+  // Afficher l'overlay global seulement quand pas déjà en drill-down niveau 4
+  const showGlobalQuartiers = mapZoom >= 12 && level < 4 && quartiersGlobalGeoJson.features.length > 0;
+
   // ── Fill color expression ──────────────────────────────────────────────────
 
   const fillColorExpr = useMemo(() => {
@@ -492,6 +570,17 @@ export function CartographiePage() {
       15, '#7c2d12',
     ] as unknown as string;
   }, [colorMode]);
+
+  // ── Label style adaptatif selon fond de carte ─────────────────────────────
+
+  const isSatellite = fondActuel === 'satellite' || fondActuel === 'hybride';
+
+  const labelStyle = useMemo(() => {
+    if (fondActuel === 'plan') {
+      return { textColor: '#1e3a5f', haloColor: '#ffffff', haloWidth: 2.0 };
+    }
+    return { textColor: '#ffffff', haloColor: '#000000', haloWidth: 2.0 };
+  }, [fondActuel]);
 
   // ── Zoom functions ─────────────────────────────────────────────────────────
 
@@ -657,7 +746,10 @@ export function CartographiePage() {
       return;
     }
     const f = features[0];
-    if (f.layer?.id === 'carto-fill' || f.layer?.id === 'carto-outline' || f.layer?.id === 'carto-points') {
+    if (
+      f.layer?.id === 'carto-fill' || f.layer?.id === 'carto-outline' ||
+      f.layer?.id === 'carto-points' || f.layer?.id === 'quartiers-globe-points'
+    ) {
       const props = f.properties as EntityProps;
       if (props?.pcode) {
         setSelected(props);
@@ -766,6 +858,23 @@ export function CartographiePage() {
               SURVEILLANCE {survIndex + 1}/{crisisFeatures.length}
             </span>
           )}
+          {/* Fond de carte */}
+          <div className="flex rounded-lg overflow-hidden border border-cc-700">
+            {(Object.entries(FONDS_CARTE) as [FondType, typeof FONDS_CARTE[FondType]][]).map(([cle, fond]) => (
+              <button
+                key={cle}
+                onClick={() => setFondActuel(cle)}
+                title={fond.label}
+                className={`px-2 py-1 text-[11px] transition-colors ${
+                  fondActuel === cle
+                    ? 'bg-cc-700 text-white'
+                    : 'text-cc-500 hover:text-gray-300 bg-cc-800'
+                }`}
+              >
+                {fond.icon}
+              </button>
+            ))}
+          </div>
           {/* Color mode toggle */}
           <div className="flex rounded-lg overflow-hidden border border-cc-700">
             {(['statut', 'sinistres'] as ColorMode[]).map(mode => (
@@ -825,11 +934,15 @@ export function CartographiePage() {
           <div className="flex-1 relative">
             <MapGL
               ref={mapRef}
-              mapStyle={MAP_STYLE}
+              mapStyle={FONDS_CARTE[fondActuel].style as any}
               initialViewState={{ longitude: 24.5, latitude: -3.0, zoom: 4.5 }}
               onClick={onMapClick}
               onLoad={onMapLoad}
-              interactiveLayerIds={hasGeometry ? ['carto-fill', 'carto-points'] : []}
+              onMove={e => setMapZoom(e.viewState.zoom)}
+              interactiveLayerIds={[
+                ...(hasGeometry ? ['carto-fill', 'carto-points'] : []),
+                ...(showGlobalQuartiers ? ['quartiers-globe-points'] : []),
+              ]}
               style={{ width: '100%', height: '100%' }}
             >
               {polygonGeojson.features.length > 0 && (
@@ -842,8 +955,9 @@ export function CartographiePage() {
                       'fill-color': fillColorExpr as any,
                       'fill-opacity': [
                         'case',
-                        ['==', ['get', 'pcode'], selected?.pcode ?? ''], 0.85,
-                        0.65,
+                        ['==', ['get', 'pcode'], selected?.pcode ?? ''],
+                        isSatellite ? 0.25 : 0.85,
+                        isSatellite ? 0.08 : 0.65,
                       ] as any,
                     }}
                   />
@@ -855,14 +969,14 @@ export function CartographiePage() {
                       'line-color': [
                         'case',
                         ['==', ['get', 'pcode'], selected?.pcode ?? ''], '#ffffff',
-                        '#334155',
+                        isSatellite ? '#60a5fa' : '#334155',
                       ] as any,
                       'line-width': [
                         'case',
                         ['==', ['get', 'pcode'], selected?.pcode ?? ''], 2.5,
-                        0.8,
+                        isSatellite ? 1.5 : 0.8,
                       ] as any,
-                      'line-opacity': 0.9,
+                      'line-opacity': isSatellite ? 0.7 : 0.9,
                     }}
                   />
                   {/* Labels */}
@@ -876,9 +990,9 @@ export function CartographiePage() {
                       'text-max-width': 8,
                     }}
                     paint={{
-                      'text-color': '#e2e8f0',
-                      'text-halo-color': '#0d1b2a',
-                      'text-halo-width': 1.5,
+                      'text-color': labelStyle.textColor,
+                      'text-halo-color': labelStyle.haloColor,
+                      'text-halo-width': labelStyle.haloWidth,
                     }}
                   />
                 </Source>
@@ -929,16 +1043,53 @@ export function CartographiePage() {
                     type="symbol"
                     layout={{
                       'text-field': ['get', 'name'],
-                      'text-size': 9,
+                      'text-size': 11,
                       'text-font': ['Open Sans Regular'],
                       'text-offset': [0, 1.2],
                       'text-anchor': 'top',
-                      'text-max-width': 6,
+                      'text-max-width': 8,
+                      'text-allow-overlap': false,
+                      'text-optional': true,
                     }}
                     paint={{
-                      'text-color': '#e2e8f0',
-                      'text-halo-color': '#0d1b2a',
-                      'text-halo-width': 1.5,
+                      'text-color': labelStyle.textColor,
+                      'text-halo-color': labelStyle.haloColor,
+                      'text-halo-width': labelStyle.haloWidth,
+                    }}
+                  />
+                </Source>
+              )}
+
+              {/* Overlay quartiers globaux — visible à zoom ≥ 12, indépendant du drill-down */}
+              {showGlobalQuartiers && (
+                <Source id="quartiers-globe" type="geojson" data={quartiersGlobalGeoJson}>
+                  <Layer
+                    id="quartiers-globe-points"
+                    type="circle"
+                    paint={{
+                      'circle-radius': 5,
+                      'circle-color': '#2d7dd2',
+                      'circle-stroke-width': 1.5,
+                      'circle-stroke-color': '#ffffff',
+                      'circle-opacity': 0.85,
+                    }}
+                  />
+                  <Layer
+                    id="quartiers-globe-labels"
+                    type="symbol"
+                    layout={{
+                      'text-field': ['get', 'name'],
+                      'text-size': 11,
+                      'text-font': ['Open Sans Regular'],
+                      'text-offset': [0, 1.0],
+                      'text-anchor': 'top',
+                      'text-allow-overlap': false,
+                      'text-optional': true,
+                    }}
+                    paint={{
+                      'text-color': labelStyle.textColor,
+                      'text-halo-color': labelStyle.haloColor,
+                      'text-halo-width': labelStyle.haloWidth,
                     }}
                   />
                 </Source>
