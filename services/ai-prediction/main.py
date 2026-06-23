@@ -1,7 +1,7 @@
 """
 SINAUR-RDC AI Prediction Service — top-level FastAPI application.
 
-Starts 10 agents:
+Starts 11 agents:
   1. VeilleAgent         — data ingestion from ReliefWeb, Open-Meteo, FEWS NET, OCHA HDX, Mettelsat
   2. PredictionAgent     — risk scoring (26 provinces × 4 risk types, 6h cadence)
   3. AntiFraudAgent      — beneficiary dossier fraud/deduplication (on-demand via API)
@@ -9,9 +9,10 @@ Starts 10 agents:
   5. SignalementsAgent   — multilingual citizen report classification & geo-clustering
   6. ReportingAgent      — daily bulletins, executive summaries, HXL exports
   7. LogistiqueAgent     — warehouse↔disaster resource allocation, OSRM routing
-  8. EpidemieAgent       — epidemic cluster detection (Cholera/Mpox/Measles/Meningitis/Ebola)
+  8. EpidemieAgent       — epidemic cluster detection (7 maladies : Ebola, Choléra, Mpox…)
   9. ConflitAgent        — armed conflict surveillance, displacement prediction (RESTRICTED)
  10. RenseignementAgent  — military & security intelligence, threat assessment (RESTRICTED)
+ 11. AgentCatastrophes  — catastrophes naturelles GDACS (séismes, inondations, volcans…)
 
 All /internal/* routes require X-Internal-API-Key header.
 """
@@ -38,6 +39,7 @@ from agents.reporting.router import router as reporting_router
 from agents.signalements.router import router as signalements_router
 from agents.veille.router import router as veille_router
 from agents.virus_emergents.router import router as virus_emergents_router
+from agents.catastrophes.router import router as catastrophes_router
 from config import settings
 from redis_client import close_redis, get_redis
 
@@ -146,6 +148,14 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("lifespan.detecteur_emergence_start_failed", error=str(exc))
 
+    # Start AgentCatastrophes (GDACS — catastrophes naturelles, cycle 30min)
+    try:
+        from agents.catastrophes.agent import agent_catastrophes
+        await agent_catastrophes.start()
+        logger.info("lifespan.agent_catastrophes_started")
+    except Exception as exc:
+        logger.warning("lifespan.agent_catastrophes_start_failed", error=str(exc))
+
     # Start Conflit agent (armed conflict surveillance + displacement prediction)
     try:
         from agents.conflit.agent import conflit_agent
@@ -220,6 +230,12 @@ async def lifespan(app: FastAPI):
     try:
         from agents.epidemie.detecteur_emergence import detecteur_emergence
         await detecteur_emergence.stop()
+    except Exception:
+        pass
+
+    try:
+        from agents.catastrophes.agent import agent_catastrophes
+        await agent_catastrophes.stop()
     except Exception:
         pass
 
@@ -372,6 +388,7 @@ app.include_router(etd_router)
 app.include_router(renseignement_router)
 app.include_router(auto_crisis_router)
 app.include_router(virus_emergents_router)
+app.include_router(catastrophes_router)
 
 
 # --- Unified agents status endpoint ---
