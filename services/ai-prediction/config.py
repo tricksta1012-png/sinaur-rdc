@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Contact api@reliefweb.int for DRC national authority credentials
     reliefweb_api_key: str = ""
 
+    # Anthropic API key — utilisé par ExtracteurMultiMaladies et DetecteurEmergence
+    anthropic_api_key: str = ""
+
     # ACLED (Armed Conflict Location & Event Data) credentials
     # Register at https://acleddata.com/register/ for free humanitarian access
     acled_api_key: str = ""

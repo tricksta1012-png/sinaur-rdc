@@ -4,9 +4,10 @@ Epidemie agent internal API endpoints.
 from __future__ import annotations
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from agents.epidemie.agent import epidemie_agent
+from agents.epidemie.detecteur_emergence import detecteur_emergence
 
 logger = structlog.get_logger(__name__)
 
@@ -110,4 +111,40 @@ async def get_dashboard() -> dict:
         return epidemie_agent.get_dashboard()
     except Exception as exc:
         logger.error("epidemie_router.dashboard_error", error=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/emergences")
+async def get_emergences(
+    statut: str | None = Query(
+        None,
+        description="Filtrer par statut : SIGNAL_ISOLE | A_SURVEILLER | EMERGENCE_CORROBOREE",
+    ),
+) -> dict:
+    """
+    Veille des pathogènes émergents (inconnus du référentiel).
+
+    Niveaux de statut :
+      - SIGNAL_ISOLE        : 1 source — veille discrète, ne pas alarmer
+      - A_SURVEILLER        : 2 sources — attention accrue
+      - EMERGENCE_CORROBOREE: 3+ sources — alerte, validation humaine requise
+    """
+    try:
+        STATUTS_VALIDES = {"SIGNAL_ISOLE", "A_SURVEILLER", "EMERGENCE_CORROBOREE"}
+        if statut and statut not in STATUTS_VALIDES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Statut invalide '{statut}'. Valides : {sorted(STATUTS_VALIDES)}",
+            )
+        emergences = detecteur_emergence.get_emergences(statut=statut)
+        return {
+            "total": len(emergences),
+            "statut_filtre": statut,
+            "emergences": emergences,
+            "agent_status": detecteur_emergence.get_status(),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("epidemie_router.emergences_error", error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))

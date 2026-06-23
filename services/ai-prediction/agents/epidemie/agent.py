@@ -88,6 +88,30 @@ DISEASE_PROFILES: dict[str, dict[str, Any]] = {
         "peak_months": list(range(1, 13)),  # toute l'année
         "r0_typical": 1.9,
     },
+    "fievre_jaune": {
+        "keywords_fr": ["fièvre jaune", "ictère", "hépatite virale fièvre"],
+        "keywords_sw": ["homa ya manjano"],
+        "keywords_ln": ["fièvre jaune"],
+        "incubation_days": (3, 6),
+        "cluster_radius_km": 20.0,
+        "cluster_min_cases": 2,
+        "temporal_window_days": 14,
+        "endemic_provinces": ["CD-EQ", "CD-NK", "CD-IT", "CD-MN"],
+        "peak_months": [3, 4, 5, 10, 11],  # saison des pluies
+        "r0_typical": 2.5,
+    },
+    "paludisme": {
+        "keywords_fr": ["paludisme", "malaria", "plasmodium", "fièvre palustres"],
+        "keywords_sw": ["malaria", "homa ya mbu"],
+        "keywords_ln": ["fivre ya mbu"],
+        "incubation_days": (7, 30),
+        "cluster_radius_km": 30.0,
+        "cluster_min_cases": 20,   # seuil haut — endémique, cherche les pics
+        "temporal_window_days": 30,
+        "endemic_provinces": list(range(1, 27)),  # toutes les 26 provinces
+        "peak_months": [3, 4, 5, 11, 12],
+        "r0_typical": 100.0,  # très élevé en contexte endémique
+    },
 }
 
 # ---------------------------------------------------------------------------

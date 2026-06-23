@@ -138,6 +138,14 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("lifespan.virus_emergent_agent_start_failed", error=str(exc))
 
+    # Start DetecteurEmergence (signal faible pathogènes inconnus — cycle 2h)
+    try:
+        from agents.epidemie.detecteur_emergence import detecteur_emergence
+        await detecteur_emergence.start()
+        logger.info("lifespan.detecteur_emergence_started")
+    except Exception as exc:
+        logger.warning("lifespan.detecteur_emergence_start_failed", error=str(exc))
+
     # Start Conflit agent (armed conflict surveillance + displacement prediction)
     try:
         from agents.conflit.agent import conflit_agent
@@ -206,6 +214,12 @@ async def lifespan(app: FastAPI):
     try:
         from agents.epidemie.oms_scraper import oms_scraper_agent
         await oms_scraper_agent.stop()
+    except Exception:
+        pass
+
+    try:
+        from agents.epidemie.detecteur_emergence import detecteur_emergence
+        await detecteur_emergence.stop()
     except Exception:
         pass
 

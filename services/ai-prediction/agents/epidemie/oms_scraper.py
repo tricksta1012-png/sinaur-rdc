@@ -53,6 +53,7 @@ DISEASE_KEYWORDS: list[tuple[str, list[str]]] = [
     ("ROUGEOLE",   ["measles", "rougeole", "rubeola"]),
     ("MENINGITE",  ["meningitis", "méningite", "meningococcal"]),
     ("PALUDISME",  ["malaria", "paludisme", "plasmodium", "anopheles"]),
+    ("FIEVRE_JAUNE", ["fièvre jaune", "yellow fever", "fievre jaune", "flavivirus"]),
 ]
 
 # DRC country filters (ReliefWeb / WHO)
