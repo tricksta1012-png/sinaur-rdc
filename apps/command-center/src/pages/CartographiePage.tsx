@@ -5,22 +5,9 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { apiClient } from '../lib/api.js';
 import { whenMapReady } from '../lib/mapReady.js';
 import { useAuthStore } from '../stores/auth.js';
+import { EntityPanel, type EntityProps, NIVEAU_LABELS, STATUT_STYLE } from '../components/EntityPanel.js';
 
 // ── TYPES ─────────────────────────────────────────────────────────────────────
-
-interface EntityProps {
-  pcode: string;
-  name: string;
-  level: number;
-  parent_pcode: string | null;
-  population: number | null;
-  responsable_nom: string | null;
-  responsable_titre: string | null;
-  responsable_contact: string | null;
-  statut: 'NORMAL' | 'VIGILANCE' | 'ALERTE' | 'CRISE';
-  nb_incidents: number;
-  _is_point?: boolean;
-}
 
 type ColorMode = 'statut' | 'sinistres';
 type FondType = 'plan' | 'satellite' | 'hybride';
@@ -55,30 +42,6 @@ interface SearchResult {
 }
 
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
-
-const NIVEAU_LABELS: Record<number, string> = {
-  0: 'Pays',
-  1: 'Province',
-  2: 'Territoire / Ville',
-  3: 'Commune · Secteur · Chefferie',
-  4: 'Groupement',
-  5: 'Village',
-};
-
-const NIVEAU_ENFANTS: Record<number, string> = {
-  1: 'les territoires',
-  2: 'les communes/secteurs',
-  3: 'les groupements',
-};
-
-const ETD_LEVELS = new Set([3]);
-
-const STATUT_STYLE: Record<string, { cls: string; dot: string }> = {
-  NORMAL:    { cls: 'bg-green-900/60 text-green-300 border-green-700',    dot: 'bg-green-400'              },
-  VIGILANCE: { cls: 'bg-yellow-900/60 text-yellow-300 border-yellow-700', dot: 'bg-yellow-400'             },
-  ALERTE:    { cls: 'bg-orange-900/60 text-orange-300 border-orange-700', dot: 'bg-orange-400'             },
-  CRISE:     { cls: 'bg-red-900/60 text-red-300 border-red-700',          dot: 'bg-red-500 animate-pulse'  },
-};
 
 // Full RDC bounds [west, south, east, north]
 const RDC_BOUNDS: [[number, number], [number, number]] = [[11.8, -13.5], [31.3, 5.4]];
@@ -242,118 +205,6 @@ function ZoomControls({
       {canBack && (
         <button onClick={onBack} className={btn} title="Remonter d'un niveau">⬆</button>
       )}
-    </div>
-  );
-}
-
-// ── SIDE PANEL ────────────────────────────────────────────────────────────────
-
-function EntityPanel({
-  entity,
-  onClose,
-  onDrillDown,
-}: {
-  entity: EntityProps;
-  onClose: () => void;
-  onDrillDown: (entity: EntityProps) => void;
-}) {
-  const statut = STATUT_STYLE[entity.statut] ?? STATUT_STYLE['NORMAL']!;
-  const isEtd = ETD_LEVELS.has(entity.level);
-  const canDrillDown = entity.level in NIVEAU_ENFANTS;
-
-  return (
-    <div className="w-72 shrink-0 bg-cc-900 border-l border-cc-700 flex flex-col overflow-y-auto">
-      {/* Header */}
-      <div className="bg-cc-800 border-b border-cc-700 px-4 py-3 flex items-start gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="text-[9px] font-mono text-cc-500 uppercase mb-0.5">
-            {NIVEAU_LABELS[entity.level] ?? `Niveau ${entity.level}`}
-          </div>
-          <div className="text-sm font-bold text-white leading-tight truncate">{entity.name}</div>
-          <div className="text-[9px] font-mono text-cc-600 mt-0.5">{entity.pcode}</div>
-        </div>
-        <div className="flex flex-col items-end gap-1.5 shrink-0">
-          <span className={`text-[9px] font-bold px-1.5 py-px rounded border ${statut.cls}`}>
-            {entity.statut}
-          </span>
-          <button onClick={onClose} className="text-cc-600 hover:text-white text-[10px]">✕</button>
-        </div>
-      </div>
-
-      {/* QUI GÈRE */}
-      <div className="px-4 py-3 border-b border-cc-700">
-        <div className="text-[9px] font-mono text-cc-500 uppercase mb-2 tracking-wider">
-          Qui gère cette zone
-        </div>
-        <div className="space-y-1.5">
-          <div className="flex items-start gap-2">
-            <span className="text-sm shrink-0 mt-0.5">👤</span>
-            <div className="min-w-0">
-              {entity.responsable_titre && (
-                <div className="text-[10px] text-cc-500 font-mono">{entity.responsable_titre}</div>
-              )}
-              <div className={`text-xs font-semibold ${entity.responsable_nom ? 'text-white' : 'text-cc-600 italic'}`}>
-                {entity.responsable_nom ?? 'Non assigné'}
-              </div>
-              {entity.responsable_contact && (
-                <a
-                  href={`mailto:${entity.responsable_contact}`}
-                  className="text-[10px] text-sinaur-400 hover:text-sinaur-300 font-mono break-all"
-                >
-                  {entity.responsable_contact}
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Type d'entité */}
-      <div className="px-4 py-2.5 border-b border-cc-700">
-        <div className={`text-[9px] px-2 py-1 rounded border inline-block font-mono ${
-          isEtd
-            ? 'bg-blue-950/60 text-blue-300 border-blue-800'
-            : 'bg-cc-800 text-cc-500 border-cc-700'
-        }`}>
-          {isEtd ? 'ETD · Entité Territoriale Décentralisée' : 'Entité déconcentrée'}
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="px-4 py-3 border-b border-cc-700 space-y-1.5">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-cc-500 font-mono">Population</span>
-          <span className="text-gray-300 font-bold">
-            {entity.population != null
-              ? entity.population.toLocaleString('fr-FR') + ' hab.'
-              : '—'}
-          </span>
-        </div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-cc-500 font-mono">Incidents 30j</span>
-          <span className={`font-bold ${entity.nb_incidents > 0 ? 'text-orange-300' : 'text-green-400'}`}>
-            {entity.nb_incidents}
-          </span>
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="px-4 py-3 space-y-2">
-        {canDrillDown && (
-          <button
-            onClick={() => onDrillDown(entity)}
-            className="w-full text-left text-xs bg-sinaur-900/60 hover:bg-sinaur-800 border border-sinaur-700 text-sinaur-300 rounded-lg px-3 py-2 font-mono transition-colors"
-          >
-            Voir {NIVEAU_ENFANTS[entity.level]} →
-          </button>
-        )}
-        <button
-          onClick={onClose}
-          className="w-full text-[10px] text-cc-600 hover:text-gray-300 font-mono py-1 transition-colors"
-        >
-          ✕ Fermer
-        </button>
-      </div>
     </div>
   );
 }
