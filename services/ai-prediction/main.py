@@ -1,7 +1,7 @@
 """
 SINAUR-RDC AI Prediction Service — top-level FastAPI application.
 
-Starts 11 agents:
+Starts 12 agents:
   1. VeilleAgent         — data ingestion from ReliefWeb, Open-Meteo, FEWS NET, OCHA HDX, Mettelsat
   2. PredictionAgent     — risk scoring (26 provinces × 4 risk types, 6h cadence)
   3. AntiFraudAgent      — beneficiary dossier fraud/deduplication (on-demand via API)
@@ -13,6 +13,7 @@ Starts 11 agents:
   9. ConflitAgent        — armed conflict surveillance, displacement prediction (RESTRICTED)
  10. RenseignementAgent  — military & security intelligence, threat assessment (RESTRICTED)
  11. AgentCatastrophes  — catastrophes naturelles GDACS (séismes, inondations, volcans…)
+ 12. AgentResponsables  — veille presse nominations (Actualité.cd, Radio Okapi…)
 
 All /internal/* routes require X-Internal-API-Key header.
 """
@@ -40,6 +41,7 @@ from agents.signalements.router import router as signalements_router
 from agents.veille.router import router as veille_router
 from agents.virus_emergents.router import router as virus_emergents_router
 from agents.catastrophes.router import router as catastrophes_router
+from agents.responsables.router import router as responsables_router
 from config import settings
 from redis_client import close_redis, get_redis
 
@@ -172,6 +174,14 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("lifespan.renseignement_agent_start_failed", error=str(exc))
 
+    # Start AgentResponsables (veille presse nominations — cycle 12h)
+    try:
+        from agents.responsables.agent import agent_responsables
+        await agent_responsables.start()
+        logger.info("lifespan.agent_responsables_started")
+    except Exception as exc:
+        logger.warning("lifespan.agent_responsables_start_failed", error=str(exc))
+
     # Verify Redis connectivity
     try:
         redis = get_redis()
@@ -248,6 +258,12 @@ async def lifespan(app: FastAPI):
     try:
         from agents.renseignement.agent import renseignement_agent
         await renseignement_agent.stop()
+    except Exception:
+        pass
+
+    try:
+        from agents.responsables.agent import agent_responsables
+        await agent_responsables.stop()
     except Exception:
         pass
 
@@ -389,6 +405,7 @@ app.include_router(renseignement_router)
 app.include_router(auto_crisis_router)
 app.include_router(virus_emergents_router)
 app.include_router(catastrophes_router)
+app.include_router(responsables_router)
 
 
 # --- Unified agents status endpoint ---

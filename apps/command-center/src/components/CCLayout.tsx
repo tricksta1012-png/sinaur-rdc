@@ -1,8 +1,10 @@
 import { Outlet, NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/auth.js';
 import { useRealtimeFeed } from '../hooks/useRealtimeFeed.js';
 import { AlertTicker } from './AlertTicker.js';
+import { apiClient } from '../lib/api.js';
 import i18n from '../i18n.js';
 
 const LANGS = [
@@ -49,6 +51,8 @@ const NAV_ITEMS = [
   { to: '/ai',            icon: '🤖', labelKey: 'nav_ai',
     roles: ['system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin', 'humanitarian_partner'] },
   { to: '/cartographie',  icon: '🗺️', labelKey: 'nav_cartographie' },
+  { to: '/propositions',  icon: '📰', labelKey: 'nav_propositions',
+    roles: ['system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin'] },
   { to: '/rues',          icon: '🏙️', labelKey: 'nav_rues',
     roles: ['field_agent', 'local_validator', 'territory_admin', 'provincial_coordinator', 'national_decision_maker', 'system_admin'] },
   { to: '/conflit',       icon: '⚔️', labelKey: 'nav_conflit',
@@ -77,6 +81,18 @@ export function CCLayout() {
   const scopeLabel = isScoped
     ? user!.scope.map(p => PROVINCE_NAMES[p] ?? p).join(', ')
     : null;
+
+  const canSeePropositions = ['system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin'].includes(role);
+  const { data: propCount } = useQuery({
+    queryKey: ['propositions-count'],
+    queryFn: () =>
+      apiClient
+        .get<{ data: { count: number } }>('/responsables/propositions/count')
+        .then(r => r.data.data?.count ?? 0),
+    enabled: canSeePropositions,
+    refetchInterval: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
+  });
 
   const visibleNav = NAV_ITEMS.filter(item => {
     if (!('roles' in item) || !item.roles) return true;
@@ -155,7 +171,12 @@ export function CCLayout() {
               }
             >
               <span>{icon}</span>
-              <span className="leading-tight">{t(labelKey as any)}</span>
+              <span className="flex-1 leading-tight">{t(labelKey as any)}</span>
+              {to === '/propositions' && (propCount ?? 0) > 0 && (
+                <span className="text-[9px] font-bold bg-orange-600 text-white rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none">
+                  {propCount}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

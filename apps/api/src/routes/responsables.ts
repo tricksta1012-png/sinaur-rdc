@@ -327,4 +327,278 @@ export async function responsablesRoutes(fastify: FastifyInstance): Promise<void
 
     return reply.send({ success: true, data: { rows: data_rows, total, total_avec } });
   });
+
+  // ---------------------------------------------------------------------------
+  // Propositions — détections de l'agent veille presse
+  // ---------------------------------------------------------------------------
+
+  // GET /responsables/propositions — liste des propositions
+  fastify.get('/responsables/propositions', {
+    preHandler: [requireAuth, requireRole(...RESP_ROLES)],
+  }, async (request, reply) => {
+    const user = request.jwtUser;
+    const { statut, pcode, limit } = z.object({
+      statut: z.string().optional(),
+      pcode:  z.string().optional(),
+      limit:  z.coerce.number().int().min(1).max(200).default(50),
+    }).parse(request.query);
+
+    const rows = await sql.unsafe(
+      `SELECT
+        id, pcode, entite_nom, personne, fonction, type_acte, date_acte,
+        interimaire, remplace, source, url_article, confiance,
+        statut_rapprochement, candidats, statut, valide_par, valide_le,
+        detecte_le, detail
+       FROM responsable_proposition
+       WHERE TRUE
+         ${statut ? `AND statut = '${statut.replace(/'/g, "''")}'` : ''}
+         ${pcode  ? `AND pcode = '${pcode.replace(/'/g, "''")}'`  : ''}
+       ORDER BY detecte_le DESC
+       LIMIT ${limit}`,
+      [],
+    ) as unknown as Record<string, unknown>[];
+
+    const data = rows.map(r => ({
+      id:                   Number(r.id),
+      pcode:                (r.pcode ?? null) as string | null,
+      entite_nom:           (r.entiteNom   ?? r.entite_nom   ?? null) as string | null,
+      personne:             String(r.personne ?? ''),
+      fonction:             (r.fonction ?? null) as string | null,
+      type_acte:            (r.typeActe    ?? r.type_acte    ?? null) as string | null,
+      date_acte:            (r.dateActe    ?? r.date_acte    ?? null) as string | null,
+      interimaire:          Boolean(r.interimaire ?? false),
+      remplace:             (r.remplace ?? null) as string | null,
+      source:               (r.source ?? null) as string | null,
+      url_article:          (r.urlArticle  ?? r.url_article  ?? null) as string | null,
+      confiance:            r.confiance != null ? Number(r.confiance) : null,
+      statut_rapprochement: String(r.statutRapprochement ?? r.statut_rapprochement ?? 'CERTAIN'),
+      candidats:            (r.candidats ?? null) as unknown,
+      statut:               String(r.statut ?? 'A_VALIDER'),
+      valide_par:           (r.validePar   ?? r.valide_par   ?? null) as string | null,
+      valide_le:            (r.valideLe    ?? r.valide_le    ?? null) as string | null,
+      detecte_le:           String(r.detecteLe  ?? r.detecte_le  ?? ''),
+      detail:               (r.detail ?? {}) as unknown,
+    }));
+
+    return reply.send({ success: true, data });
+  });
+
+  // GET /responsables/propositions/count — badge UI
+  fastify.get('/responsables/propositions/count', {
+    preHandler: [requireAuth, requireRole(...RESP_ROLES)],
+  }, async (_request, reply) => {
+    const [row] = await sql`
+      SELECT COUNT(*) AS count
+      FROM responsable_proposition
+      WHERE statut = 'A_VALIDER'
+    ` as unknown as Record<string, unknown>[];
+
+    return reply.send({ count: Number(row?.count ?? 0) });
+  });
+
+  // PUT /responsables/propositions/:id/entite — choisir le pcode pour une proposition AMBIGU
+  fastify.put('/responsables/propositions/:id/entite', {
+    preHandler: [requireAuth, requireRole(...RESP_ROLES)],
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const user   = request.jwtUser;
+    const body   = z.object({ pcode: z.string().min(1) }).parse(request.body);
+
+    if (!inScope(user, body.pcode)) {
+      return reply.status(403).send({ success: false, error: { code: 'SCOPE_DENIED', message: 'Accès restreint à votre périmètre' } });
+    }
+
+    const [prop] = await sql`
+      SELECT id, statut FROM responsable_proposition WHERE id = ${Number(id)}
+    ` as unknown as Record<string, unknown>[];
+
+    if (!prop) {
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Proposition introuvable' } });
+    }
+
+    await sql.unsafe(
+      `UPDATE responsable_proposition
+       SET pcode = $1, statut_rapprochement = 'CERTAIN'
+       WHERE id = $2`,
+      [body.pcode, Number(id)],
+    );
+
+    return reply.send({ success: true, data: { id: Number(id), pcode: body.pcode } });
+  });
+
+  // PUT /responsables/propositions/:id/valider — valider et appliquer la nomination
+  fastify.put('/responsables/propositions/:id/valider', {
+    preHandler: [requireAuth, requireRole(...RESP_ROLES)],
+  }, async (request, reply) => {
+    const { id }   = request.params as { id: string };
+    const user     = request.jwtUser;
+    const userEmail = String(user.email ?? user.id);
+
+    // 1. Lire la proposition
+    const [prop] = await sql`
+      SELECT id, pcode, personne, fonction, type_acte, date_acte,
+             interimaire, source, url_article
+      FROM responsable_proposition
+      WHERE id = ${Number(id)}
+    ` as unknown as Record<string, unknown>[];
+
+    if (!prop) {
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Proposition introuvable' } });
+    }
+
+    // 2. Vérifier que pcode est renseigné
+    const pcode = (prop.pcode ?? null) as string | null;
+    if (!pcode) {
+      return reply.status(400).send({ success: false, error: { code: 'MISSING_PCODE', message: 'Le pcode doit être renseigné avant de valider (proposition AMBIGU ou ENTITE_INTROUVABLE)' } });
+    }
+
+    if (!inScope(user, pcode)) {
+      return reply.status(403).send({ success: false, error: { code: 'SCOPE_DENIED', message: 'Accès restreint à votre périmètre' } });
+    }
+
+    // 3. Lire l'ancien responsable dans admin_divisions
+    const [entity] = await sql`
+      SELECT pcode, name_fr, responsable_nom, responsable_titre
+      FROM admin_divisions
+      WHERE pcode = ${pcode}
+    ` as unknown as Record<string, unknown>[];
+
+    if (!entity) {
+      return reply.status(404).send({ success: false, error: { code: 'ENTITY_NOT_FOUND', message: 'Entité administrative introuvable' } });
+    }
+
+    const ancienNom   = (entity.responsableNom   ?? entity.responsable_nom   ?? null) as string | null;
+    const ancienTitre = (entity.responsableTitre ?? entity.responsable_titre ?? null) as string | null;
+    const entityName  = String(entity.nameFr ?? entity.name_fr ?? pcode);
+
+    const personne  = String(prop.personne ?? '');
+    const fonction  = (prop.fonction   ?? null) as string | null;
+    const typeActe  = (prop.typeActe   ?? prop.type_acte  ?? null) as string | null;
+    const dateActe  = (prop.dateActe   ?? prop.date_acte  ?? null) as string | null;
+    const interim   = Boolean(prop.interimaire ?? false);
+    const source    = (prop.source ?? null) as string | null;
+
+    const nouveauTitre  = fonction
+      ? `${fonction}${interim ? ' (intérimaire)' : ''}`
+      : (interim ? '(intérimaire)' : null);
+    const sourceStr = [typeActe, dateActe ? `${dateActe}` : null, source ? `via ${source}` : null]
+      .filter(Boolean).join(' — ') || null;
+
+    // 4. Insérer dans responsable_history
+    await sql.unsafe(
+      `INSERT INTO responsable_history (
+        pcode, entity_name,
+        ancien_nom, ancien_titre, ancien_contact,
+        nouveau_nom, nouveau_titre, nouveau_contact,
+        modifie_par, source_info, action
+      ) VALUES ($1,$2,$3,$4,NULL,$5,$6,NULL,$7,$8,'MODIFICATION')`,
+      [pcode, entityName, ancienNom, ancienTitre, personne, nouveauTitre, userEmail, sourceStr],
+    );
+
+    // 5. UPDATE admin_divisions
+    await sql.unsafe(
+      `UPDATE admin_divisions
+       SET responsable_nom    = $1,
+           responsable_titre  = $2,
+           responsable_source = $3,
+           responsable_maj_par = $4,
+           responsable_maj_le  = NOW()
+       WHERE pcode = $5`,
+      [personne, nouveauTitre, sourceStr, userEmail, pcode],
+    );
+
+    // 5b. UPDATE responsable_proposition
+    await sql.unsafe(
+      `UPDATE responsable_proposition
+       SET statut = 'VALIDE', valide_par = $1, valide_le = NOW()
+       WHERE id = $2`,
+      [userEmail, Number(id)],
+    );
+
+    await writeAuditLog(user.id, 'UPDATE', 'admin_divisions', pcode, request, {
+      action: 'PROPOSITION_VALIDEE', proposition_id: Number(id), personne,
+    });
+
+    // 6. Retourner résultat
+    return reply.send({ success: true, data: { pcode, personne } });
+  });
+
+  // PUT /responsables/propositions/:id/rejeter — rejeter une proposition
+  fastify.put('/responsables/propositions/:id/rejeter', {
+    preHandler: [requireAuth, requireRole(...RESP_ROLES)],
+  }, async (request, reply) => {
+    const { id }    = request.params as { id: string };
+    const user      = request.jwtUser;
+    const userEmail = String(user.email ?? user.id);
+
+    const [prop] = await sql`
+      SELECT id, pcode, statut FROM responsable_proposition WHERE id = ${Number(id)}
+    ` as unknown as Record<string, unknown>[];
+
+    if (!prop) {
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Proposition introuvable' } });
+    }
+
+    const pcode = (prop.pcode ?? null) as string | null;
+    if (pcode && !inScope(user, pcode)) {
+      return reply.status(403).send({ success: false, error: { code: 'SCOPE_DENIED', message: 'Accès restreint à votre périmètre' } });
+    }
+
+    await sql.unsafe(
+      `UPDATE responsable_proposition
+       SET statut = 'REJETE', valide_par = $1, valide_le = NOW()
+       WHERE id = $2`,
+      [userEmail, Number(id)],
+    );
+
+    return reply.send({ success: true, data: { id: Number(id) } });
+  });
+
+  // POST /responsables/propositions — créer une proposition (system_admin uniquement)
+  fastify.post('/responsables/propositions', {
+    preHandler: [requireAuth, requireRole(...ADMIN_ROLES)],
+  }, async (request, reply) => {
+    const body = z.object({
+      pcode:                z.string().optional(),
+      entite_nom:           z.string().optional(),
+      personne:             z.string().min(1),
+      fonction:             z.string().optional(),
+      type_acte:            z.string().optional(),
+      date_acte:            z.string().optional(),
+      interimaire:          z.boolean().default(false),
+      remplace:             z.string().optional(),
+      source:               z.string().optional(),
+      url_article:          z.string().optional(),
+      confiance:            z.number().min(0).max(1).optional(),
+      statut_rapprochement: z.enum(['CERTAIN', 'AMBIGU', 'ENTITE_INTROUVABLE']).default('CERTAIN'),
+      candidats:            z.unknown().optional(),
+      detail:               z.unknown().optional(),
+    }).parse(request.body);
+
+    const pcode              = (body.pcode                ?? null) as string | null;
+    const entiteNom          = (body.entite_nom           ?? null) as string | null;
+    const fonction           = (body.fonction             ?? null) as string | null;
+    const typeActe           = (body.type_acte            ?? null) as string | null;
+    const dateActe           = (body.date_acte            ?? null) as string | null;
+    const remplace           = (body.remplace             ?? null) as string | null;
+    const source             = (body.source               ?? null) as string | null;
+    const urlArticle         = (body.url_article          ?? null) as string | null;
+    const confiance          = (body.confiance            ?? null) as number | null;
+    const candidats          = body.candidats != null ? JSON.stringify(body.candidats) : null;
+    const detail             = body.detail    != null ? JSON.stringify(body.detail)    : '{}';
+
+    const [row] = await sql.unsafe(
+      `INSERT INTO responsable_proposition (
+        pcode, entite_nom, personne, fonction, type_acte, date_acte,
+        interimaire, remplace, source, url_article, confiance,
+        statut_rapprochement, candidats, detail
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      RETURNING id, pcode, personne, statut, detecte_le`,
+      [pcode, entiteNom, body.personne, fonction, typeActe, dateActe,
+       body.interimaire, remplace, source, urlArticle, confiance,
+       body.statut_rapprochement, candidats, detail],
+    ) as unknown as Record<string, unknown>[];
+
+    return reply.status(201).send({ success: true, data: row });
+  });
 }
