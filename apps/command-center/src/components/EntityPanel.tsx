@@ -61,6 +61,20 @@ interface SeuilsResponse {
   alerte_active: boolean;
 }
 
+interface Mandat {
+  id: number;
+  personne: string;
+  fonction: string | null;
+  date_debut: string | null;
+  date_fin: string | null;
+  interimaire: boolean;
+  source: string | null;
+  url_source: string | null;
+  confiance: number | null;
+  statut: 'HISTORIQUE' | 'ACTUEL' | 'A_VALIDER';
+  cree_le: string;
+}
+
 interface FluxMessage {
   id: string;
   type_flux: string;
@@ -221,28 +235,39 @@ function TabInfos({
 
 // ── Tab: Responsable ──────────────────────────────────────────────────────────
 
+const CONTACT_ORIGINE_LABELS: Record<string, string> = {
+  SAISIE_OFFICIELLE: 'Saisi par le responsable / son autorité',
+  DOCUMENT_OFFICIEL: 'Extrait d\'un document officiel',
+};
+
 function TabResponsable({
   entity,
   history,
   historyLoading,
+  mandats,
+  mandatsLoading,
   isAdmin,
   canWrite,
 }: {
   entity: EntityProps;
   history: HistoryEntry[];
   historyLoading: boolean;
+  mandats: Mandat[];
+  mandatsLoading: boolean;
   isAdmin: boolean;
   canWrite: boolean;
 }) {
   const qc = useQueryClient();
   const user = useAuthStore(s => s.user);
 
-  const [editing, setEditing] = useState(false);
-  const [nom, setNom]         = useState(entity.responsable_nom ?? '');
-  const [titre, setTitre]     = useState(entity.responsable_titre ?? '');
-  const [contact, setContact] = useState(entity.responsable_contact ?? '');
-  const [source, setSource]   = useState('');
-  const [statut, setStatut]   = useState<string>(entity.statut ?? 'NORMAL');
+  const [editing, setEditing]           = useState(false);
+  const [nom, setNom]                   = useState(entity.responsable_nom ?? '');
+  const [titre, setTitre]               = useState(entity.responsable_titre ?? '');
+  const [contact, setContact]           = useState(entity.responsable_contact ?? '');
+  const [source, setSource]             = useState('');
+  const [statut, setStatut]             = useState<string>(entity.statut ?? 'NORMAL');
+  const [contactOrigine, setContactOrigine] = useState<string>('SAISIE_OFFICIELLE');
+  const [contactVerifie, setContactVerifie] = useState(false);
 
   const saveMutation = useMutation({
     mutationFn: (body: object) =>
@@ -264,7 +289,15 @@ function TabResponsable({
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!nom.trim() || !titre.trim()) return;
-    saveMutation.mutate({ nom: nom.trim(), titre: titre.trim(), contact: contact.trim() || undefined, source: source.trim() || undefined, statut });
+    saveMutation.mutate({
+      nom:              nom.trim(),
+      titre:            titre.trim(),
+      contact:          contact.trim() || undefined,
+      source:           source.trim() || undefined,
+      statut,
+      contact_origine:  contact.trim() ? contactOrigine : undefined,
+      contact_verifie:  isAdmin && contactVerifie ? true : undefined,
+    });
   }
 
   const hasResp = !!entity.responsable_nom;
@@ -304,14 +337,42 @@ function TabResponsable({
           </div>
 
           <div>
-            <label className="block text-[10px] text-gray-400 mb-1">Contact</label>
+            <label className="block text-[10px] text-gray-400 mb-1">Contact institutionnel</label>
             <input
               type="text"
               value={contact}
               onChange={e => setContact(e.target.value)}
               className="w-full bg-cc-800 border border-cc-700 rounded px-2.5 py-1.5 text-gray-200 text-xs focus:outline-none focus:border-sinaur-500"
-              placeholder="+243 …"
+              placeholder="email@gouv.cd ou +243 bureau…"
             />
+            <p className="text-[9px] text-amber-600 mt-1 leading-tight">
+              Canal de service uniquement (email institutionnel, numéro de bureau). Jamais de contact personnel.
+            </p>
+            {contact.trim() && (
+              <div className="mt-2 space-y-1.5">
+                <label className="block text-[10px] text-gray-400">Origine du contact</label>
+                <select
+                  value={contactOrigine}
+                  onChange={e => setContactOrigine(e.target.value)}
+                  className="w-full bg-cc-800 border border-cc-700 rounded px-2 py-1 text-gray-200 text-[10px] focus:outline-none focus:border-sinaur-500"
+                >
+                  {Object.entries(CONTACT_ORIGINE_LABELS).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
+                </select>
+                {isAdmin && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={contactVerifie}
+                      onChange={e => setContactVerifie(e.target.checked)}
+                      className="rounded border-cc-600"
+                    />
+                    <span className="text-[10px] text-gray-400">Marquer comme vérifié</span>
+                  </label>
+                )}
+              </div>
+            )}
           </div>
 
           <div>
@@ -403,7 +464,69 @@ function TabResponsable({
         </div>
       )}
 
-      {/* Historique */}
+      {/* Frise des mandats */}
+      <div className="px-4 py-3">
+        <div className="text-[9px] font-mono text-cc-500 uppercase tracking-wider mb-2">
+          Succession des responsables {mandats.length > 0 ? `(${mandats.length})` : ''}
+        </div>
+        {mandatsLoading && <div className="text-[10px] text-cc-600">Chargement…</div>}
+        {!mandatsLoading && mandats.length === 0 && (
+          <div className="text-[10px] text-cc-600 italic">Aucun historique de mandats</div>
+        )}
+        {mandats.length > 0 && (
+          <div className="relative space-y-0 max-h-56 overflow-y-auto">
+            {mandats.map((m, idx) => {
+              const isActuel = m.statut === 'ACTUEL' || (idx === 0 && !m.date_fin);
+              const isAValider = m.statut === 'A_VALIDER';
+              return (
+                <div key={m.id} className="flex gap-2 pb-2">
+                  {/* Timeline dot */}
+                  <div className="flex flex-col items-center shrink-0 mt-0.5">
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${isActuel ? 'bg-green-400' : isAValider ? 'bg-amber-400' : 'bg-cc-600'}`} />
+                    {idx < mandats.length - 1 && (
+                      <div className="w-px flex-1 bg-cc-700 mt-1" style={{ minHeight: '12px' }} />
+                    )}
+                  </div>
+                  {/* Content */}
+                  <div className="min-w-0 pb-0.5">
+                    <div className="flex items-baseline gap-1.5 flex-wrap">
+                      <span className={`text-[10px] font-semibold ${isActuel ? 'text-white' : 'text-gray-400'}`}>
+                        {m.personne}
+                      </span>
+                      {m.interimaire && (
+                        <span className="text-[8px] bg-yellow-900/60 text-yellow-400 px-1 rounded font-mono">INT.</span>
+                      )}
+                      {isAValider && (
+                        <span className="text-[8px] bg-amber-900/60 text-amber-400 px-1 rounded font-mono">À VALIDER</span>
+                      )}
+                    </div>
+                    {m.fonction && (
+                      <div className="text-[9px] text-cc-500 font-mono truncate">{m.fonction}</div>
+                    )}
+                    <div className="text-[9px] text-cc-600 font-mono">
+                      {m.date_debut ? fmtDate(m.date_debut) : '?'}
+                      {' → '}
+                      {m.date_fin ? fmtDate(m.date_fin) : isActuel ? <span className="text-green-500">en cours</span> : '?'}
+                    </div>
+                    {m.url_source && (
+                      <a
+                        href={m.url_source}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[9px] text-sinaur-500 hover:text-sinaur-400 font-mono"
+                      >
+                        Source ↗
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Historique modifications */}
       <div className="px-4 py-3">
         <div className="text-[9px] font-mono text-cc-500 uppercase tracking-wider mb-2">
           Historique {history.length > 0 ? `(${history.length})` : ''}
@@ -413,7 +536,7 @@ function TabResponsable({
           <div className="text-[10px] text-cc-600 italic">Aucun historique</div>
         )}
         {history.length > 0 && (
-          <div className="space-y-2 max-h-52 overflow-y-auto">
+          <div className="space-y-2 max-h-44 overflow-y-auto">
             {history.map(h => {
               const { label, cls } = fmtAction(h.action);
               return (
@@ -789,6 +912,17 @@ export function EntityPanel({
     staleTime: 0,
   });
 
+  // Mandats chronologiques
+  const { data: mandats, isLoading: mandatsLoading } = useQuery({
+    queryKey: ['resp-mandats', entity.pcode],
+    queryFn: () =>
+      apiClient
+        .get<{ success: boolean; data: Mandat[] }>(`/responsables/${entity.pcode}/mandats`)
+        .then(r => r.data.data ?? []),
+    enabled: activeTab === 'resp',
+    staleTime: 5 * 60 * 1000,
+  });
+
   // ETD analyse
   const { data: analyseData, isLoading: loadingAnalyse } = useQuery({
     queryKey: ['etd-analyse', entity.pcode],
@@ -871,6 +1005,8 @@ export function EntityPanel({
             entity={entity}
             history={history ?? []}
             historyLoading={historyLoading}
+            mandats={mandats ?? []}
+            mandatsLoading={mandatsLoading}
             isAdmin={isAdmin}
             canWrite={canWrite}
           />

@@ -4,6 +4,7 @@ Toutes les routes requièrent X-Internal-API-Key.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Optional
 
 import asyncpg
@@ -175,4 +176,73 @@ async def create_proposition(payload: PropositionIn) -> dict:
 
     except Exception as exc:
         logger.error("responsables_router.create_error", error=str(exc))
+        raise HTTPException(500, str(exc))
+
+
+# ── GET /mandats ───────────────────────────────────────────────────────────────
+
+@router.get("/mandats")
+async def get_mandats(
+    pcode: str = Query(..., description="Code pcode de l'entité administrative"),
+) -> dict:
+    """Liste les mandats historiques enregistrés pour une entité administrative."""
+    try:
+        pool = await get_pool()
+        rows = await pool.fetch(
+            """
+            SELECT id, pcode, personne, fonction, date_debut, date_fin,
+                   interimaire, source, url_source, confiance, statut,
+                   cree_le
+            FROM responsable_mandat
+            WHERE pcode = $1
+            ORDER BY COALESCE(date_debut, cree_le) DESC
+            """,
+            pcode,
+        )
+
+        mandats = []
+        for row in rows:
+            d = dict(row)
+            for field in ('date_debut', 'date_fin'):
+                if d.get(field) is not None:
+                    d[field] = str(d[field])
+            if d.get('cree_le') is not None:
+                d['cree_le'] = d['cree_le'].isoformat()
+            mandats.append(d)
+
+        return {'total': len(mandats), 'mandats': mandats}
+
+    except Exception as exc:
+        logger.error("responsables_router.mandats_error", pcode=pcode, error=str(exc))
+        raise HTTPException(500, str(exc))
+
+
+# ── POST /reconstituer ────────────────────────────────────────────────────────
+
+class ReconstituerIn(BaseModel):
+    pcode: str
+    nom_entite: str
+
+
+@router.post("/reconstituer", status_code=202)
+async def reconstituer(payload: ReconstituerIn) -> dict:
+    """
+    Lance la reconstitution historique des mandats pour une entité administrative.
+    Démarre en arrière-plan et retourne immédiatement.
+    """
+    try:
+        from .historique import reconstituteur_historique
+
+        pool = await get_pool()
+
+        asyncio.create_task(
+            reconstituteur_historique.reconstituer_entite(
+                payload.pcode, payload.nom_entite, pool
+            )
+        )
+
+        return {'ok': True, 'message': 'Reconstitution lancée'}
+
+    except Exception as exc:
+        logger.error("responsables_router.reconstituer_error", pcode=payload.pcode, error=str(exc))
         raise HTTPException(500, str(exc))

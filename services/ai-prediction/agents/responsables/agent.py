@@ -40,6 +40,8 @@ class AgentResponsables:
         self.dernier_cycle: str | None = None
         self.nb_propositions_creees: int = 0
         self.nb_articles_analyses: int = 0
+        self.nb_changements_detectes: int = 0
+        self.dernier_suivi: str | None = None
 
     async def start(self) -> None:
         """Initialise le pool asyncpg et démarre la boucle de veille."""
@@ -179,10 +181,22 @@ class AgentResponsables:
                             error=str(exc),
                         )
 
+        # Vérification des changements de responsables
+        if self._pool:
+            try:
+                from .suivi_changements import suivi_changements
+                nb = await suivi_changements.verifier_changements(self._pool)
+                self.nb_changements_detectes += nb
+                self.dernier_suivi = datetime.now(timezone.utc).isoformat()
+                logger.info("agent_responsables.suivi_done", nb_changements=nb)
+            except Exception as exc:
+                logger.warning("agent_responsables.suivi_error", error=str(exc))
+
         logger.info(
             "agent_responsables.cycle_done",
             nb_propositions=self.nb_propositions_creees,
             nb_articles=self.nb_articles_analyses,
+            nb_changements=self.nb_changements_detectes,
         )
 
     async def _existe_deja(self, nomination: dict) -> bool:
@@ -253,6 +267,8 @@ class AgentResponsables:
             'dernier_cycle': self.dernier_cycle,
             'nb_propositions_creees': self.nb_propositions_creees,
             'nb_articles_analyses': self.nb_articles_analyses,
+            'nb_changements_detectes': self.nb_changements_detectes,
+            'dernier_suivi': self.dernier_suivi,
             'interval_hours': self.INTERVAL_HOURS,
         }
 

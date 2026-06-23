@@ -84,12 +84,58 @@ class CollecteurPresse:
             if not titre and not texte:
                 continue
 
+            # Extrait la date de publication (RSS 2.0: pubDate, Atom: published/updated)
+            date = self._get_text(item, [
+                'pubDate',
+                '{http://www.w3.org/2005/Atom}published',
+                '{http://www.w3.org/2005/Atom}updated',
+                '{http://purl.org/dc/elements/1.1/}date',
+            ])
+
             articles.append({
                 'titre': (titre or '').strip(),
                 'texte': f"{titre or ''} {texte or ''}".strip(),
                 'url': (lien or '').strip(),
                 'source_id': source_id,
+                'date': (date or '').strip(),
             })
+
+        return articles
+
+    async def rechercher_archives(
+        self,
+        query: str,
+        depuis_annee: int | None = None,
+        depuis_date: str | None = None,   # ISO date string "YYYY-MM-DD"
+    ) -> list[dict]:
+        """
+        Cherche dans les archives de presse via Google News RSS.
+        Retourne la même structure que fetch_articles : [{titre, texte, url, source_id, date}]
+        """
+        import urllib.parse
+
+        q = query
+        if depuis_annee:
+            q += f' after:{depuis_annee}-01-01'
+
+        encoded = urllib.parse.quote(q)
+        url = f'https://news.google.com/rss/search?q={encoded}&hl=fr-CD&gl=CD&ceid=CD:fr'
+
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT, headers=_HEADERS) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                articles = self._parse_rss(resp.text, 'google_news')
+        except httpx.TimeoutException:
+            logger.warning("collecteur_presse.archives_timeout", query=query)
+            return []
+        except Exception as exc:
+            logger.warning("collecteur_presse.archives_error", query=query, error=str(exc))
+            return []
+
+        # Filtrage post-fetch par date si depuis_date fourni
+        if depuis_date and articles:
+            articles = [a for a in articles if a.get('date', '') >= depuis_date]
 
         return articles
 

@@ -109,11 +109,13 @@ export async function responsablesRoutes(fastify: FastifyInstance): Promise<void
     }
 
     const body = z.object({
-      nom:     z.string().min(1),
-      titre:   z.string().min(1),
-      contact: z.string().optional(),
-      source:  z.string().optional(),
-      statut:  z.enum(['NORMAL', 'VIGILANCE', 'ALERTE', 'CRISE']).optional(),
+      nom:              z.string().min(1),
+      titre:            z.string().min(1),
+      contact:          z.string().optional(),
+      source:           z.string().optional(),
+      statut:           z.enum(['NORMAL', 'VIGILANCE', 'ALERTE', 'CRISE']).optional(),
+      contact_origine:  z.enum(['SAISIE_OFFICIELLE', 'DOCUMENT_OFFICIEL']).optional(),
+      contact_verifie:  z.boolean().optional(),
     }).parse(request.body);
 
     // Lire l'entité actuelle
@@ -133,10 +135,12 @@ export async function responsablesRoutes(fastify: FastifyInstance): Promise<void
     const entityName    = String(entity.nameFr ?? entity.name_fr ?? pcode);
     const action        = ancienNom ? 'MODIFICATION' : 'CREATION';
 
-    const contact     = (body.contact ?? null) as string | null;
-    const source      = (body.source  ?? null) as string | null;
-    const statut      = (body.statut  ?? null) as string | null;
-    const userEmail   = String(user.email ?? user.id);
+    const contact          = (body.contact         ?? null) as string | null;
+    const source           = (body.source          ?? null) as string | null;
+    const statut           = (body.statut          ?? null) as string | null;
+    const contactOrigine   = (body.contact_origine ?? null) as string | null;
+    const contactVerifie   = body.contact_verifie ?? null;
+    const userEmail        = String(user.email ?? user.id);
 
     // Historiser
     await sql.unsafe(
@@ -155,9 +159,12 @@ export async function responsablesRoutes(fastify: FastifyInstance): Promise<void
       `UPDATE admin_divisions
        SET responsable_nom = $1, responsable_titre = $2, responsable_contact = $3,
            responsable_source = $4, responsable_maj_par = $5, responsable_maj_le = NOW(),
-           statut_situation = COALESCE($6::text, statut_situation)
+           statut_situation = COALESCE($6::text, statut_situation),
+           contact_origine = COALESCE($8::text, contact_origine),
+           contact_verifie = COALESCE($9::boolean, contact_verifie),
+           contact_verifie_le = CASE WHEN $9::boolean IS TRUE THEN NOW() ELSE contact_verifie_le END
        WHERE pcode = $7`,
-      [body.nom, body.titre, contact, source, userEmail, statut, pcode],
+      [body.nom, body.titre, contact, source, userEmail, statut, pcode, contactOrigine, contactVerifie],
     );
 
     await writeAuditLog(user.id, 'UPDATE', 'admin_divisions', pcode, request, {
@@ -552,6 +559,88 @@ export async function responsablesRoutes(fastify: FastifyInstance): Promise<void
     );
 
     return reply.send({ success: true, data: { id: Number(id) } });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Mandats — historique chronologique des responsables
+  // ---------------------------------------------------------------------------
+
+  // GET /responsables/:pcode/mandats — liste des mandats d'une entité
+  fastify.get('/responsables/:pcode/mandats', {
+    preHandler: [requireAuth, requireRole(...RESP_ROLES)],
+  }, async (request, reply) => {
+    const { pcode } = request.params as { pcode: string };
+    const user = request.jwtUser;
+
+    if (!inScope(user, pcode)) {
+      return reply.status(403).send({ success: false, error: { code: 'SCOPE_DENIED', message: 'Accès restreint à votre périmètre' } });
+    }
+
+    const mandats = await sql.unsafe(
+      `SELECT id, personne, fonction, date_debut, date_fin, interimaire, source, url_source, confiance, statut, cree_le
+       FROM responsable_mandat
+       WHERE pcode = $1
+       ORDER BY COALESCE(date_debut, cree_le) DESC`,
+      [pcode],
+    ) as unknown as Record<string, unknown>[];
+
+    const data = mandats.map(r => ({
+      id:          Number(r.id),
+      personne:    String(r.personne ?? ''),
+      fonction:    (r.fonction   ?? null) as string | null,
+      date_debut:  (r.dateDebut  ?? r.date_debut  ?? null) as string | null,
+      date_fin:    (r.dateFin    ?? r.date_fin    ?? null) as string | null,
+      interimaire: Boolean(r.interimaire ?? false),
+      source:      (r.source     ?? null) as string | null,
+      url_source:  (r.urlSource  ?? r.url_source  ?? null) as string | null,
+      confiance:   r.confiance != null ? Number(r.confiance) : null,
+      statut:      String(r.statut ?? 'HISTORIQUE'),
+      cree_le:     String(r.creeLe ?? r.cree_le ?? ''),
+    }));
+
+    return reply.send({ success: true, data });
+  });
+
+  // POST /responsables/:pcode/mandats — créer manuellement un mandat (reconstitution)
+  fastify.post('/responsables/:pcode/mandats', {
+    preHandler: [requireAuth, requireRole(...ADMIN_ROLES)],
+  }, async (request, reply) => {
+    const { pcode } = request.params as { pcode: string };
+
+    const body = z.object({
+      personne:    z.string().min(1),
+      fonction:    z.string().optional(),
+      date_debut:  z.string().optional(),
+      date_fin:    z.string().optional(),
+      interimaire: z.boolean().default(false),
+      source:      z.string().optional(),
+      url_source:  z.string().optional(),
+      statut:      z.enum(['HISTORIQUE', 'ACTUEL', 'A_VALIDER']).default('HISTORIQUE'),
+    }).parse(request.body);
+
+    // Vérifier que le pcode existe dans admin_divisions
+    const [entity] = await sql`
+      SELECT pcode FROM admin_divisions WHERE pcode = ${pcode}
+    ` as unknown as Record<string, unknown>[];
+
+    if (!entity) {
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Entité administrative introuvable' } });
+    }
+
+    const dateDebut   = (body.date_debut  ?? null) as string | null;
+    const dateFin     = (body.date_fin    ?? null) as string | null;
+    const fonction    = (body.fonction    ?? null) as string | null;
+    const source      = (body.source      ?? null) as string | null;
+    const urlSource   = (body.url_source  ?? null) as string | null;
+
+    const [row] = await sql.unsafe(
+      `INSERT INTO responsable_mandat (pcode, personne, fonction, date_debut, date_fin, interimaire, source, url_source, statut)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id`,
+      [pcode, body.personne, fonction, dateDebut, dateFin, body.interimaire, source, urlSource, body.statut],
+    ) as unknown as Record<string, unknown>[];
+
+    return reply.status(201).send({ success: true, data: { id: Number(row.id) } });
   });
 
   // POST /responsables/propositions — créer une proposition (system_admin uniquement)
