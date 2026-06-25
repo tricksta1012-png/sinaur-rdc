@@ -599,7 +599,8 @@ export function CartographiePage() {
     const f = features[0];
     if (
       f.layer?.id === 'carto-fill' || f.layer?.id === 'carto-outline' ||
-      f.layer?.id === 'carto-points' || f.layer?.id === 'quartiers-globe-points'
+      f.layer?.id === 'carto-points' || f.layer?.id === 'quartiers-globe-points' ||
+      f.layer?.id === 'crisis-pulse-layer'
     ) {
       const props = f.properties as EntityProps;
       if (props?.pcode) {
@@ -792,6 +793,7 @@ export function CartographiePage() {
               onMove={e => setMapZoom(e.viewState.zoom)}
               interactiveLayerIds={[
                 ...(hasGeometry ? ['carto-fill', 'carto-points'] : []),
+                ...(hasCrises ? ['crisis-pulse-layer'] : []),
                 ...(showGlobalQuartiers ? ['quartiers-globe-points'] : []),
               ]}
               style={{ width: '100%', height: '100%' }}
