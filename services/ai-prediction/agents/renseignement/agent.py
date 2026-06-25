@@ -13,6 +13,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .schemas import IntelBulletin, IntelEvent, ProvinceAssessment
 from .sources.radio_okapi import fetch_okapi_events
 from .sources.acled_deep import fetch_acled_deep
+from .sources.kivu_morning_post import fetch_kmp_events
+from .sources.kivu_morning_post_youtube import fetch_kmp_youtube_events
 from .analyzers.threat_assessment import assess_provinces
 
 logger = structlog.get_logger(__name__)
@@ -64,6 +66,20 @@ class RenseignementAgent:
             logger.info("renseignement_agent.acled_fetched", count=len(acled))
         except Exception as exc:
             logger.warning("renseignement_agent.acled_failed", error=str(exc))
+
+        try:
+            kmp = await fetch_kmp_events()
+            events.extend(kmp)
+            logger.info("renseignement_agent.kmp_rss_fetched", count=len(kmp))
+        except Exception as exc:
+            logger.warning("renseignement_agent.kmp_rss_failed", error=str(exc))
+
+        try:
+            kmp_yt = await fetch_kmp_youtube_events()
+            events.extend(kmp_yt)
+            logger.info("renseignement_agent.kmp_youtube_fetched", count=len(kmp_yt))
+        except Exception as exc:
+            logger.warning("renseignement_agent.kmp_youtube_failed", error=str(exc))
 
         if not events:
             logger.warning("renseignement_agent.no_events")
