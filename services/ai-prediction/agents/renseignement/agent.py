@@ -15,6 +15,7 @@ from .sources.radio_okapi import fetch_okapi_events
 from .sources.acled_deep import fetch_acled_deep
 from .sources.kivu_morning_post import fetch_kmp_events
 from .sources.kivu_morning_post_youtube import fetch_kmp_youtube_events
+from .sources.presse_rdc import fetch_presse_rdc_events
 from .analyzers.threat_assessment import assess_provinces
 
 logger = structlog.get_logger(__name__)
@@ -80,6 +81,13 @@ class RenseignementAgent:
             logger.info("renseignement_agent.kmp_youtube_fetched", count=len(kmp_yt))
         except Exception as exc:
             logger.warning("renseignement_agent.kmp_youtube_failed", error=str(exc))
+
+        try:
+            presse = await fetch_presse_rdc_events()
+            events.extend(presse)
+            logger.info("renseignement_agent.presse_rdc_fetched", count=len(presse))
+        except Exception as exc:
+            logger.warning("renseignement_agent.presse_rdc_failed", error=str(exc))
 
         if not events:
             logger.warning("renseignement_agent.no_events")
