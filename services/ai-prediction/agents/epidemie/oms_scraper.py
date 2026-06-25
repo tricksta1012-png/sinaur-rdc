@@ -43,6 +43,11 @@ WHO_DON_RSS    = "https://www.who.int/rss-feeds/news-en.xml"
 RELIEFWEB_API  = "https://api.reliefweb.int/v1/reports"
 HDX_API        = "https://data.humdata.org/api/3/action/package_search"
 
+CDC_RSS        = "https://tools.cdc.gov/api/v2/resources/media/403372.rss"
+FRANCE24_RSS   = "https://www.france24.com/fr/afrique/rss"
+BBC_HEALTH_RSS = "https://feeds.bbci.co.uk/news/health/rss.xml"
+BBC_AFRICA_RSS = "https://feeds.bbci.co.uk/news/world/africa/rss.xml"
+
 # ── Disease mapping ───────────────────────────────────────────────────────────
 
 # Keywords → internal maladie code
@@ -431,6 +436,139 @@ async def _fetch_hdx(client: httpx.AsyncClient) -> list[dict]:
     return results
 
 
+# ── Source 4: CDC Global Outbreak RSS ────────────────────────────────────────
+
+async def _fetch_cdc(client: httpx.AsyncClient) -> list[dict]:
+    """CDC Global Disease Outbreak News RSS — filtre DRC + maladies cibles."""
+    results = []
+    try:
+        r = await client.get(CDC_RSS, timeout=20)
+        r.raise_for_status()
+        root = ET.fromstring(r.content)
+        for item in root.findall(".//item")[:30]:
+            title   = (item.findtext("title") or "").strip()
+            desc    = re.sub(r"<[^>]+>", "", item.findtext("description") or "")
+            link    = (item.findtext("link") or "").strip()
+            pub     = item.findtext("pubDate") or ""
+            combined = f"{title} {desc}".lower()
+
+            if not _is_drc_relevant(combined):
+                continue
+            maladie = _detect_disease(combined)
+            if not maladie:
+                continue
+
+            souche   = _detect_souche(maladie, combined)
+            cas      = _extract_int(_CAS_PATTERNS, desc)
+            deces    = _extract_int(_DECES_PATTERNS, desc)
+            suspects = _extract_int(_SUSPECTS_PATTERNS, desc)
+
+            results.append({
+                "source": "CDC",
+                "maladie": maladie,
+                "souche": souche,
+                "titre": title,
+                "cas_confirmes": cas or 0,
+                "cas_suspects": suspects or 0,
+                "deces_confirmes": deces or 0,
+                "url": link,
+                "pub_date": pub,
+            })
+            logger.info("oms_scraper.cdc.match", maladie=maladie, titre=title[:80])
+    except Exception as exc:
+        logger.warning("oms_scraper.cdc.error", error=str(exc))
+    return results
+
+
+# ── Source 5: France24 Afrique RSS ───────────────────────────────────────────
+
+async def _fetch_france24(client: httpx.AsyncClient) -> list[dict]:
+    """France24 section Afrique — filtre DRC + maladies."""
+    results = []
+    try:
+        r = await client.get(FRANCE24_RSS, timeout=20)
+        r.raise_for_status()
+        root = ET.fromstring(r.content)
+        for item in root.findall(".//item")[:40]:
+            title   = (item.findtext("title") or "").strip()
+            desc    = re.sub(r"<[^>]+>", "", item.findtext("description") or "")
+            link    = (item.findtext("link") or "").strip()
+            pub     = item.findtext("pubDate") or ""
+            combined = f"{title} {desc}".lower()
+
+            if not _is_drc_relevant(combined):
+                continue
+            maladie = _detect_disease(combined)
+            if not maladie:
+                continue
+
+            souche   = _detect_souche(maladie, combined)
+            cas      = _extract_int(_CAS_PATTERNS, desc)
+            deces    = _extract_int(_DECES_PATTERNS, desc)
+            suspects = _extract_int(_SUSPECTS_PATTERNS, desc)
+
+            results.append({
+                "source": "France24",
+                "maladie": maladie,
+                "souche": souche,
+                "titre": title,
+                "cas_confirmes": cas or 0,
+                "cas_suspects": suspects or 0,
+                "deces_confirmes": deces or 0,
+                "url": link,
+                "pub_date": pub,
+            })
+            logger.info("oms_scraper.france24.match", maladie=maladie, titre=title[:80])
+    except Exception as exc:
+        logger.warning("oms_scraper.france24.error", error=str(exc))
+    return results
+
+
+# ── Source 6: BBC Health + Africa RSS ────────────────────────────────────────
+
+async def _fetch_bbc(client: httpx.AsyncClient) -> list[dict]:
+    """BBC Health & Africa feeds — filtre DRC + maladies."""
+    results = []
+    for feed_url, feed_label in [(BBC_HEALTH_RSS, "BBC-Health"), (BBC_AFRICA_RSS, "BBC-Africa")]:
+        try:
+            r = await client.get(feed_url, timeout=20)
+            r.raise_for_status()
+            root = ET.fromstring(r.content)
+            for item in root.findall(".//item")[:30]:
+                title   = (item.findtext("title") or "").strip()
+                desc    = re.sub(r"<[^>]+>", "", item.findtext("description") or "")
+                link    = (item.findtext("link") or "").strip()
+                pub     = item.findtext("pubDate") or ""
+                combined = f"{title} {desc}".lower()
+
+                if not _is_drc_relevant(combined):
+                    continue
+                maladie = _detect_disease(combined)
+                if not maladie:
+                    continue
+
+                souche   = _detect_souche(maladie, combined)
+                cas      = _extract_int(_CAS_PATTERNS, desc)
+                deces    = _extract_int(_DECES_PATTERNS, desc)
+                suspects = _extract_int(_SUSPECTS_PATTERNS, desc)
+
+                results.append({
+                    "source": feed_label,
+                    "maladie": maladie,
+                    "souche": souche,
+                    "titre": title,
+                    "cas_confirmes": cas or 0,
+                    "cas_suspects": suspects or 0,
+                    "deces_confirmes": deces or 0,
+                    "url": link,
+                    "pub_date": pub,
+                })
+                logger.info("oms_scraper.bbc.match", feed=feed_label, maladie=maladie, titre=title[:80])
+        except Exception as exc:
+            logger.warning("oms_scraper.bbc.error", feed=feed_label, error=str(exc))
+    return results
+
+
 # ── Consolidation ─────────────────────────────────────────────────────────────
 
 def _best_report(reports: list[dict]) -> dict | None:
@@ -440,9 +578,11 @@ def _best_report(reports: list[dict]) -> dict | None:
     """
     if not reports:
         return None
-    source_priority = {"WHO-DON": 0}
+    source_priority = {"WHO-DON": 0, "ReliefWeb": 1, "CDC": 2, "OCHA-HDX": 3,
+                       "France24": 4, "BBC-Health": 5, "BBC-Africa": 5}
     def _key(r: dict) -> tuple:
-        src_prio = 1 if r["source"].startswith("ReliefWeb") else (2 if r["source"] == "OCHA-HDX" else source_priority.get(r["source"], 3))
+        src = r["source"]
+        src_prio = next((v for k, v in source_priority.items() if src.startswith(k)), 6)
         return (-r.get("cas_confirmes", 0), src_prio)
     return sorted(reports, key=_key)[0]
 
@@ -511,12 +651,20 @@ class OmsScraperAgent:
         by_disease: dict[str, dict] = {}
 
         async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as client:
-            # Gather reports from all sources
-            who_reports   = await _fetch_who_don(client)
-            rw_reports    = await _fetch_reliefweb(client)
-            hdx_reports   = await _fetch_hdx(client)
+            # Gather reports from all sources in parallel
+            who_reports, rw_reports, hdx_reports, cdc_reports, f24_reports, bbc_reports = (
+                await asyncio.gather(
+                    _fetch_who_don(client),
+                    _fetch_reliefweb(client),
+                    _fetch_hdx(client),
+                    _fetch_cdc(client),
+                    _fetch_france24(client),
+                    _fetch_bbc(client),
+                    return_exceptions=False,
+                )
+            )
 
-        all_reports = who_reports + rw_reports + hdx_reports
+        all_reports = who_reports + rw_reports + hdx_reports + cdc_reports + f24_reports + bbc_reports
 
         # Group by disease
         by_maladie: dict[str, list[dict]] = {}
