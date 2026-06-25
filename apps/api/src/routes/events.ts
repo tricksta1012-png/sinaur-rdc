@@ -31,6 +31,7 @@ const filterSchema = z.object({
   hazardType: z.string().optional(),
   status: z.string().optional(),
   province: z.string().optional(),
+  within: z.string().optional(),   // filtre hiérarchique : location_pcode LIKE within%
   severity: z.string().optional(),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional(),
@@ -61,6 +62,7 @@ export async function eventRoutes(fastify: FastifyInstance): Promise<void> {
           ${q.status ? sql`AND e.status = ${q.status}::event_status` : sql``}
           ${q.severity ? sql`AND e.severity = ${q.severity}::alert_severity` : sql``}
           ${q.province ? sql`AND (e.location_pcode = ${q.province} OR ${q.province} = ANY(e.affected_pcodes))` : sql``}
+          ${q.within ? sql`AND e.location_pcode LIKE ${q.within + '%'}` : sql``}
           ${q.dateFrom ? sql`AND e.start_date >= ${q.dateFrom}::timestamptz` : sql``}
           ${q.dateTo ? sql`AND e.start_date <= ${q.dateTo}::timestamptz` : sql``}
           ${q.search ? sql`AND (e.title ILIKE ${'%' + q.search + '%'} OR e.description ILIKE ${'%' + q.search + '%'})` : sql``}
@@ -74,6 +76,7 @@ export async function eventRoutes(fastify: FastifyInstance): Promise<void> {
           ${q.status ? sql`AND status = ${q.status}::event_status` : sql``}
           ${q.severity ? sql`AND severity = ${q.severity}::alert_severity` : sql``}
           ${q.province ? sql`AND (location_pcode = ${q.province} OR ${q.province} = ANY(affected_pcodes))` : sql``}
+          ${q.within ? sql`AND location_pcode LIKE ${q.within + '%'}` : sql``}
           ${q.dateFrom ? sql`AND start_date >= ${q.dateFrom}::timestamptz` : sql``}
           ${q.dateTo ? sql`AND start_date <= ${q.dateTo}::timestamptz` : sql``}
           ${q.search ? sql`AND (title ILIKE ${'%' + q.search + '%'} OR description ILIKE ${'%' + q.search + '%'})` : sql``}

@@ -48,6 +48,9 @@ const RDC_BOUNDS: [[number, number], [number, number]] = [[11.8, -13.5], [31.3, 
 
 // ── FONDS DE CARTE ────────────────────────────────────────────────────────────
 
+// Glyphs requis par MapLibre pour les couches symbol (labels texte)
+const GLYPHS = 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf';
+
 const FONDS_CARTE: Record<FondType, {
   label: string;
   icon: string;
@@ -60,6 +63,7 @@ const FONDS_CARTE: Record<FondType, {
     darkText: true,
     style: {
       version: 8,
+      glyphs: GLYPHS,
       sources: {
         osm: {
           type: 'raster',
@@ -79,16 +83,20 @@ const FONDS_CARTE: Record<FondType, {
     darkText: false,
     style: {
       version: 8,
+      glyphs: GLYPHS,
       sources: {
         'esri-sat': {
           type: 'raster',
-          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+          tiles: [
+            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          ],
           tileSize: 256,
+          maxzoom: 19,
           attribution: '© Esri World Imagery',
         },
       },
       layers: [
-        { id: 'bg',  type: 'background', paint: { 'background-color': '#000000' } },
+        { id: 'bg',  type: 'background', paint: { 'background-color': '#1a1a2e' } },
         { id: 'sat', type: 'raster', source: 'esri-sat' },
       ],
     },
@@ -99,11 +107,15 @@ const FONDS_CARTE: Record<FondType, {
     darkText: false,
     style: {
       version: 8,
+      glyphs: GLYPHS,
       sources: {
         'esri-sat': {
           type: 'raster',
-          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+          tiles: [
+            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          ],
           tileSize: 256,
+          maxzoom: 19,
           attribution: '© Esri World Imagery',
         },
         'carto-labels': {
@@ -114,7 +126,7 @@ const FONDS_CARTE: Record<FondType, {
         },
       },
       layers: [
-        { id: 'bg',     type: 'background', paint: { 'background-color': '#000000' } },
+        { id: 'bg',     type: 'background', paint: { 'background-color': '#1a1a2e' } },
         { id: 'sat',    type: 'raster', source: 'esri-sat' },
         { id: 'labels', type: 'raster', source: 'carto-labels', paint: { 'raster-opacity': 0.85 } },
       ],

@@ -75,6 +75,19 @@ interface Mandat {
   cree_le: string;
 }
 
+interface IncidentItem {
+  id: string;
+  title: string;
+  hazard_type: string;
+  severity: string;
+  status: string;
+  location_pcode: string;
+  location_name: string;
+  estimated_affected: number | null;
+  start_date: string;
+  source: string;
+}
+
 interface FluxMessage {
   id: string;
   type_flux: string;
@@ -115,6 +128,28 @@ export const STATUT_STYLE: Record<string, { cls: string; dot: string }> = {
 };
 
 const STATUT_OPTIONS = ['NORMAL', 'VIGILANCE', 'ALERTE', 'CRISE'] as const;
+
+const HAZARD_ICONS: Record<string, string> = {
+  flood:               '💧',
+  landslide:           '⛰',
+  mass_displacement:   '🚶',
+  humanitarian_crisis: '🆘',
+  health_epidemic:     '🦠',
+  volcanic_eruption:   '🌋',
+  drought:             '☀️',
+  fire:                '🔥',
+  conflict:            '⚔️',
+  earthquake:          '📳',
+  other:               '⚠️',
+};
+
+const SEVERITY_CLS: Record<string, string> = {
+  Minor:    'text-green-400 border-green-800',
+  Moderate: 'text-yellow-400 border-yellow-800',
+  Severe:   'text-orange-400 border-orange-800',
+  Extreme:  'text-red-400 border-red-800',
+  Unknown:  'text-cc-500 border-cc-700',
+};
 
 const FLUX_TYPES = ['SIGNALEMENT', 'ALERTE', 'RAPPORT', 'DIRECTIVE', 'RESSOURCE'] as const;
 
@@ -562,6 +597,64 @@ function TabResponsable({
   );
 }
 
+// ── Tab: Incidents ────────────────────────────────────────────────────────────
+
+function TabIncidents({
+  incidents,
+  loading,
+}: {
+  incidents: IncidentItem[];
+  loading: boolean;
+}) {
+  if (loading) {
+    return <div className="px-4 py-6 text-center text-[10px] text-cc-600">Chargement…</div>;
+  }
+  if (incidents.length === 0) {
+    return (
+      <div className="px-4 py-8 text-center">
+        <div className="text-2xl mb-2">✅</div>
+        <div className="text-[10px] text-cc-600 italic">Aucun incident enregistré dans cette zone</div>
+      </div>
+    );
+  }
+  return (
+    <div className="divide-y divide-cc-700/60">
+      {incidents.map(inc => {
+        const icon   = HAZARD_ICONS[inc.hazard_type] ?? '⚠️';
+        const sevCls = SEVERITY_CLS[inc.severity] ?? SEVERITY_CLS['Unknown']!;
+        return (
+          <div key={inc.id} className="px-4 py-2.5 space-y-1">
+            <div className="flex items-start gap-2">
+              <span className="text-sm shrink-0 mt-0.5">{icon}</span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-medium text-gray-200 leading-tight line-clamp-2">
+                  {inc.title}
+                </div>
+                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                  <span className={`text-[8px] font-mono border rounded px-1 ${sevCls}`}>
+                    {inc.severity}
+                  </span>
+                  <span className="text-[8px] text-cc-600 font-mono truncate max-w-[120px]">
+                    {inc.location_name}
+                  </span>
+                </div>
+              </div>
+              <span className="text-[8px] text-cc-600 font-mono shrink-0 mt-0.5">
+                {fmtDate(inc.start_date)}
+              </span>
+            </div>
+            {inc.estimated_affected != null && inc.estimated_affected > 0 && (
+              <div className="text-[9px] text-orange-400 font-mono pl-6">
+                ~{inc.estimated_affected.toLocaleString('fr-FR')} pers. affectées
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Tab: ETD Analyse ─────────────────────────────────────────────────────────
 
 function TabEtd({
@@ -891,13 +984,14 @@ export function EntityPanel({
   const showEtdTab  = entity.level >= 2 && entity.level <= 3;
   const showFluxTab = entity.level === 3;
 
-  type ActiveTab = 'infos' | 'resp' | 'etd' | 'flux';
+  type ActiveTab = 'infos' | 'resp' | 'incidents' | 'etd' | 'flux';
   const [activeTab, setActiveTab] = useState<ActiveTab>('infos');
 
   const tabs: { key: ActiveTab; label: string }[] = [
-    { key: 'infos', label: 'Infos' },
-    { key: 'resp',  label: 'Responsable' },
-    ...(showEtdTab  ? [{ key: 'etd'  as ActiveTab, label: 'ETD' }]  : []),
+    { key: 'infos',     label: 'Infos'    },
+    { key: 'resp',      label: 'Resp.'    },
+    { key: 'incidents', label: 'Sinistres'},
+    ...(showEtdTab  ? [{ key: 'etd'  as ActiveTab, label: 'ETD'  }] : []),
     ...(showFluxTab ? [{ key: 'flux' as ActiveTab, label: 'Flux' }] : []),
   ];
 
@@ -921,6 +1015,19 @@ export function EntityPanel({
         .then(r => r.data.data ?? []),
     enabled: activeTab === 'resp',
     staleTime: 5 * 60 * 1000,
+  });
+
+  // Incidents (filtrage hiérarchique par pcode prefix)
+  const { data: incidentsData, isLoading: loadingIncidents } = useQuery({
+    queryKey: ['entity-incidents', entity.pcode],
+    queryFn: () =>
+      apiClient
+        .get<{ success: boolean; data: IncidentItem[]; pagination: unknown }>(
+          `/events?within=${encodeURIComponent(entity.pcode)}&limit=50`
+        )
+        .then(r => r.data.data ?? []),
+    enabled: activeTab === 'incidents',
+    staleTime: 60 * 1000,
   });
 
   // ETD analyse
@@ -1009,6 +1116,13 @@ export function EntityPanel({
             mandatsLoading={mandatsLoading}
             isAdmin={isAdmin}
             canWrite={canWrite}
+          />
+        )}
+
+        {activeTab === 'incidents' && (
+          <TabIncidents
+            incidents={incidentsData ?? []}
+            loading={loadingIncidents}
           />
         )}
 
