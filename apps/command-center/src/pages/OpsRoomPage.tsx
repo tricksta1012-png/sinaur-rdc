@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import MapGL, { Source, Layer, type MapLayerMouseEvent, type MapRef } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -397,6 +397,7 @@ function EventDetailPanel({ event, onClose }: { event: SelectedEvent; onClose: (
 export function OpsRoomPage() {
   const { events, connected, clearFeed } = useRealtimeFeed();
   const { tokens } = useAuthStore();
+  const qc = useQueryClient();
   const [selectedEvent, setSelectedEvent] = useState<SelectedEvent | null>(null);
   const [wsLiveIds, setWsLiveIds] = useState<Set<string>>(new Set());
   const mapRef = useRef<MapRef>(null);
@@ -453,6 +454,7 @@ export function OpsRoomPage() {
     queryKey: ['cc-crises-active'],
     queryFn: () => apiClient.get('/crises?status=active&limit=10').then(r => r.data.data),
     staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 
   const { data: riskMapData } = useQuery({
@@ -464,10 +466,28 @@ export function OpsRoomPage() {
 
   useEffect(() => {
     const last = events[0];
-    if (!last || (last.type !== 'NEW_ALERT' && last.type !== 'NEW_EVENT')) return;
-    const id = (last.payload as any).id ?? (last.payload as any).identifier;
-    if (id) setWsLiveIds(prev => new Set([...prev, id]));
-  }, [events]);
+    if (!last) return;
+
+    // Surbrillance carte pour nouveaux événements/alertes
+    if (last.type === 'NEW_ALERT' || last.type === 'NEW_EVENT') {
+      const id = (last.payload as any).id ?? (last.payload as any).identifier;
+      if (id) setWsLiveIds(prev => new Set([...prev, id]));
+      // Rafraîchir immédiatement la carte et les stats
+      qc.invalidateQueries({ queryKey: ['cc-events-map'] });
+      qc.invalidateQueries({ queryKey: ['cc-stats'] });
+    }
+
+    // Rafraîchir les crises si une crise est créée ou mise à jour
+    if (last.type === 'CRISIS_CREATED' || last.type === 'CRISIS_UPDATED') {
+      qc.invalidateQueries({ queryKey: ['cc-crises-active'] });
+      qc.invalidateQueries({ queryKey: ['cc-stats'] });
+    }
+
+    // Rafraîchir la carte si un événement est mis à jour (statut changé)
+    if (last.type === 'EVENT_UPDATED') {
+      qc.invalidateQueries({ queryKey: ['cc-events-map'] });
+    }
+  }, [events, qc]);
 
   const annotatedGeoJSON = useMemo(() => {
     if (!mapGeoJSON) return null;
