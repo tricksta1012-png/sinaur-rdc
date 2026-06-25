@@ -12,6 +12,7 @@ import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
 import { config } from './config.js'
 import { checkDatabaseConnection, startKeepalive } from './db.js'
+import { startStatutSituationScheduler } from './services/statut-situation.js'
 import { authRoutes } from './routes/auth.js'
 import { geoRoutes } from './routes/geo.js'
 import { eventRoutes } from './routes/events.js'
@@ -185,6 +186,7 @@ export async function createApp(): Promise<FastifyInstance> {
 
   fastify.addHook('onReady', async () => {
     startKeepalive();
+    startStatutSituationScheduler();
   });
 
   fastify.get('/health', async () => {
