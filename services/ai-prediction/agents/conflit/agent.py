@@ -248,6 +248,7 @@ class ConflitAgent:
         """
         import asyncio
         from agents.conflit.persist import save_raw_events, upsert_corroborated
+        from agents.conflit.sources.presse_media import fetch_presse_media_events
 
         logger.info("conflit_agent.run_analysis.start")
 
@@ -255,6 +256,17 @@ class ConflitAgent:
         if not _EVENT_STORE:
             logger.info("conflit_agent.store_empty_retrying_bootstrap")
             await self._bootstrap_from_db()
+
+        # Enrichir avec la presse congolaise + médias internationaux (France24, BBC)
+        try:
+            media_events = await fetch_presse_media_events()
+            existing_ids = {e.get("external_id") for e in _EVENT_STORE}
+            new_media = [e for e in media_events if e.get("external_id") not in existing_ids]
+            _EVENT_STORE.extend(new_media)
+            logger.info("conflit_agent.media_ingested", new_events=len(new_media),
+                        total_fetched=len(media_events))
+        except Exception as exc:
+            logger.warning("conflit_agent.media_fetch_failed", error=str(exc))
 
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(days=30)
