@@ -616,6 +616,16 @@ export function EpidemicPage() {
     staleTime: 20_000,
   });
 
+  const { data: epidemieStats } = useQuery({
+    queryKey: ['epidemie-stats'],
+    queryFn: () =>
+      apiClient
+        .get<{ success: boolean; data: Record<string, { zones_actives: number; cas_confirmes: number; deces: number; date_maj: string; source: string }> }>('/epidemie/stats')
+        .then(r => r.data.data),
+    refetchInterval: 120_000,
+    staleTime: 60_000,
+  });
+
   const { data: tsRaw } = useQuery({
     queryKey: ['epidemie-timeseries', 'EBOLA'],
     queryFn: () => apiClient.get<{ maladie: string; data: { date_rapport: string; cas_confirmes_cumul: number }[] }>('/epidemie/timeseries?maladie=EBOLA').then(r => r.data),
@@ -724,15 +734,26 @@ export function EpidemicPage() {
     : null;
 
   const diseasesWithLive = useMemo(() => DISEASES.map(d => {
-    if (d.id !== 'EBOLA_BUNDIBUGYO' || zones.length === 0) return d;
+    if (d.id === 'EBOLA_BUNDIBUGYO' && zones.length > 0) {
+      return {
+        ...d,
+        zones_actives: zones.length,
+        cas_confirmes: totalCas,
+        deces: totalDeces,
+        ...(liveUpdateDate ? { source: 'DB live', maj: liveUpdateDate } : {}),
+      };
+    }
+    const stat = epidemieStats?.[d.id];
+    if (!stat || (stat.zones_actives === 0 && stat.cas_confirmes === 0)) return d;
     return {
       ...d,
-      zones_actives: zones.length,
-      cas_confirmes: totalCas,
-      deces: totalDeces,
-      ...(liveUpdateDate ? { source: 'DB live', maj: liveUpdateDate } : {}),
+      zones_actives: stat.zones_actives || d.zones_actives,
+      cas_confirmes: stat.cas_confirmes || d.cas_confirmes,
+      deces:         stat.deces         || d.deces,
+      source:        stat.source ?? d.source,
+      maj:           stat.date_maj || d.maj,
     };
-  }), [zones, totalCas, totalDeces, liveUpdateDate]);
+  }), [zones, totalCas, totalDeces, liveUpdateDate, epidemieStats]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

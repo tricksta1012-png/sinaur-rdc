@@ -171,4 +171,56 @@ export async function epidemieRoutes(fastify: FastifyInstance): Promise<void> {
       }
     },
   );
+
+  // GET /epidemie/stats — agrégats par maladie (live epidemic_zone + repli epidemic_stats)
+  fastify.get(
+    '/epidemie/stats',
+    { preHandler: [requireAuth, requireRole('provincial_coordinator', 'territory_admin', 'national_decision_maker', 'system_admin')] },
+    async (_request, reply) => {
+      const safeQuery = async <T>(query: Promise<T[]>): Promise<T[]> => {
+        try { return await query; }
+        catch (e: any) { if (e.code === '42P01') return []; throw e; }
+      };
+
+      const [liveRows, fallbackRows] = await Promise.all([
+        safeQuery(sql<{ maladie: string; zonesActives: number; casConfirmes: number; deces: number }[]>`
+          SELECT maladie,
+                 COUNT(*)::int             AS zones_actives,
+                 COALESCE(SUM(cas_confirmes),0)::int  AS cas_confirmes,
+                 COALESCE(SUM(deces_confirmes),0)::int AS deces
+          FROM epidemic_zone
+          WHERE statut IN ('ACTIF','ALERTE')
+          GROUP BY maladie
+        `),
+        safeQuery(sql<{ maladie: string; zonesActives: number; casConfirmes: number; deces: number; dateMaj: string; source: string }[]>`
+          SELECT maladie, zones_actives, cas_confirmes, deces, date_maj, source
+          FROM epidemic_stats
+        `),
+      ]);
+
+      const stats: Record<string, { zones_actives: number; cas_confirmes: number; deces: number; date_maj: string; source: string }> = {};
+      for (const r of fallbackRows) {
+        stats[r.maladie] = {
+          zones_actives: r.zonesActives,
+          cas_confirmes: r.casConfirmes,
+          deces:         r.deces,
+          date_maj:      r.dateMaj ? new Date(r.dateMaj).toISOString().split('T')[0] : '',
+          source:        r.source ?? 'INSP/OMS',
+        };
+      }
+      for (const r of liveRows) {
+        if (r.zonesActives === 0 && r.casConfirmes === 0) continue;
+        stats[r.maladie] = {
+          ...(stats[r.maladie] ?? {}),
+          zones_actives: r.zonesActives,
+          cas_confirmes: r.casConfirmes,
+          deces:         r.deces,
+          date_maj:      new Date().toISOString().split('T')[0],
+          source:        'DB live',
+        };
+      }
+
+      return reply.header('Cache-Control', 'no-store').send({ success: true, data: stats });
+    },
+  );
 }
