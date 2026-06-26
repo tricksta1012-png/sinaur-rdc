@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../lib/api.js';
+import { useAuthStore } from '../stores/auth.js';
 
 type Tab = 'status' | 'predictions' | 'veille' | 'renseignements' | 'antifraud' | 'stocks' | 'signalements' | 'epidemie' | 'logistique' | 'reporting' | 'sources';
 
@@ -1775,7 +1776,13 @@ function tempsEcoule(mins: number | null): string {
   return `${Math.floor(mins / 1440)}j`;
 }
 
+const EMPTY_FORM = { nom: '', type_source: 'RSS', categorie: 'GENERAL', url: '', fiabilite: 0.70, frequence_minutes: 360, note: '' };
+
 function SanteSourcesTab() {
+  const qc = useQueryClient();
+  const user = useAuthStore(s => s.user);
+  const isAdmin = user?.role === 'system_admin';
+
   const { data, isLoading, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['hub-sources-sante'],
     queryFn: () => apiClient.get('/hub/sources/sante').then(r => r.data),
@@ -1785,31 +1792,64 @@ function SanteSourcesTab() {
 
   const sources: any[] = data?.sources ?? [];
   const [filtre, setFiltre] = useState<string>('TOUTES');
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string; preview: string[] } | null>(null);
+  const [testing, setTesting] = useState(false);
 
   const categories = ['TOUTES', ...Array.from(new Set(sources.map((s: any) => s.categorie))).sort()];
   const filtered = filtre === 'TOUTES' ? sources : sources.filter((s: any) => s.categorie === filtre);
+  const ok = data?.sains ?? 0, deg = data?.degrades ?? 0, err = data?.erreurs ?? 0, total = data?.total ?? 0;
 
-  const ok      = data?.sains    ?? 0;
-  const deg     = data?.degrades ?? 0;
-  const err     = data?.erreurs  ?? 0;
-  const total   = data?.total    ?? 0;
+  const addSource = useMutation({
+    mutationFn: (body: typeof form) => apiClient.post('/hub/sources', body).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['hub-sources-sante'] });
+      setShowForm(false);
+      setForm({ ...EMPTY_FORM });
+      setTestResult(null);
+    },
+  });
+
+  async function handleTest() {
+    if (!form.url) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const { data: r } = await apiClient.post('/hub/sources/test', { url: form.url, type_source: form.type_source });
+      setTestResult({ ok: r.ok, message: r.message, preview: r.preview ?? [] });
+    } catch {
+      setTestResult({ ok: false, message: 'Erreur réseau', preview: [] });
+    } finally {
+      setTesting(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
-      {/* Header + KPIs */}
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="text-[10px] font-mono text-cc-500 uppercase">
-          {total} sources · actualisation 30s
+        <div className="text-[10px] font-mono text-cc-500 uppercase">{total} sources · actualisation 30s</div>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => { setShowForm(v => !v); setTestResult(null); }}
+              className="text-[10px] font-mono px-2 py-1 bg-sinaur-700 hover:bg-sinaur-600 text-white rounded transition-colors"
+            >
+              {showForm ? '✕ Fermer' : '+ Ajouter une source'}
+            </button>
+          )}
+          <button onClick={() => refetch()} className="text-[10px] text-gray-500 hover:text-gray-300 font-mono">↺ Rafraîchir</button>
         </div>
-        <button onClick={() => refetch()} className="text-[10px] text-gray-500 hover:text-gray-300 font-mono">↺ Rafraîchir</button>
       </div>
 
+      {/* KPIs */}
       <div className="grid grid-cols-4 gap-2">
         {[
-          { label: 'TOTAL',    value: total, cls: 'bg-cc-800 border-cc-600' },
-          { label: 'SAINES',   value: ok,    cls: 'bg-green-950 border-green-800' },
-          { label: 'DÉGRADÉES',value: deg,   cls: 'bg-yellow-950 border-yellow-800' },
-          { label: 'ERREUR',   value: err,   cls: 'bg-red-950 border-red-800' },
+          { label: 'TOTAL',     value: total, cls: 'bg-cc-800 border-cc-600' },
+          { label: 'SAINES',    value: ok,    cls: 'bg-green-950 border-green-800' },
+          { label: 'DÉGRADÉES', value: deg,   cls: 'bg-yellow-950 border-yellow-800' },
+          { label: 'ERREUR',    value: err,   cls: 'bg-red-950 border-red-800' },
         ].map(k => (
           <div key={k.label} className={`rounded-lg p-2.5 border ${k.cls}`}>
             <div className="text-[9px] font-mono text-gray-400 mb-0.5">{k.label}</div>
@@ -1818,6 +1858,137 @@ function SanteSourcesTab() {
         ))}
       </div>
 
+      {/* Formulaire admin — ajouter une source */}
+      {isAdmin && showForm && (
+        <div className="bg-cc-800 border border-sinaur-800 rounded-xl p-4 space-y-3">
+          <div className="text-[10px] font-mono text-sinaur-400 uppercase tracking-wider">Nouvelle source de collecte</div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[9px] font-mono text-gray-400">Nom *</label>
+              <input
+                value={form.nom}
+                onChange={e => setForm(f => ({ ...f, nom: e.target.value }))}
+                placeholder="ex: 7sur7.cd"
+                className="w-full bg-cc-900 border border-cc-600 rounded px-2 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-sinaur-600"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-mono text-gray-400">Type *</label>
+              <select
+                value={form.type_source}
+                onChange={e => setForm(f => ({ ...f, type_source: e.target.value }))}
+                className="w-full bg-cc-900 border border-cc-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-sinaur-600"
+              >
+                <option value="RSS">Flux RSS</option>
+                <option value="API">API</option>
+                <option value="WEB">Page web</option>
+                <option value="RESEAU_SOCIAL">Réseau social</option>
+                <option value="DOCUMENT">Document</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[9px] font-mono text-gray-400">URL *</label>
+            <div className="flex gap-2">
+              <input
+                value={form.url}
+                onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
+                placeholder="https://…"
+                className="flex-1 bg-cc-900 border border-cc-600 rounded px-2 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-sinaur-600"
+              />
+              <button
+                onClick={handleTest}
+                disabled={testing || !form.url}
+                className="px-3 py-1.5 text-[10px] font-mono bg-cc-700 hover:bg-cc-600 text-gray-300 rounded transition-colors disabled:opacity-40"
+              >
+                {testing ? '…' : 'Tester'}
+              </button>
+            </div>
+            {testResult && (
+              <div className={`mt-1 px-2 py-1.5 rounded text-[9px] font-mono border ${
+                testResult.ok ? 'bg-green-950 border-green-800 text-green-300' : 'bg-red-950 border-red-800 text-red-300'
+              }`}>
+                {testResult.ok ? '✓' : '✗'} {testResult.message}
+                {testResult.preview.length > 0 && (
+                  <ul className="mt-1 space-y-px text-[8px] text-gray-400">
+                    {testResult.preview.map((t, i) => <li key={i} className="truncate">· {t}</li>)}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="text-[9px] font-mono text-gray-400">Catégorie</label>
+              <select
+                value={form.categorie}
+                onChange={e => setForm(f => ({ ...f, categorie: e.target.value }))}
+                className="w-full bg-cc-900 border border-cc-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-sinaur-600"
+              >
+                {['CONFLIT','EPIDEMIE','CATASTROPHE','SECURITE','METEO','HUMANITAIRE',
+                  'SECURITE_ALIMENTAIRE','DROITS_HUMAINS','PREVISION','MEDIA','GENERAL'].map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-mono text-gray-400">Fiabilité : {Math.round(form.fiabilite * 100)}%</label>
+              <input
+                type="range" min="0.3" max="1" step="0.05"
+                value={form.fiabilite}
+                onChange={e => setForm(f => ({ ...f, fiabilite: +e.target.value }))}
+                className="w-full accent-sinaur-500"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-mono text-gray-400">Fréquence</label>
+              <select
+                value={form.frequence_minutes}
+                onChange={e => setForm(f => ({ ...f, frequence_minutes: +e.target.value }))}
+                className="w-full bg-cc-900 border border-cc-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-sinaur-600"
+              >
+                <option value={30}>30 min (urgent)</option>
+                <option value={120}>2h</option>
+                <option value={360}>6h (standard)</option>
+                <option value={720}>12h</option>
+                <option value={1440}>Quotidien</option>
+                <option value={10080}>Hebdomadaire</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[9px] font-mono text-gray-400">Note (optionnel)</label>
+            <input
+              value={form.note}
+              onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
+              placeholder="ex: clé API requise, scraping HTML…"
+              className="w-full bg-cc-900 border border-cc-600 rounded px-2 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-sinaur-600"
+            />
+          </div>
+
+          {addSource.isError && (
+            <div className="text-[9px] font-mono text-red-400">Erreur lors de l'ajout. Vérifier les champs.</div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => addSource.mutate(form)}
+              disabled={addSource.isPending || !form.nom || !form.url || !testResult?.ok}
+              className="px-4 py-1.5 text-xs font-mono bg-sinaur-700 hover:bg-sinaur-600 text-white rounded transition-colors disabled:opacity-40"
+            >
+              {addSource.isPending ? 'Ajout…' : 'Ajouter'}
+            </button>
+            <div className="text-[8px] font-mono text-gray-600 self-center">
+              {!testResult?.ok && 'Tester la source avant d\'ajouter'}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filtre catégorie */}
       <div className="flex flex-wrap gap-1">
         {categories.map(cat => (
@@ -1825,9 +1996,7 @@ function SanteSourcesTab() {
             key={cat}
             onClick={() => setFiltre(cat)}
             className={`px-2 py-0.5 rounded text-[9px] font-mono transition-colors ${
-              filtre === cat
-                ? 'bg-sinaur-700 text-white'
-                : 'bg-cc-800 text-gray-400 hover:text-gray-200'
+              filtre === cat ? 'bg-sinaur-700 text-white' : 'bg-cc-800 text-gray-400 hover:text-gray-200'
             }`}
           >
             {cat}
@@ -1844,14 +2013,8 @@ function SanteSourcesTab() {
             const cfg = STATUT_CFG[s.statut_sante] ?? STATUT_CFG.UNKNOWN;
             const catColor = CATEGORIE_COLOR[s.categorie] ?? 'text-gray-400';
             return (
-              <div
-                key={s.id}
-                className="bg-cc-800 border border-cc-700 rounded-lg px-3 py-2 flex items-center gap-3"
-              >
-                {/* Dot statut */}
+              <div key={s.id} className="bg-cc-800 border border-cc-700 rounded-lg px-3 py-2 flex items-center gap-3">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
-
-                {/* Nom + agent */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-medium text-white truncate">{s.nom}</span>
@@ -1865,8 +2028,6 @@ function SanteSourcesTab() {
                     <span className="text-[9px] font-mono text-gray-500">agent:{s.agent}</span>
                   </div>
                 </div>
-
-                {/* Métriques */}
                 <div className="flex items-center gap-3 shrink-0">
                   {s.temps_ecoule_min != null && (
                     <div className="text-right">
@@ -1884,9 +2045,7 @@ function SanteSourcesTab() {
                     <div className="text-[9px] font-mono text-gray-400">{Math.round(s.fiabilite * 100)}%</div>
                     <div className="text-[8px] text-gray-600">fiabilité</div>
                   </div>
-                  <span className={`text-[8px] font-mono font-bold px-1.5 py-px rounded ${cfg.badge}`}>
-                    {cfg.label}
-                  </span>
+                  <span className={`text-[8px] font-mono font-bold px-1.5 py-px rounded ${cfg.badge}`}>{cfg.label}</span>
                 </div>
               </div>
             );
