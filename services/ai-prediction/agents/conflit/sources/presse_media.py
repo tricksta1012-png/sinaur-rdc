@@ -189,15 +189,68 @@ async def _fetch_one(
     return events
 
 
+async def _fetch_telesud(client: httpx.AsyncClient) -> list[dict]:
+    """Global Africa Telesud — scraping HTML de la page d'accueil (pas de RSS)."""
+    events: list[dict] = []
+    try:
+        r = await client.get(
+            "https://www.telesud.com/",
+            headers={"User-Agent": "SINAUR-RDC/1.0"},
+            timeout=20.0,
+            follow_redirects=True,
+        )
+        r.raise_for_status()
+        from lxml import html as lxml_html
+        tree = lxml_html.fromstring(r.content)
+        seen: set[str] = set()
+        for a_tag in tree.xpath("//a[contains(@href, '/emissions/') or contains(@href, '/actualite')]"):
+            href = (a_tag.get("href") or "").strip()
+            if not href or href in seen:
+                continue
+            seen.add(href)
+            h3_nodes = a_tag.xpath(".//h3")
+            title = (h3_nodes[0].text_content() if h3_nodes else a_tag.text_content()).strip()
+            if not title or len(title) < 15:
+                continue
+            url = f"https://www.telesud.com{href}" if href.startswith("/") else href
+            combined = title.lower()
+            if not _is_relevant(combined, set()):
+                continue
+            p_code, province = _extract_pcode(combined)
+            severity = _severity_from_text(combined)
+            events.append({
+                "external_id":        url,
+                "source":             "telesud",
+                "event_date":         datetime.now(timezone.utc).isoformat(),
+                "event_type":         "conflict",
+                "province":           province,
+                "p_code":             p_code,
+                "severity":           severity,
+                "displacement_risk":  0.55 + (severity - 1) * 0.10,
+                "territoire":         None,
+                "coordinates":        None,
+                "fatalities_reported": None,
+                "raw_notes":          title[:500],
+                "source_url":         url,
+                "actor_names":        _extract_actors(combined),
+                "reliability":        0.67,
+            })
+        logger.info("conflit.telesud.fetched", conflict_events=len(events))
+    except Exception as exc:
+        logger.warning("conflit.telesud.failed", error=str(exc))
+    return events
+
+
 async def fetch_presse_media_events() -> list[dict]:
-    """Collecte en parallèle les conflits depuis la presse congolaise et médias internationaux."""
+    """Collecte en parallèle les conflits depuis la presse congolaise, médias internationaux et Telesud."""
     async with httpx.AsyncClient() as client:
         results = await asyncio.gather(
             *[_fetch_one(client, sid, name, url, rel) for sid, name, url, rel in SOURCES],
+            _fetch_telesud(client),
             return_exceptions=False,
         )
     events: list[dict] = []
     for batch in results:
         events.extend(batch)
-    logger.info("conflit.presse_media.total", count=len(events), sources=len(SOURCES))
+    logger.info("conflit.presse_media.total", count=len(events), sources=len(SOURCES) + 1)
     return events

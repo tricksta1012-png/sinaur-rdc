@@ -47,6 +47,7 @@ CDC_RSS        = "https://tools.cdc.gov/api/v2/resources/media/403372.rss"
 FRANCE24_RSS   = "https://www.france24.com/fr/afrique/rss"
 BBC_HEALTH_RSS = "https://feeds.bbci.co.uk/news/health/rss.xml"
 BBC_AFRICA_RSS = "https://feeds.bbci.co.uk/news/world/africa/rss.xml"
+TELESUD_URL    = "https://www.telesud.com/"
 
 # ── Disease mapping ───────────────────────────────────────────────────────────
 
@@ -569,6 +570,49 @@ async def _fetch_bbc(client: httpx.AsyncClient) -> list[dict]:
     return results
 
 
+# ── Source 7: Telesud (HTML scraper) ─────────────────────────────────────────
+
+async def _fetch_telesud_sante(client: httpx.AsyncClient) -> list[dict]:
+    """Global Africa Telesud — page d'accueil, filtre DRC + maladies (pas de RSS)."""
+    results = []
+    try:
+        r = await client.get(TELESUD_URL, timeout=20)
+        r.raise_for_status()
+        from lxml import html as lxml_html
+        tree = lxml_html.fromstring(r.content)
+        seen: set[str] = set()
+        for a_tag in tree.xpath("//a[contains(@href, '/emissions/') or contains(@href, '/actualite')]"):
+            href = (a_tag.get("href") or "").strip()
+            if not href or href in seen:
+                continue
+            seen.add(href)
+            h3_nodes = a_tag.xpath(".//h3")
+            title = (h3_nodes[0].text_content() if h3_nodes else a_tag.text_content()).strip()
+            if not title or len(title) < 15:
+                continue
+            combined = title.lower()
+            if not _is_drc_relevant(combined):
+                continue
+            maladie = _detect_disease(combined)
+            if not maladie:
+                continue
+            souche = _detect_souche(maladie, combined)
+            results.append({
+                "source": "Telesud",
+                "maladie": maladie,
+                "souche": souche,
+                "titre": title,
+                "cas_confirmes": 0,
+                "cas_suspects": 0,
+                "deces_confirmes": 0,
+                "pub_date": datetime.now(timezone.utc).isoformat(),
+            })
+            logger.info("oms_scraper.telesud.match", maladie=maladie, titre=title[:80])
+    except Exception as exc:
+        logger.warning("oms_scraper.telesud.error", error=str(exc))
+    return results
+
+
 # ── Consolidation ─────────────────────────────────────────────────────────────
 
 def _best_report(reports: list[dict]) -> dict | None:
@@ -652,7 +696,7 @@ class OmsScraperAgent:
 
         async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as client:
             # Gather reports from all sources in parallel
-            who_reports, rw_reports, hdx_reports, cdc_reports, f24_reports, bbc_reports = (
+            who_reports, rw_reports, hdx_reports, cdc_reports, f24_reports, bbc_reports, tsd_reports = (
                 await asyncio.gather(
                     _fetch_who_don(client),
                     _fetch_reliefweb(client),
@@ -660,11 +704,12 @@ class OmsScraperAgent:
                     _fetch_cdc(client),
                     _fetch_france24(client),
                     _fetch_bbc(client),
+                    _fetch_telesud_sante(client),
                     return_exceptions=False,
                 )
             )
 
-        all_reports = who_reports + rw_reports + hdx_reports + cdc_reports + f24_reports + bbc_reports
+        all_reports = who_reports + rw_reports + hdx_reports + cdc_reports + f24_reports + bbc_reports + tsd_reports
 
         # Group by disease
         by_maladie: dict[str, list[dict]] = {}

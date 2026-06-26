@@ -457,6 +457,7 @@ function PredictionsTab() {
     queryKey: ['ai-risks', horizon],
     queryFn: () => apiClient.get(`/predictions/risks?horizon=${horizon}`).then(r => r.data),
     staleTime: 60_000,
+    refetchInterval: 60_000,
   });
 
   const refresh = useMutation({
@@ -468,6 +469,7 @@ function PredictionsTab() {
     queryKey: ['ai-alerts-pending'],
     queryFn: () => apiClient.get('/predictions/alerts/pending').then(r => r.data),
     staleTime: 60_000,
+    refetchInterval: 60_000,
   });
   const pendingAlerts: any[] = Array.isArray(alertsQuery.data) ? alertsQuery.data : [];
 
@@ -633,7 +635,8 @@ function VeilleTab() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['ai-veille'],
     queryFn: () => apiClient.get('/ai/veille/events?limit=40').then(r => r.data),
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 
   const { data: healthData } = useQuery({
@@ -714,7 +717,8 @@ function RenseignementsTab() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['ai-veille-intel'],
     queryFn: () => apiClient.get('/ai/veille/events?limit=80').then(r => r.data),
-    staleTime: 120_000,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
   });
 
   const events: any[] = Array.isArray(data) ? data : (data?.events ?? []);
@@ -864,12 +868,14 @@ function AntifraudTab() {
     queryKey: ['ai-antifraud-stats'],
     queryFn: () => apiClient.get('/ai/antifraud/stats').then(r => r.data),
     staleTime: 60_000,
+    refetchInterval: 60_000,
   });
 
   const { data: queueData, isLoading: queueLoading } = useQuery({
     queryKey: ['ai-antifraud-queue'],
     queryFn: () => apiClient.get('/ai/antifraud/queue').then(r => r.data),
     staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 
   const stats = statsData ?? {};
@@ -1108,11 +1114,13 @@ function StocksTab() {
     queryKey: ['ai-stocks-dashboard'],
     queryFn: () => apiClient.get('/ai/anomalie-stocks/dashboard').then(r => r.data),
     staleTime: 30_000,
+    refetchInterval: 30_000,
   });
   const { data: alertsData } = useQuery({
     queryKey: ['ai-stocks-alerts'],
     queryFn: () => apiClient.get('/ai/anomalie-stocks/alerts').then(r => r.data),
     staleTime: 20_000,
+    refetchInterval: 30_000,
   });
   const alerts: any[] = alertsData?.alerts ?? [];
 
@@ -1160,11 +1168,13 @@ function SignalementsTab() {
     queryKey: ['ai-signalements-stats'],
     queryFn: () => apiClient.get('/ai/signalements/stats').then(r => r.data),
     staleTime: 30_000,
+    refetchInterval: 30_000,
   });
   const { data: priorityData, isLoading } = useQuery({
     queryKey: ['ai-signalements-priority'],
     queryFn: () => apiClient.get('/ai/signalements/priority').then(r => r.data),
     staleTime: 20_000,
+    refetchInterval: 30_000,
   });
   const priority: any[] = priorityData?.queue ?? [];
   const stats = statsData ?? {};
@@ -1369,44 +1379,19 @@ function EpidemieClusterCard({ c, expanded, onToggle }: { c: any; expanded: bool
 
 // ── Disease cards config (AI tab — compact) ──────────────────────────────────
 
-const AI_DISEASES = [
-  {
-    id:'EBOLA_BUNDIBUGYO', nom:'Ebola Bundibugyo', emoji:'🦠',
-    statut:'URGENCE INTERNATIONALE', statut_cls:'text-red-300',
-    zones:25, cas:515, deces:91, vaccin:false, traitement:false, usppi:true,
-    border:'border-red-800',
-  },
-  {
-    id:'CHOLERA', nom:'Choléra', emoji:'💧',
-    statut:'ENDÉMIQUE', statut_cls:'text-blue-300',
-    zones:18, cas:4820, deces:89, vaccin:true, traitement:true, usppi:false,
-    border:'border-blue-900',
-  },
-  {
-    id:'MPOX', nom:'Mpox', emoji:'⚕️',
-    statut:'ALERTE', statut_cls:'text-purple-300',
-    zones:8, cas:1240, deces:23, vaccin:true, traitement:true, usppi:false,
-    border:'border-purple-900',
-  },
-  {
-    id:'ROUGEOLE', nom:'Rougeole', emoji:'🔴',
-    statut:'ENDÉMIQUE', statut_cls:'text-orange-300',
-    zones:34, cas:12400, deces:234, vaccin:true, traitement:false, usppi:false,
-    border:'border-orange-900',
-  },
-  {
-    id:'MENINGITE', nom:'Méningite', emoji:'🧠',
-    statut:'SURVEILLANCE', statut_cls:'text-green-300',
-    zones:4, cas:320, deces:48, vaccin:true, traitement:true, usppi:false,
-    border:'border-green-900',
-  },
-  {
-    id:'PALUDISME', nom:'Paludisme', emoji:'🦟',
-    statut:'ENDÉMIQUE', statut_cls:'text-emerald-300',
-    zones:145, cas:890000, deces:12400, vaccin:true, traitement:true, usppi:false,
-    border:'border-emerald-900',
-  },
-];
+const DISEASE_META: Record<string, {
+  nom: string; emoji: string; statut: string; statut_cls: string;
+  vaccin: boolean; traitement: boolean; usppi: boolean; border: string;
+  fb_zones: number; fb_cas: number; fb_deces: number;
+}> = {
+  EBOLA:        { nom: 'Ebola Bundibugyo', emoji: '🦠', statut: 'URGENCE INTERNATIONALE', statut_cls: 'text-red-300',     vaccin: false, traitement: false, usppi: true,  border: 'border-red-800',     fb_zones: 25,  fb_cas: 515,    fb_deces: 91    },
+  CHOLERA:      { nom: 'Choléra',          emoji: '💧', statut: 'ENDÉMIQUE',               statut_cls: 'text-blue-300',    vaccin: true,  traitement: true,  usppi: false, border: 'border-blue-900',    fb_zones: 18,  fb_cas: 4820,   fb_deces: 89    },
+  MPOX:         { nom: 'Mpox',             emoji: '⚕️', statut: 'ALERTE',                  statut_cls: 'text-purple-300',  vaccin: true,  traitement: true,  usppi: false, border: 'border-purple-900',  fb_zones: 8,   fb_cas: 1240,   fb_deces: 23    },
+  ROUGEOLE:     { nom: 'Rougeole',         emoji: '🔴', statut: 'ENDÉMIQUE',               statut_cls: 'text-orange-300',  vaccin: true,  traitement: false, usppi: false, border: 'border-orange-900',  fb_zones: 34,  fb_cas: 12400,  fb_deces: 234   },
+  MENINGITE:    { nom: 'Méningite',        emoji: '🧠', statut: 'SURVEILLANCE',            statut_cls: 'text-green-300',   vaccin: true,  traitement: true,  usppi: false, border: 'border-green-900',   fb_zones: 4,   fb_cas: 320,    fb_deces: 48    },
+  PALUDISME:    { nom: 'Paludisme',        emoji: '🦟', statut: 'ENDÉMIQUE',               statut_cls: 'text-emerald-300', vaccin: true,  traitement: true,  usppi: false, border: 'border-emerald-900', fb_zones: 145, fb_cas: 890000, fb_deces: 12400 },
+  FIEVRE_JAUNE: { nom: 'Fièvre Jaune',    emoji: '🌡️', statut: 'SURVEILLANCE',            statut_cls: 'text-yellow-300',  vaccin: true,  traitement: false, usppi: false, border: 'border-yellow-900',  fb_zones: 0,   fb_cas: 0,      fb_deces: 0     },
+};
 
 function EpidemieTab() {
   const navigate = useNavigate();
@@ -1417,24 +1402,46 @@ function EpidemieTab() {
   const { data: dashData } = useQuery({
     queryKey: ['ai-epidemie-dashboard'],
     queryFn: () => apiClient.get('/ai/epidemie/dashboard').then(r => r.data),
-    staleTime: 60_000,
-    refetchInterval: 60_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+  const { data: statsData } = useQuery({
+    queryKey: ['epidemie-stats-live'],
+    queryFn: () => apiClient.get('/epidemie/stats').then(r => r.data),
+    staleTime: 20_000,
+    refetchInterval: 30_000,
   });
   const { data: clustersData, isLoading: clustersLoading } = useQuery({
     queryKey: ['ai-epidemie-clusters'],
     queryFn: () => apiClient.get('/ai/epidemie/clusters').then(r => r.data),
-    staleTime: 60_000,
-    enabled: showClusters,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
   const { data: alertsData } = useQuery({
     queryKey: ['ai-epidemie-alerts'],
     queryFn: () => apiClient.get('/ai/epidemie/alerts').then(r => r.data),
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 
   const clusters: any[] = (clustersData?.clusters ?? []).sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0));
   const alerts: any[] = alertsData?.alerts ?? [];
   const criticalClusters = clusters.filter(c => c.alert_level === 'CRITICAL');
+
+  const liveStats: Record<string, { zones_actives: number; cas_confirmes: number; deces: number }> = statsData?.data ?? {};
+  const displayDiseases = Object.entries(DISEASE_META)
+    .map(([id, meta]) => {
+      const live = liveStats[id];
+      return {
+        id,
+        ...meta,
+        zones: live?.zones_actives ?? meta.fb_zones,
+        cas:   live?.cas_confirmes  ?? meta.fb_cas,
+        deces: live?.deces          ?? meta.fb_deces,
+        isLive: !!live,
+      };
+    })
+    .filter(d => d.zones > 0 || d.cas > 0 || d.usppi);
 
   return (
     <div className="space-y-4">
@@ -1463,9 +1470,9 @@ function EpidemieTab() {
 
       {/* Disease cards grid */}
       <div>
-        <div className="text-[10px] font-mono text-gray-500 uppercase mb-2">6 maladies sous surveillance active</div>
+        <div className="text-[10px] font-mono text-gray-500 uppercase mb-2">{displayDiseases.length} maladies sous surveillance active</div>
         <div className="grid grid-cols-2 gap-2">
-          {AI_DISEASES.map(d => (
+          {displayDiseases.map(d => (
             <div key={d.id} className={`bg-cc-800 rounded-lg border ${d.border} p-2.5 space-y-1.5`}>
               <div className="flex items-center gap-1.5">
                 <span className="text-base">{d.emoji}</span>
@@ -1473,6 +1480,7 @@ function EpidemieTab() {
                   <div className="flex items-center gap-1 flex-wrap">
                     <span className="text-[11px] font-bold text-white truncate">{d.nom}</span>
                     {d.usppi && <span className="text-[7px] bg-red-900 text-red-200 border border-red-700 px-1 py-px rounded font-bold shrink-0">USPPI</span>}
+                    {d.isLive && <span className="text-[7px] bg-green-900 text-green-300 border border-green-700 px-1 py-px rounded font-mono shrink-0">LIVE</span>}
                   </div>
                   <span className={`text-[8px] font-mono ${d.statut_cls}`}>{d.statut}</span>
                 </div>
@@ -1604,6 +1612,7 @@ function LogistiqueTab() {
     queryKey: ['ai-logistique-recs'],
     queryFn: () => apiClient.get('/ai/logistique/recommendations').then(r => r.data),
     staleTime: 60_000,
+    refetchInterval: 60_000,
   });
   const recs: any[] = data?.recommendations ?? [];
   const pending = recs.filter((r: any) => r.status === 'PENDING');
@@ -1648,6 +1657,7 @@ function ReportingTab() {
     queryKey: ['ai-reports'],
     queryFn: () => apiClient.get('/ai/reporting/reports').then(r => r.data),
     staleTime: 60_000,
+    refetchInterval: 300_000,
   });
   const reports: any[] = data?.reports ?? [];
 
