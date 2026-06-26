@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../lib/api.js';
 
-type Tab = 'status' | 'predictions' | 'veille' | 'renseignements' | 'antifraud' | 'stocks' | 'signalements' | 'epidemie' | 'logistique' | 'reporting';
+type Tab = 'status' | 'predictions' | 'veille' | 'renseignements' | 'antifraud' | 'stocks' | 'signalements' | 'epidemie' | 'logistique' | 'reporting' | 'sources';
 
 // ── Risk ─────────────────────────────────────────────────────────────────────
 
@@ -1741,6 +1741,168 @@ function ReportingTab() {
   );
 }
 
+// ── Panneau de santé des sources ──────────────────────────────────────────────
+
+const STATUT_CFG: Record<string, { dot: string; badge: string; label: string }> = {
+  OK:       { dot: 'bg-green-500',  badge: 'bg-green-900 text-green-300',   label: 'OK'       },
+  DEGRADED: { dot: 'bg-yellow-500', badge: 'bg-yellow-900 text-yellow-300', label: 'DÉGRADÉ'  },
+  ERROR:    { dot: 'bg-red-500 animate-pulse', badge: 'bg-red-900 text-red-300', label: 'ERREUR' },
+  UNKNOWN:  { dot: 'bg-gray-600',  badge: 'bg-cc-700 text-gray-400',       label: '?'         },
+};
+
+const CATEGORIE_COLOR: Record<string, string> = {
+  'CONFLIT':            'text-red-400',
+  'CONFLIT EST-RDC':    'text-red-400',
+  'SÉCURITÉ':           'text-orange-400',
+  'ÉPIDÉMIE':           'text-purple-400',
+  'CATASTROPHE':        'text-blue-400',
+  'MÉTÉO':              'text-cyan-400',
+  'HUMANITAIRE':        'text-yellow-400',
+  'SÉCURITÉ ALIMENTAIRE':'text-amber-400',
+  'DROITS HUMAINS':     'text-pink-400',
+  'TÉLÉCOMMUNICATIONS': 'text-teal-400',
+  'FEUX':               'text-orange-500',
+  'PRÉVISION':          'text-indigo-400',
+  'MÉDIA/CONFLIT':      'text-red-300',
+  'GÉNÉRAL':            'text-gray-400',
+};
+
+function tempsEcoule(mins: number | null): string {
+  if (mins == null) return '—';
+  if (mins < 1) return '< 1 min';
+  if (mins < 60) return `${mins} min`;
+  if (mins < 1440) return `${Math.floor(mins / 60)}h${mins % 60 > 0 ? (mins % 60) + 'm' : ''}`;
+  return `${Math.floor(mins / 1440)}j`;
+}
+
+function SanteSourcesTab() {
+  const { data, isLoading, refetch, dataUpdatedAt } = useQuery({
+    queryKey: ['hub-sources-sante'],
+    queryFn: () => apiClient.get('/hub/sources/sante').then(r => r.data),
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+
+  const sources: any[] = data?.sources ?? [];
+  const [filtre, setFiltre] = useState<string>('TOUTES');
+
+  const categories = ['TOUTES', ...Array.from(new Set(sources.map((s: any) => s.categorie))).sort()];
+  const filtered = filtre === 'TOUTES' ? sources : sources.filter((s: any) => s.categorie === filtre);
+
+  const ok      = data?.sains    ?? 0;
+  const deg     = data?.degrades ?? 0;
+  const err     = data?.erreurs  ?? 0;
+  const total   = data?.total    ?? 0;
+
+  return (
+    <div className="space-y-4">
+      {/* Header + KPIs */}
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-mono text-cc-500 uppercase">
+          {total} sources · actualisation 30s
+        </div>
+        <button onClick={() => refetch()} className="text-[10px] text-gray-500 hover:text-gray-300 font-mono">↺ Rafraîchir</button>
+      </div>
+
+      <div className="grid grid-cols-4 gap-2">
+        {[
+          { label: 'TOTAL',    value: total, cls: 'bg-cc-800 border-cc-600' },
+          { label: 'SAINES',   value: ok,    cls: 'bg-green-950 border-green-800' },
+          { label: 'DÉGRADÉES',value: deg,   cls: 'bg-yellow-950 border-yellow-800' },
+          { label: 'ERREUR',   value: err,   cls: 'bg-red-950 border-red-800' },
+        ].map(k => (
+          <div key={k.label} className={`rounded-lg p-2.5 border ${k.cls}`}>
+            <div className="text-[9px] font-mono text-gray-400 mb-0.5">{k.label}</div>
+            <div className="text-xl font-bold text-white">{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filtre catégorie */}
+      <div className="flex flex-wrap gap-1">
+        {categories.map(cat => (
+          <button
+            key={cat}
+            onClick={() => setFiltre(cat)}
+            className={`px-2 py-0.5 rounded text-[9px] font-mono transition-colors ${
+              filtre === cat
+                ? 'bg-sinaur-700 text-white'
+                : 'bg-cc-800 text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Liste des sources */}
+      {isLoading ? (
+        <div className="text-center text-gray-500 text-sm py-8">Chargement…</div>
+      ) : (
+        <div className="space-y-1.5">
+          {filtered.map((s: any) => {
+            const cfg = STATUT_CFG[s.statut_sante] ?? STATUT_CFG.UNKNOWN;
+            const catColor = CATEGORIE_COLOR[s.categorie] ?? 'text-gray-400';
+            return (
+              <div
+                key={s.id}
+                className="bg-cc-800 border border-cc-700 rounded-lg px-3 py-2 flex items-center gap-3"
+              >
+                {/* Dot statut */}
+                <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
+
+                {/* Nom + agent */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-medium text-white truncate">{s.nom}</span>
+                    {s.dynamique && (
+                      <span className="text-[7px] bg-cc-700 text-cc-400 px-1 py-px rounded font-mono shrink-0">LIVE</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-px">
+                    <span className={`text-[9px] font-mono ${catColor}`}>{s.categorie}</span>
+                    <span className="text-cc-600 text-[9px]">·</span>
+                    <span className="text-[9px] font-mono text-gray-500">agent:{s.agent}</span>
+                  </div>
+                </div>
+
+                {/* Métriques */}
+                <div className="flex items-center gap-3 shrink-0">
+                  {s.temps_ecoule_min != null && (
+                    <div className="text-right">
+                      <div className="text-[9px] font-mono text-gray-400">{tempsEcoule(s.temps_ecoule_min)}</div>
+                      <div className="text-[8px] text-gray-600">collecte</div>
+                    </div>
+                  )}
+                  {s.nb_evenements != null && (
+                    <div className="text-right">
+                      <div className="text-[9px] font-mono text-gray-300">{s.nb_evenements}</div>
+                      <div className="text-[8px] text-gray-600">événements</div>
+                    </div>
+                  )}
+                  <div className="text-right">
+                    <div className="text-[9px] font-mono text-gray-400">{Math.round(s.fiabilite * 100)}%</div>
+                    <div className="text-[8px] text-gray-600">fiabilité</div>
+                  </div>
+                  <span className={`text-[8px] font-mono font-bold px-1.5 py-px rounded ${cfg.badge}`}>
+                    {cfg.label}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {dataUpdatedAt > 0 && (
+        <div className="text-[8px] font-mono text-cc-700 text-right">
+          Mis à jour {new Date(dataUpdatedAt).toLocaleTimeString('fr-FR')}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Navigation ────────────────────────────────────────────────────────────────
 
 const TABS: { key: Tab; icon: string; label: string }[] = [
@@ -1754,6 +1916,7 @@ const TABS: { key: Tab; icon: string; label: string }[] = [
   { key: 'epidemie',        icon: '🦠',  label: 'Épidémie'          },
   { key: 'logistique',      icon: '🚚',  label: 'Logistique'        },
   { key: 'reporting',       icon: '📄',  label: 'Reporting'         },
+  { key: 'sources',         icon: '🛰️',  label: 'Sources'           },
 ];
 
 export function AiPage() {
@@ -1797,6 +1960,7 @@ export function AiPage() {
         {tab === 'epidemie'       && <EpidemieTab />}
         {tab === 'logistique'     && <LogistiqueTab />}
         {tab === 'reporting'      && <ReportingTab />}
+        {tab === 'sources'        && <SanteSourcesTab />}
       </div>
     </div>
   );
