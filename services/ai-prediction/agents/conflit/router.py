@@ -276,37 +276,26 @@ async def get_previsions(
 
 
 @router.get("/previsions/fiabilite")
-async def get_previsions_fiabilite():
+async def get_previsions_fiabilite(
+    province_pcode: str | None = None,
+):
     """
-    Taux de réussite historique des prévisions VIEWS sur la RDC.
-    Calculé a posteriori en comparant prévisions passées aux incidents réels.
+    Taux de réussite historique des prévisions VIEWS — global ou par province.
+    Calculé a posteriori : prévisions passées vs incidents réels (conflict_event_raw).
     """
-    try:
-        from db import engine
-        from sqlalchemy import text as sa_text
-        async with engine.connect() as conn:
-            row = await conn.execute(sa_text("""
-                SELECT
-                    COUNT(*)  AS total_evaluees,
-                    SUM(CASE WHEN prediction_correcte THEN 1 ELSE 0 END)   AS correctes,
-                    ROUND(AVG(CASE WHEN prediction_correcte
-                          THEN 1.0 ELSE 0.0 END)::numeric * 100, 1)        AS taux_pct,
-                    ROUND(AVG(ABS(erreur_absolue))::numeric, 1)            AS erreur_moy
-                FROM evaluation_prediction
-                WHERE prevision_source = 'VIEWS'
-            """))
-            stats = dict(row.fetchone()._mapping) if row else {}
+    from agents.conflit.auto_evaluation import taux_reussite
+    return await taux_reussite(province_pcode)
 
-        return {
-            "source": "VIEWS",
-            "total_evaluees": int(stats.get("total_evaluees") or 0),
-            "correctes": int(stats.get("correctes") or 0),
-            "taux_pct": float(stats.get("taux_pct") or 0),
-            "erreur_moy": float(stats.get("erreur_moy") or 0),
-            "note": "L'auto-évaluation commence dès qu'il y a des prévisions arrivées à échéance.",
-        }
-    except Exception as exc:
-        return {"source": "VIEWS", "total_evaluees": 0, "taux_pct": None, "error": str(exc)}
+
+@router.post("/previsions/evaluer")
+async def declencher_evaluation():
+    """
+    Déclenche immédiatement l'évaluation des prévisions VIEWS arrivées à échéance.
+    Utile pour forcer l'évaluation après import d'incidents historiques.
+    """
+    from agents.conflit.auto_evaluation import evaluer_previsions_echeues
+    n = await evaluer_previsions_echeues()
+    return {"evaluated": n, "ok": True}
 
 
 @router.post("/reload")

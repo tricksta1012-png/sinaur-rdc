@@ -88,6 +88,16 @@ class ConflitAgent:
             misfire_grace_time=3600,
             coalesce=True,
         )
+        self._scheduler.add_job(
+            self._run_auto_evaluation,
+            "interval",
+            days=1,
+            id="conflit_auto_eval",
+            name="Conflit:AutoEval",
+            next_run_time=datetime.now(timezone.utc),
+            misfire_grace_time=3600,
+            coalesce=True,
+        )
         self._scheduler.start()
 
         import asyncio
@@ -406,6 +416,15 @@ class ConflitAgent:
     # ------------------------------------------------------------------
     # VIEWS integration
     # ------------------------------------------------------------------
+
+    async def _run_auto_evaluation(self) -> None:
+        """Job quotidien — évalue les prévisions VIEWS arrivées à échéance."""
+        try:
+            from agents.conflit.auto_evaluation import evaluer_previsions_echeues
+            n = await evaluer_previsions_echeues()
+            logger.info("conflit_agent.auto_eval_done", evaluated=n)
+        except Exception as exc:
+            logger.warning("conflit_agent.auto_eval_failed", error=str(exc))
 
     async def _run_views_fetch(self) -> None:
         """Job hebdomadaire — collecte et persiste les prévisions VIEWS."""

@@ -128,8 +128,22 @@ export async function conflitRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/conflit/previsions/fiabilite',
     { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { province_pcode } = z.object({ province_pcode: z.string().optional() }).parse(request.query);
+      const params: Record<string, string> = {};
+      if (province_pcode) params.province_pcode = province_pcode;
+      const { status, data } = await aiGet('/internal/conflit/previsions/fiabilite', params);
+      return reply.status(status).send(data);
+    },
+  );
+
+  // POST /conflit/previsions/evaluer — déclenche l'évaluation immédiate (admin)
+  fastify.post(
+    '/conflit/previsions/evaluer',
+    { preHandler: [requireAuth, requireRole('system_admin')] },
     async (_request, reply) => {
-      const { status, data } = await aiGet('/internal/conflit/previsions/fiabilite');
+      const { aiPost } = await import('../services/aiClient.js');
+      const { status, data } = await aiPost('/internal/conflit/previsions/evaluer', {});
       return reply.status(status).send(data);
     },
   );

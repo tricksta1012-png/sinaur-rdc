@@ -469,6 +469,13 @@ function PredictionsTab() {
   });
   const viewsPrevisions: any[] = viewsData?.previsions ?? [];
 
+  const { data: fiabiliteData } = useQuery({
+    queryKey: ['conflit-previsions-fiabilite'],
+    queryFn: () => apiClient.get('/conflit/previsions/fiabilite').then(r => r.data),
+    staleTime: 60 * 60_000,
+    refetchInterval: 60 * 60_000,
+  });
+
   const refresh = useMutation({
     mutationFn: () => apiClient.post('/predictions/refresh').then(r => r.data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['ai-risks'] }); },
@@ -610,9 +617,9 @@ function PredictionsTab() {
         </div>
       )}
 
-      {/* ── 6. VIEWS forecast banner (conflit long-terme) ── */}
+      {/* ── 6. VIEWS forecast + fiabilité ── */}
       {viewsPrevisions.length > 0 && (
-        <div className="bg-indigo-950/40 border border-indigo-800/60 rounded-xl p-3 space-y-2">
+        <div className="bg-indigo-950/40 border border-indigo-800/60 rounded-xl p-3 space-y-3">
           <div className="flex items-center justify-between">
             <div className="text-[10px] font-mono text-indigo-400 uppercase flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0" />
@@ -620,6 +627,8 @@ function PredictionsTab() {
             </div>
             <div className="text-[8px] text-indigo-700 font-mono">Uppsala/PRIO · {viewsPrevisions.length} provinces</div>
           </div>
+
+          {/* Barre de probabilité par province */}
           <div className="space-y-1.5">
             {viewsPrevisions.slice(0, 6).map((p: any) => (
               <div key={`${p.pred_pcode}-${p.mois_cible}`} className="flex items-center gap-2">
@@ -639,8 +648,39 @@ function PredictionsTab() {
               </div>
             ))}
           </div>
-          <div className="text-[8px] text-indigo-900 font-mono pt-0.5">
-            Prédictions — pas des incidents réels · PRIO-GRID 55×55km · Mis à jour hebdomadairement
+
+          {/* Fiabilité historique */}
+          {fiabiliteData && (
+            <div className="border-t border-indigo-900/60 pt-2 mt-1">
+              {fiabiliteData.total_evaluees > 0 ? (
+                <div className="flex items-center gap-4">
+                  <div className="text-[9px] font-mono text-indigo-400 uppercase shrink-0">Fiabilité historique</div>
+                  <div className="flex-1 h-1.5 bg-cc-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${fiabiliteData.taux_pct ?? 0}%`,
+                        backgroundColor: (fiabiliteData.taux_pct ?? 0) >= 70 ? '#6366f1' : (fiabiliteData.taux_pct ?? 0) >= 50 ? '#eab308' : '#ef4444',
+                      }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-mono font-bold text-indigo-300 shrink-0">
+                    {fiabiliteData.taux_pct?.toFixed(1)}%
+                  </span>
+                  <span className="text-[8px] font-mono text-gray-600 shrink-0">
+                    sur {fiabiliteData.total_evaluees} prévisions évaluées
+                  </span>
+                </div>
+              ) : (
+                <div className="text-[8px] font-mono text-indigo-900">
+                  Auto-évaluation en attente — débutera dès que les premiers mois cibles seront passés
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="text-[8px] text-indigo-900/80 font-mono">
+            Prédictions — pas des incidents réels · PRIO-GRID 55×55km · MAJ hebdomadaire
           </div>
         </div>
       )}
@@ -1790,6 +1830,17 @@ function SanteSourcesTab() {
     refetchInterval: 30_000,
   });
 
+  const { data: fiabiliteViews, refetch: refetchFiabilite } = useQuery({
+    queryKey: ['views-fiabilite'],
+    queryFn: () => apiClient.get('/conflit/previsions/fiabilite').then(r => r.data),
+    staleTime: 60 * 60_000,
+  });
+
+  const evaluerMutation = useMutation({
+    mutationFn: () => apiClient.post('/conflit/previsions/evaluer').then(r => r.data),
+    onSuccess: () => refetchFiabilite(),
+  });
+
   const sources: any[] = data?.sources ?? [];
   const [filtre, setFiltre] = useState<string>('TOUTES');
   const [showForm, setShowForm] = useState(false);
@@ -1857,6 +1908,80 @@ function SanteSourcesTab() {
           </div>
         ))}
       </div>
+
+      {/* Fiabilité VIEWS */}
+      {fiabiliteViews && (
+        <div className="bg-indigo-950/30 border border-indigo-900/50 rounded-xl p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] font-mono text-indigo-400 uppercase flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0" />
+              Fiabilité VIEWS (auto-évaluation a posteriori)
+            </div>
+            {isAdmin && (
+              <button
+                onClick={() => evaluerMutation.mutate()}
+                disabled={evaluerMutation.isPending}
+                className="text-[9px] font-mono text-indigo-600 hover:text-indigo-400 disabled:opacity-40"
+              >
+                {evaluerMutation.isPending ? '…' : '⟳ Évaluer maintenant'}
+              </button>
+            )}
+          </div>
+
+          {fiabiliteViews.total_evaluees > 0 ? (
+            <div className="space-y-2">
+              {/* Score global */}
+              <div className="flex items-center gap-3">
+                <div className="text-[9px] font-mono text-gray-400 w-24 shrink-0">Global RDC</div>
+                <div className="flex-1 h-2 bg-cc-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${fiabiliteViews.taux_pct ?? 0}%`,
+                      backgroundColor:
+                        (fiabiliteViews.taux_pct ?? 0) >= 70 ? '#6366f1' :
+                        (fiabiliteViews.taux_pct ?? 0) >= 50 ? '#eab308' : '#ef4444',
+                    }}
+                  />
+                </div>
+                <span className="text-[11px] font-mono font-bold text-indigo-300 w-10 text-right shrink-0">
+                  {fiabiliteViews.taux_pct?.toFixed(1)}%
+                </span>
+                <span className="text-[8px] font-mono text-gray-600 w-24 shrink-0">
+                  {fiabiliteViews.correctes}/{fiabiliteViews.total_evaluees} prévisions
+                </span>
+              </div>
+
+              {/* Détail par province (top 6 meilleures) */}
+              {(fiabiliteViews.par_province ?? []).slice(0, 6).map((p: any) => (
+                <div key={p.province_pcode} className="flex items-center gap-3">
+                  <div className="text-[9px] font-mono text-gray-500 w-24 truncate shrink-0">{p.province_pcode}</div>
+                  <div className="flex-1 h-1 bg-cc-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-indigo-800 rounded-full transition-all"
+                      style={{ width: `${p.taux_pct ?? 0}%` }}
+                    />
+                  </div>
+                  <span className="text-[9px] font-mono text-gray-400 w-10 text-right shrink-0">{p.taux_pct?.toFixed(0)}%</span>
+                  <span className="text-[8px] font-mono text-gray-700 w-24 shrink-0">{p.total} mois éval.</span>
+                </div>
+              ))}
+
+              <div className="text-[8px] font-mono text-indigo-900/80 pt-1">
+                Méthode : {fiabiliteViews.methode} · période {fiabiliteViews.premier_mois} → {fiabiliteViews.dernier_mois}
+              </div>
+            </div>
+          ) : (
+            <div className="text-[9px] font-mono text-indigo-900 space-y-1">
+              <div>Aucune prévision arrivée à échéance pour l'instant.</div>
+              <div className="text-[8px] text-gray-700">
+                L'évaluation démarrera automatiquement dès que les premiers mois cibles seront passés.
+                {isAdmin && ' Utilisez "Évaluer maintenant" pour forcer.'}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Formulaire admin — ajouter une source */}
       {isAdmin && showForm && (
