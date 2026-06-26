@@ -110,4 +110,27 @@ export async function conflitRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.status(status).send(data);
     },
   );
+
+  // GET /conflit/previsions — prévisions VIEWS par province (agrégées)
+  fastify.get(
+    '/conflit/previsions',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { horizon } = z.object({
+        horizon: z.coerce.number().int().min(1).max(36).default(3),
+      }).parse(request.query);
+      const { status, data } = await aiGet('/internal/conflit/previsions', { horizon });
+      return reply.status(status).send(data);
+    },
+  );
+
+  // GET /conflit/previsions/fiabilite — taux de réussite historique VIEWS
+  fastify.get(
+    '/conflit/previsions/fiabilite',
+    { preHandler: [requireAuth] },
+    async (_request, reply) => {
+      const { status, data } = await aiGet('/internal/conflit/previsions/fiabilite');
+      return reply.status(status).send(data);
+    },
+  );
 }

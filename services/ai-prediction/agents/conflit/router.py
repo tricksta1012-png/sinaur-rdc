@@ -8,6 +8,8 @@ Si absent, le niveau d'accès PUBLIC est appliqué par défaut.
 """
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Header, HTTPException, Query, status
 
 from agents.conflit.agent import _EVENT_STORE, conflit_agent
@@ -205,6 +207,106 @@ async def conflit_data_sources():
         ),
         "current_events_count": len(_EVENT_STORE),
     }
+
+
+@router.get("/previsions")
+async def get_previsions(
+    horizon: int = Query(default=3, ge=1, le=36, description="Horizon en mois"),
+):
+    """
+    Prévisions VIEWS agrégées par province (grilles PRIO-GRID → province).
+    Retourne les provinces triées par probabilité de conflit décroissante.
+    Données prédictives — à distinguer des incidents réels.
+    """
+    try:
+        from db import engine
+        from sqlalchemy import text as sa_text
+        async with engine.connect() as conn:
+            rows = await conn.execute(sa_text("""
+                SELECT
+                    pred_pcode,
+                    province_nom,
+                    MIN(mois_cible)              AS mois_cible,
+                    horizon_mois,
+                    ROUND(AVG(probabilite)::numeric, 3)          AS probabilite_moy,
+                    ROUND(MAX(probabilite)::numeric, 3)          AS probabilite_max,
+                    ROUND(SUM(morts_predites)::numeric, 1)       AS morts_predites_total,
+                    COUNT(*)                     AS grilles_count,
+                    MAX(recupere_le)             AS derniere_mise_a_jour
+                FROM prevision_conflit
+                WHERE source = 'VIEWS'
+                  AND horizon_mois = :horizon
+                  AND mois_cible >= CURRENT_DATE
+                GROUP BY pred_pcode, province_nom, horizon_mois
+                ORDER BY probabilite_max DESC
+            """), {"horizon": horizon})
+
+            previsions = []
+            derniere_maj: str | None = None
+            for row in rows:
+                r = dict(row._mapping)
+                r["mois_cible"] = str(r["mois_cible"]) if r["mois_cible"] else None
+                r["derniere_mise_a_jour"] = str(r["derniere_mise_a_jour"]) if r["derniere_mise_a_jour"] else None
+                r["probabilite_moy"] = float(r["probabilite_moy"] or 0)
+                r["probabilite_max"] = float(r["probabilite_max"] or 0)
+                r["morts_predites_total"] = float(r["morts_predites_total"] or 0)
+                r["grilles_count"] = int(r["grilles_count"] or 0)
+                r["source"] = "VIEWS"
+                if derniere_maj is None:
+                    derniere_maj = r["derniere_mise_a_jour"]
+                previsions.append(r)
+
+        return {
+            "previsions": previsions,
+            "source": "VIEWS (Uppsala University / PRIO)",
+            "note": "Prévisions de conflit, pas des incidents réels. Modèle PRIO-GRID 55×55km.",
+            "horizon_mois": horizon,
+            "derniere_mise_a_jour": derniere_maj,
+            "total": len(previsions),
+        }
+    except Exception as exc:
+        logger.error("conflit.previsions_failed", error=str(exc))
+        return {
+            "previsions": [],
+            "source": "VIEWS",
+            "horizon_mois": horizon,
+            "total": 0,
+            "error": str(exc),
+        }
+
+
+@router.get("/previsions/fiabilite")
+async def get_previsions_fiabilite():
+    """
+    Taux de réussite historique des prévisions VIEWS sur la RDC.
+    Calculé a posteriori en comparant prévisions passées aux incidents réels.
+    """
+    try:
+        from db import engine
+        from sqlalchemy import text as sa_text
+        async with engine.connect() as conn:
+            row = await conn.execute(sa_text("""
+                SELECT
+                    COUNT(*)  AS total_evaluees,
+                    SUM(CASE WHEN prediction_correcte THEN 1 ELSE 0 END)   AS correctes,
+                    ROUND(AVG(CASE WHEN prediction_correcte
+                          THEN 1.0 ELSE 0.0 END)::numeric * 100, 1)        AS taux_pct,
+                    ROUND(AVG(ABS(erreur_absolue))::numeric, 1)            AS erreur_moy
+                FROM evaluation_prediction
+                WHERE prevision_source = 'VIEWS'
+            """))
+            stats = dict(row.fetchone()._mapping) if row else {}
+
+        return {
+            "source": "VIEWS",
+            "total_evaluees": int(stats.get("total_evaluees") or 0),
+            "correctes": int(stats.get("correctes") or 0),
+            "taux_pct": float(stats.get("taux_pct") or 0),
+            "erreur_moy": float(stats.get("erreur_moy") or 0),
+            "note": "L'auto-évaluation commence dès qu'il y a des prévisions arrivées à échéance.",
+        }
+    except Exception as exc:
+        return {"source": "VIEWS", "total_evaluees": 0, "taux_pct": None, "error": str(exc)}
 
 
 @router.post("/reload")

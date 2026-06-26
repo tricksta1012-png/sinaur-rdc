@@ -460,6 +460,14 @@ function PredictionsTab() {
     refetchInterval: 60_000,
   });
 
+  const { data: viewsData } = useQuery({
+    queryKey: ['conflit-previsions-views'],
+    queryFn: () => apiClient.get('/conflit/previsions?horizon=3').then(r => r.data),
+    staleTime: 60 * 60_000,
+    refetchInterval: 60 * 60_000,
+  });
+  const viewsPrevisions: any[] = viewsData?.previsions ?? [];
+
   const refresh = useMutation({
     mutationFn: () => apiClient.post('/predictions/refresh').then(r => r.data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['ai-risks'] }); },
@@ -601,7 +609,42 @@ function PredictionsTab() {
         </div>
       )}
 
-      {/* ── 6. Province risk cards ── */}
+      {/* ── 6. VIEWS forecast banner (conflit long-terme) ── */}
+      {viewsPrevisions.length > 0 && (
+        <div className="bg-indigo-950/40 border border-indigo-800/60 rounded-xl p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] font-mono text-indigo-400 uppercase flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0" />
+              Prévisions VIEWS — Conflit (horizon 3 mois)
+            </div>
+            <div className="text-[8px] text-indigo-700 font-mono">Uppsala/PRIO · {viewsPrevisions.length} provinces</div>
+          </div>
+          <div className="space-y-1.5">
+            {viewsPrevisions.slice(0, 6).map((p: any) => (
+              <div key={`${p.pred_pcode}-${p.mois_cible}`} className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-300 w-28 truncate shrink-0">{p.province_nom}</span>
+                <div className="flex-1 h-1 bg-cc-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500 rounded-full transition-all"
+                    style={{ width: `${Math.round((p.probabilite_max ?? 0) * 100)}%` }}
+                  />
+                </div>
+                <span className="text-[9px] font-mono text-indigo-300 w-8 text-right shrink-0">
+                  {Math.round((p.probabilite_max ?? 0) * 100)}%
+                </span>
+                <span className="text-[9px] font-mono text-gray-600 w-16 text-right shrink-0">
+                  ~{Math.round(p.morts_predites_total ?? 0)} morts
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="text-[8px] text-indigo-900 font-mono pt-0.5">
+            Prédictions — pas des incidents réels · PRIO-GRID 55×55km · Mis à jour hebdomadairement
+          </div>
+        </div>
+      )}
+
+      {/* ── 7. Province risk cards ── */}
       {isLoading ? (
         <div className="text-center text-gray-500 text-sm py-8">Chargement…</div>
       ) : domainRisks.length === 0 ? (

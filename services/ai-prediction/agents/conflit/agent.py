@@ -78,6 +78,16 @@ class ConflitAgent:
             misfire_grace_time=600,
             coalesce=True,
         )
+        self._scheduler.add_job(
+            self._run_views_fetch,
+            "interval",
+            weeks=1,
+            id="conflit_views",
+            name="Conflit:VIEWS",
+            next_run_time=datetime.now(timezone.utc),
+            misfire_grace_time=3600,
+            coalesce=True,
+        )
         self._scheduler.start()
 
         import asyncio
@@ -392,6 +402,55 @@ class ConflitAgent:
             "source_url":    payload.get("source_url"),
             "actor_names":   payload.get("actors") or [],
         }
+
+    # ------------------------------------------------------------------
+    # VIEWS integration
+    # ------------------------------------------------------------------
+
+    async def _run_views_fetch(self) -> None:
+        """Job hebdomadaire — collecte et persiste les prévisions VIEWS."""
+        try:
+            from agents.conflit.sources.source_views import fetch_views_previsions
+            previsions = await fetch_views_previsions()
+            if previsions:
+                await self._persist_previsions(previsions)
+                logger.info("conflit_agent.views_fetched", count=len(previsions))
+            else:
+                logger.info("conflit_agent.views_empty")
+        except Exception as exc:
+            logger.warning("conflit_agent.views_fetch_failed", error=str(exc))
+
+    async def _persist_previsions(self, previsions: list[dict]) -> None:
+        """Upsert des prévisions VIEWS dans la table prevision_conflit."""
+        try:
+            from db import engine
+            from sqlalchemy import text as sa_text
+            async with engine.begin() as conn:
+                for p in previsions:
+                    await conn.execute(
+                        sa_text("""
+                            INSERT INTO prevision_conflit
+                                (source, province_pcode, pred_pcode, province_nom,
+                                 zone_grid, coordinates,
+                                 morts_predites, probabilite,
+                                 horizon_mois, mois_cible, type_violence)
+                            VALUES
+                                (:source, :province_pcode, :pred_pcode, :province_nom,
+                                 :zone_grid,
+                                 ST_SetSRID(ST_MakePoint(:lon, :lat), 4326),
+                                 :morts_predites, :probabilite,
+                                 :horizon_mois, CAST(:mois_cible AS date), :type_violence)
+                            ON CONFLICT (source, zone_grid, mois_cible, type_violence)
+                            DO UPDATE SET
+                                morts_predites = EXCLUDED.morts_predites,
+                                probabilite    = EXCLUDED.probabilite,
+                                recupere_le    = NOW()
+                        """),
+                        p,
+                    )
+            logger.info("conflit_agent.views_persisted", count=len(previsions))
+        except Exception as exc:
+            logger.error("conflit_agent.views_persist_failed", error=str(exc))
 
     # ------------------------------------------------------------------
     # Query helpers
