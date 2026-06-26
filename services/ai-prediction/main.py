@@ -42,6 +42,7 @@ from agents.veille.router import router as veille_router
 from agents.virus_emergents.router import router as virus_emergents_router
 from agents.catastrophes.router import router as catastrophes_router
 from agents.responsables.router import router as responsables_router
+from agents.connaissance.router import router as connaissance_router
 from config import settings
 from redis_client import close_redis, get_redis
 
@@ -181,6 +182,14 @@ async def lifespan(app: FastAPI):
         logger.info("lifespan.agent_responsables_started")
     except Exception as exc:
         logger.warning("lifespan.agent_responsables_start_failed", error=str(exc))
+
+    # Start ConnaissanceAgent (moteur de connaissance évolutif — cycle 4h)
+    try:
+        from agents.connaissance.agent import connaissance_agent
+        await connaissance_agent.start()
+        logger.info("lifespan.connaissance_agent_started")
+    except Exception as exc:
+        logger.warning("lifespan.connaissance_agent_start_failed", error=str(exc))
 
     # Verify Redis connectivity
     try:
@@ -406,6 +415,7 @@ app.include_router(auto_crisis_router)
 app.include_router(virus_emergents_router)
 app.include_router(catastrophes_router)
 app.include_router(responsables_router)
+app.include_router(connaissance_router)
 
 
 # --- Unified agents status endpoint ---

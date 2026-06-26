@@ -21,6 +21,7 @@ import { CartographiePage } from './pages/CartographiePage.js';
 import { ResponsablesPage } from './pages/ResponsablesPage.js';
 import { PropositionsPage } from './pages/PropositionsPage.js';
 import { RuesPage } from './pages/RuesPage.js';
+import { ConnaissancePage } from './pages/ConnaissancePage.js';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="responsables"   element={<ResponsablesPage />} />
         <Route path="propositions"   element={<PropositionsPage />} />
         <Route path="rues"           element={<RuesPage />} />
+        <Route path="connaissance"   element={<ConnaissancePage />} />
         <Route path="admin" element={
           <RequireRole role="system_admin"><AdminPage /></RequireRole>
         } />
