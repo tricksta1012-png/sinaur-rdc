@@ -20,6 +20,19 @@ from .analyzers.threat_assessment import assess_provinces
 
 logger = structlog.get_logger(__name__)
 
+# Mapping COD-AB (renseignement) → prediction p_codes (features.py)
+_CODAB_TO_PRED: dict[str, str] = {
+    "CD61": "CD-NK", "CD62": "CD-SK", "CD63": "CD-MN",
+    "CD71": "CD-HK", "CD54": "CD-IT", "CD51": "CD-TP",
+    "CD52": "CD-BU", "CD44": "CD-MO", "CD42": "CD-SA",
+    "CD43": "CD-NU", "CD41": "CD-EQ", "CD73": "CD-HL",
+    "CD74": "CD-TA", "CD72": "CD-LO", "CD53": "CD-HU",
+    "CD85": "CD-SU", "CD83": "CD-KC", "CD84": "CD-KC2",
+    "CD82": "CD-MK", "CD81": "CD-LM", "CD22": "CD-KW",
+    "CD21": "CD-KO", "CD23": "CD-MN2", "CD20": "CD-BC",
+    "CD10": "CD-KN",
+}
+
 _EVENT_STORE: list[dict] = []
 _ASSESSMENT_STORE: list[dict] = []
 _BULLETIN_STORE: list[dict] = []
@@ -106,6 +119,7 @@ class RenseignementAgent:
 
         await self._save_to_redis()
         await self._save_to_db(events, assessments, bulletin)
+        await self._feed_prediction_cache(events, assessments)
         logger.info("renseignement_agent.run_analysis.done",
                     events=len(events), assessments=len(assessments))
 
@@ -136,6 +150,44 @@ class RenseignementAgent:
             province_assessments=assessments,
             key_events=events[:10],
         )
+
+    async def _feed_prediction_cache(
+        self,
+        events: list[IntelEvent],
+        assessments: list[ProvinceAssessment],
+    ) -> None:
+        """Push renseignement data into the prediction feature cache."""
+        try:
+            from datetime import timedelta
+            from agents.prediction.features import update_event_cache
+
+            cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+
+            # Count events per COD-AB p_code in last 7 days
+            counts: dict[str, int] = {}
+            for ev in events:
+                if not ev.p_code:
+                    continue
+                ev_date = self._parse_date(ev.date)
+                if ev_date is None:
+                    continue
+                if ev_date.tzinfo is None:
+                    ev_date = ev_date.replace(tzinfo=timezone.utc)
+                if ev_date >= cutoff:
+                    counts[ev.p_code] = counts.get(ev.p_code, 0) + 1
+
+            for assessment in assessments:
+                pred_code = _CODAB_TO_PRED.get(assessment.p_code)
+                if not pred_code:
+                    continue
+                update_event_cache(pred_code, {
+                    "ipc_level": min(int(assessment.threat_level), 5),
+                    "nb_evenements_meme_type_7j": counts.get(assessment.p_code, 0),
+                })
+            logger.info("renseignement_agent.prediction_cache_fed",
+                        provinces=len(assessments))
+        except Exception as exc:
+            logger.warning("renseignement_agent.prediction_cache_failed", error=str(exc))
 
     async def _save_to_redis(self) -> None:
         try:

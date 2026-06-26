@@ -462,6 +462,7 @@ export function OpsRoomPage() {
     queryFn: () => apiClient.get(`/predictions/risk-map/${riskHorizon}`).then(r => r.data),
     enabled: showRiskLayer,
     staleTime: 5 * 60_000,
+    refetchInterval: showRiskLayer ? 6 * 60_000 : false,
   });
 
   useEffect(() => {

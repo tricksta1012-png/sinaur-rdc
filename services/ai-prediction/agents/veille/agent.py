@@ -144,6 +144,8 @@ class VeilleAgent:
                 fp = compute_fingerprint(event)
                 _EVENT_STORE[fp] = event
 
+            self._feed_feature_cache(connector, canonical)
+
             _CONNECTOR_HEALTH[source_id] = {
                 "healthy": True,
                 "last_success": started_at.isoformat(),
@@ -177,6 +179,44 @@ class VeilleAgent:
             )
 
         return result
+
+    def _feed_feature_cache(
+        self, connector: AbstractConnector, canonical: list[CanonicalEvent]
+    ) -> None:
+        """Push connector output into the prediction feature cache."""
+        try:
+            from agents.prediction.features import update_event_cache, update_weather_cache
+
+            if connector.source_id == "open_meteo":
+                for event in canonical:
+                    if not event.p_code or not event.raw_data:
+                        continue
+                    daily = event.raw_data.get("forecast", {}).get("daily", {})
+                    precip_list = [
+                        v for v in (daily.get("precipitation_sum") or []) if v is not None
+                    ]
+                    update_weather_cache(event.p_code, {
+                        "precipitation_7j_mm": sum(precip_list),
+                    })
+            else:
+                counts: dict[str, int] = {}
+                for event in canonical:
+                    if event.p_code:
+                        counts[event.p_code] = counts.get(event.p_code, 0) + 1
+                for p_code, count in counts.items():
+                    update_event_cache(p_code, {"nb_evenements_meme_type_7j": count})
+
+            logger.debug(
+                "veille_agent.feature_cache_fed",
+                source=connector.source_id,
+                events=len(canonical),
+            )
+        except Exception as exc:
+            logger.warning(
+                "veille_agent.feature_cache_failed",
+                source=connector.source_id,
+                error=str(exc),
+            )
 
     def get_events(
         self,
