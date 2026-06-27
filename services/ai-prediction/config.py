@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     acled_api_key: str = ""
     acled_access_email: str = ""
 
+    # Telegram Bot API token (optional)
+    # Create a bot via @BotFather, add it to target channels as admin.
+    # Without token, the connector uses public web preview (t.me/s/{channel}).
+    telegram_bot_token: str = ""
+
     # URL of the Fastify API service (used by conflit agent to bootstrap events)
     api_service_url: str = "https://api-production-65ad.up.railway.app"
 

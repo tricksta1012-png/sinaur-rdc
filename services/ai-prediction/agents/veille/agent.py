@@ -21,6 +21,7 @@ from agents.veille.connectors.ohchr import OHCHRConnector
 from agents.veille.connectors.open_meteo import OpenMeteoConnector
 from agents.veille.connectors.reliefweb import ReliefWebConnector
 from agents.veille.connectors.reliefweb_conflict import ReliefWebConflictConnector
+from agents.veille.connectors.telegram import TelegramConnector
 from agents.veille.connectors.ucdp_ged import UCDPConnector
 from agents.veille.deduplicator import Deduplicator
 from config import settings
@@ -61,6 +62,12 @@ class VeilleAgent:
         # ACLED uniquement si credentials configurées
         if settings.acled_api_key:
             connectors.append(AcledConnector())
+        # Telegram : web preview par défaut, Bot API si token configuré
+        connectors.append(
+            TelegramConnector(
+                bot_token=settings.telegram_bot_token or None,
+            )
+        )
         self._connectors = connectors
 
     async def start(self) -> None:
