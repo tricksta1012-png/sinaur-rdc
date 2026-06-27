@@ -12,7 +12,7 @@ import json
 
 from fastapi import APIRouter, Header, HTTPException, Query, status
 
-from agents.conflit.agent import _EVENT_STORE, conflit_agent
+from agents.conflit.agent import _CONVERGENCE_STORE, _EVENT_STORE, conflit_agent
 from agents.conflit.data.armed_actors_rdc import ARMED_ACTORS_RDC
 from agents.conflit.sanitizer import access_level_for_role, sanitize_conflict_event
 from agents.conflit.schemas.conflict import (
@@ -296,6 +296,36 @@ async def declencher_evaluation():
     from agents.conflit.auto_evaluation import evaluer_previsions_echeues
     n = await evaluer_previsions_echeues()
     return {"evaluated": n, "ok": True}
+
+
+@router.get("/convergences")
+async def get_convergences(
+    niveau: str | None = Query(default=None, description="Filtrer par niveau: CONVERGENCE_CRITIQUE, ALERTE_RENFORCEE, VIGILANCE"),
+):
+    """
+    Alertes de convergence VIEWS + terrain (calculées toutes les 2h).
+    Détecte quand une prévision macro (VIEWS) et des incidents terrain récents convergent.
+    """
+    if _CONVERGENCE_STORE:
+        alertes = list(_CONVERGENCE_STORE)
+    else:
+        # Calcul à la demande si le store est vide (démarrage froid)
+        from agents.conflit.convergence import detecter_convergences
+        alertes = await detecter_convergences()
+        _CONVERGENCE_STORE.clear()
+        _CONVERGENCE_STORE.extend(alertes)
+
+    if niveau:
+        alertes = [a for a in alertes if a["niveau"] == niveau.upper()]
+
+    return {
+        "alertes": alertes,
+        "total": len(alertes),
+        "critiques": sum(1 for a in alertes if a["niveau"] == "CONVERGENCE_CRITIQUE"),
+        "renforcees": sum(1 for a in alertes if a["niveau"] == "ALERTE_RENFORCEE"),
+        "vigilances": sum(1 for a in alertes if a["niveau"] == "VIGILANCE"),
+        "calcule_le": alertes[0]["calcule_le"] if alertes else None,
+    }
 
 
 @router.post("/reload")

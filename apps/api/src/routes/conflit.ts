@@ -147,4 +147,17 @@ export async function conflitRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.status(status).send(data);
     },
   );
+
+  // GET /conflit/convergences — alertes de convergence VIEWS + terrain (toutes les 2h)
+  fastify.get(
+    '/conflit/convergences',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { niveau } = z.object({ niveau: z.string().optional() }).parse(request.query);
+      const params: Record<string, string> = {};
+      if (niveau) params.niveau = niveau;
+      const { status, data } = await aiGet('/internal/conflit/convergences', params);
+      return reply.status(status).send(data);
+    },
+  );
 }

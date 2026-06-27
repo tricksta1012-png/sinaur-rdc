@@ -39,8 +39,9 @@ logger = structlog.get_logger(__name__)
 # In-memory stores
 # ---------------------------------------------------------------------------
 
-_EVENT_STORE: list[dict] = []       # ConflictEvent serialisés (RESTRICTED)
-_PREDICTION_STORE: list[dict] = []  # Prédictions de déplacement par province
+_EVENT_STORE: list[dict] = []        # ConflictEvent serialisés (RESTRICTED)
+_PREDICTION_STORE: list[dict] = []   # Prédictions de déplacement par province
+_CONVERGENCE_STORE: list[dict] = []  # Dernières alertes de convergence VIEWS + terrain
 
 # Seuil au-delà duquel on publie une alerte critique sur le bus
 _CRITICAL_DISPLACEMENT_THRESHOLD = 10_000  # personnes
@@ -96,6 +97,16 @@ class ConflitAgent:
             name="Conflit:AutoEval",
             next_run_time=datetime.now(timezone.utc),
             misfire_grace_time=3600,
+            coalesce=True,
+        )
+        self._scheduler.add_job(
+            self._run_convergence_check,
+            "interval",
+            hours=2,
+            id="conflit_convergence",
+            name="Conflit:Convergence",
+            next_run_time=datetime.now(timezone.utc),
+            misfire_grace_time=600,
             coalesce=True,
         )
         self._scheduler.start()
@@ -425,6 +436,22 @@ class ConflitAgent:
             logger.info("conflit_agent.auto_eval_done", evaluated=n)
         except Exception as exc:
             logger.warning("conflit_agent.auto_eval_failed", error=str(exc))
+
+    async def _run_convergence_check(self) -> None:
+        """Job bi-horaire — détecte les convergences VIEWS + terrain et publie les critiques sur le bus."""
+        try:
+            from agents.conflit.convergence import detecter_convergences
+            alertes = await detecter_convergences()
+            _CONVERGENCE_STORE.clear()
+            _CONVERGENCE_STORE.extend(alertes)
+            logger.info("conflit_agent.convergence_done", total=len(alertes),
+                        critiques=sum(1 for a in alertes if a["niveau"] == "CONVERGENCE_CRITIQUE"))
+            # Publier les convergences critiques sur le bus pour alertes aval
+            for alerte in alertes:
+                if alerte["niveau"] == "CONVERGENCE_CRITIQUE":
+                    await bus.publish("conflit.convergence", alerte)
+        except Exception as exc:
+            logger.warning("conflit_agent.convergence_failed", error=str(exc))
 
     async def _run_views_fetch(self) -> None:
         """Job hebdomadaire — collecte et persiste les prévisions VIEWS."""

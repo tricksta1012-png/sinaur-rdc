@@ -476,6 +476,14 @@ function PredictionsTab() {
     refetchInterval: 60 * 60_000,
   });
 
+  const { data: convergenceData } = useQuery({
+    queryKey: ['conflit-convergences'],
+    queryFn: () => apiClient.get('/conflit/convergences').then(r => r.data),
+    staleTime: 2 * 60_000,
+    refetchInterval: 2 * 60_000,
+  });
+  const convergenceAlertes: any[] = convergenceData?.alertes ?? [];
+
   const refresh = useMutation({
     mutationFn: () => apiClient.post('/predictions/refresh').then(r => r.data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['ai-risks'] }); },
@@ -685,7 +693,53 @@ function PredictionsTab() {
         </div>
       )}
 
-      {/* ── 7. Province risk cards ── */}
+      {/* ── 7. Convergence VIEWS + terrain ── */}
+      {convergenceAlertes.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-[10px] font-mono text-orange-400 uppercase flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse" />
+            Convergence VIEWS + terrain — {convergenceData?.critiques ?? 0} critique{(convergenceData?.critiques ?? 0) !== 1 ? 's' : ''} · {convergenceData?.renforcees ?? 0} renforcée{(convergenceData?.renforcees ?? 0) !== 1 ? 's' : ''}
+          </div>
+          {convergenceAlertes.map((a: any) => {
+            const isCritique  = a.niveau === 'CONVERGENCE_CRITIQUE';
+            const isRenforcee = a.niveau === 'ALERTE_RENFORCEE';
+            return (
+              <div
+                key={a.province_pcode ?? a.province}
+                className={`rounded-xl border p-3 space-y-1.5 ${
+                  isCritique
+                    ? 'bg-red-950/40 border-red-800/70'
+                    : isRenforcee
+                    ? 'bg-orange-950/40 border-orange-800/60'
+                    : 'bg-yellow-950/30 border-yellow-800/40'
+                }`}
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full font-mono ${
+                    isCritique  ? 'bg-red-900 text-red-200' :
+                    isRenforcee ? 'bg-orange-900 text-orange-200' :
+                                  'bg-yellow-900 text-yellow-200'
+                  }`}>
+                    {isCritique ? '⚠ CONVERGENCE CRITIQUE' : isRenforcee ? '▲ ALERTE RENFORCÉE' : '◉ VIGILANCE'}
+                  </span>
+                  <span className="text-xs font-semibold text-white">{a.province}</span>
+                  <span className="text-[9px] font-mono text-gray-500 ml-auto">score {a.score_convergence}</span>
+                </div>
+                <div className="text-[10px] text-gray-300 leading-relaxed">{a.message}</div>
+                <div className="flex items-center gap-4 text-[9px] font-mono text-gray-500 flex-wrap">
+                  <span>VIEWS <span className="text-indigo-400">{Math.round((a.views_probabilite ?? 0) * 100)}%</span> ({a.views_mois_cible})</span>
+                  <span>Incidents 7j <span className={isCritique ? 'text-red-400' : 'text-orange-400'}>{a.terrain_incidents_7j}</span></span>
+                  {(a.views_morts_pred ?? 0) > 0 && (
+                    <span>~{Math.round(a.views_morts_pred)} morts prédits</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── 8. Province risk cards ── */}
       {isLoading ? (
         <div className="text-center text-gray-500 text-sm py-8">Chargement…</div>
       ) : domainRisks.length === 0 ? (
