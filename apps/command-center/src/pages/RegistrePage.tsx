@@ -56,7 +56,8 @@ export function RegistrePage() {
       if (statusFilter) params.set('status', statusFilter);
       return apiClient.get(`/registry?${params}`).then(r => r.data);
     },
-    staleTime: 30_000,
+    staleTime: 90_000,
+    refetchInterval: 90_000,
   });
 
   const createMutation = useMutation({

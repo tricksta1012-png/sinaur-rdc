@@ -117,14 +117,16 @@ export function IdpCheckpointPage() {
     queryKey: ['idp-flows'],
     queryFn: () => apiClient.get('/idp-checkpoints/flows?limit=20').then(r => r.data.data ?? []),
     retry: 1,
-    staleTime: 30_000,
+    staleTime: 45_000,
+    refetchInterval: 45_000,
   });
 
   const { data: rawStats } = useQuery<RawStats>({
     queryKey: ['idp-checkpoints-stats'],
     queryFn: () => apiClient.get('/idp-checkpoints/stats').then(r => r.data.data),
     retry: 1,
-    staleTime: 30_000,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
   });
 
   const flows: Flow[] = [...(flowsData ?? []), ...localEntries]

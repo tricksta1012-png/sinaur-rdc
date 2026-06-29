@@ -66,6 +66,7 @@ export function CrisesPage() {
     queryKey: ['crises', tab],
     queryFn: () => apiClient.get(`/crises${tab ? `?status=${tab}` : ''}`).then(r => r.data.data),
     staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 
   const createMutation = useMutation({

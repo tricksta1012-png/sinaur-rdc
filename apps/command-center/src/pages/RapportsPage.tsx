@@ -200,6 +200,8 @@ export function RapportsPage() {
   const { data: crises } = useQuery({
     queryKey: ['crises-sitrep'],
     queryFn: () => apiClient.get('/crises?limit=50').then(r => r.data.data),
+    staleTime: 2 * 60_000,
+    refetchInterval: 2 * 60_000,
   });
 
   const { data: sitreps } = useQuery({
@@ -208,6 +210,8 @@ export function RapportsPage() {
       ? apiClient.get(`/crises/${crisisId}`).then(r => r.data.data?.sitreps ?? [])
       : Promise.resolve([]),
     enabled: !!crisisId,
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   });
 
   const { data: sitrep } = useQuery({

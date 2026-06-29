@@ -23,6 +23,8 @@ export function CoordinationPage() {
   const { data: crises } = useQuery({
     queryKey: ['crises-all'],
     queryFn: () => apiClient.get('/crises?status=active&limit=50').then(r => r.data.data),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
   });
 
   const { data: tasks } = useQuery({
@@ -31,6 +33,8 @@ export function CoordinationPage() {
       ? apiClient.get(`/crises/${crisisId}/tasks`).then(r => r.data.data)
       : Promise.resolve([]),
     enabled: !!crisisId,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 
   const moveMutation = useMutation({
