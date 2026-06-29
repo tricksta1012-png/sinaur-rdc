@@ -289,6 +289,7 @@ function EventListTab({ queryKey, endpoint, emptyMsg }: { queryKey: string; endp
       return apiClient.get(`${endpoint}${params}`).then(r => r.data);
     },
     staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   });
 
   const allEvents: any[] = data?.events ?? [];
@@ -405,6 +406,7 @@ function BulletinTab() {
     queryKey: ['rens-bulletin'],
     queryFn: () => apiClient.get('/renseignement/bulletin/latest').then(r => r.data),
     staleTime: 10 * 60_000,
+    refetchInterval: 10 * 60_000,
   });
 
   const bulletin = data?.bulletin;

@@ -168,6 +168,7 @@ export function EtdPage() {
     queryFn: () => apiClient.get<{ success: boolean; data: AnalyseETD }>(`/etd/${pcode}/analyse?days=7`)
       .then(r => r.data.data),
     staleTime: 2 * 60 * 1000,
+    refetchInterval: 2 * 60 * 1000,
   });
 
   const { data: seuilsData, isLoading: loadingSeuils } = useQuery({
@@ -175,6 +176,7 @@ export function EtdPage() {
     queryFn: () => apiClient.get<{ success: boolean; data: SeuilsResponse }>(`/etd/${pcode}/seuils`)
       .then(r => r.data.data),
     staleTime: 2 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
   });
 
   const { data: rapportData, isFetching: loadingRapport } = useQuery({
@@ -183,6 +185,7 @@ export function EtdPage() {
       .then(r => r.data.data),
     enabled: showRapport,
     staleTime: 5 * 60 * 1000,
+    refetchInterval: showRapport ? 5 * 60 * 1000 : false,
   });
 
   const fluxParams = new URLSearchParams({ limit: '40' });
@@ -194,6 +197,7 @@ export function EtdPage() {
     queryFn: () => apiClient.get<{ data: FluxMessage[] }>(`/etd/flux?${fluxParams}`)
       .then(r => r.data.data ?? []),
     staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000,
   });
 
   // ── Mutations ─────────────────────────────────────────────────────────────
@@ -231,6 +235,7 @@ export function EtdPage() {
       .then(r => r.data.data),
     enabled: showMetriques,
     staleTime: 2 * 60 * 1000,
+    refetchInterval: showMetriques ? 2 * 60 * 1000 : false,
   });
 
   // ── Helpers ───────────────────────────────────────────────────────────────

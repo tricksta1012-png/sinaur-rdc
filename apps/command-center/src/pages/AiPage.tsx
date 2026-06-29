@@ -1092,6 +1092,7 @@ function AgentsStatusTab() {
     queryKey: ['ai-virus-emergents-status'],
     queryFn: () => apiClient.get('/ai/virus_emergents/status').then(r => r.data).catch(() => null),
     staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 
   const agents: any[] = data?.agents ?? [];

@@ -45,6 +45,7 @@ export function DistributionsPage() {
     queryKey: ['distributions-stats'],
     queryFn: () => apiClient.get('/dashboard/stats').then(r => r.data.data),
     staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 
   const createMutation = useMutation({

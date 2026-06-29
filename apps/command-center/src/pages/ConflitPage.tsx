@@ -1028,6 +1028,7 @@ export function ConflitPage() {
     queryKey: ['conflit-predictions'],
     queryFn: () => apiClient.get('/conflit/predictions/displacement').then(r => r.data),
     staleTime: 10 * 60_000,
+    refetchInterval: 10 * 60_000,
   });
 
   const { data: actorsData } = useQuery({
