@@ -382,7 +382,7 @@ export function CartographiePage() {
     queryKey: ['carto-propositions'],
     queryFn: () => apiClient
       .get('/responsables/propositions?statut=A_VALIDER&limit=30')
-      .then(r => r.data.data ?? []),
+      .then(r => r.data.data?.propositions ?? []),
     enabled: showNominations,
     staleTime: 60_000,
     refetchInterval: 60_000,
@@ -1192,17 +1192,17 @@ export function CartographiePage() {
                       <div key={p.id} className="bg-cc-800/60 border border-cc-700 rounded-lg px-2.5 py-2">
                         <div className="flex items-start gap-2 mb-1.5">
                           <div className="flex-1 min-w-0">
-                            <div className="text-[10px] text-white font-semibold truncate">{p.personne_nom ?? p.nom_personne ?? '—'}</div>
+                            <div className="text-[10px] text-white font-semibold truncate">{p.personne ?? '—'}</div>
                             <div className="text-[9px] text-yellow-400 font-mono truncate">{p.fonction ?? '—'}</div>
-                            <div className="text-[8px] text-cc-500 font-mono mt-0.5">{p.entite_nom ?? p.entite_pcode ?? '—'}</div>
+                            <div className="text-[8px] text-cc-500 font-mono mt-0.5">{p.entite_nom ?? p.pcode ?? '—'}</div>
                           </div>
                           <div className="shrink-0 text-right">
                             <div className="text-[8px] font-mono font-bold" style={{
-                              color: (p.confidence ?? 0.7) >= 0.85 ? '#22c55e' : (p.confidence ?? 0.7) >= 0.65 ? '#eab308' : '#f97316',
+                              color: (p.confiance ?? 0.7) >= 0.85 ? '#22c55e' : (p.confiance ?? 0.7) >= 0.65 ? '#eab308' : '#f97316',
                             }}>
-                              {Math.round((p.confidence ?? 0.7) * 100)}%
+                              {Math.round((p.confiance ?? 0.7) * 100)}%
                             </div>
-                            {p.rapprochement === 'AMBIGU' && (
+                            {p.statut_rapprochement === 'AMBIGU' && (
                               <span className="text-[7px] text-orange-400 font-mono">AMBIGU</span>
                             )}
                           </div>
@@ -1210,7 +1210,7 @@ export function CartographiePage() {
                         <div className="flex gap-1">
                           <button
                             onClick={() => validateNomMutation.mutate(p.id)}
-                            disabled={validateNomMutation.isPending || p.rapprochement === 'ENTITE_INTROUVABLE'}
+                            disabled={validateNomMutation.isPending || p.statut_rapprochement === 'ENTITE_INTROUVABLE'}
                             className="flex-1 py-0.5 bg-green-900/60 hover:bg-green-800 border border-green-700 text-green-300 text-[8px] font-mono rounded transition-colors disabled:opacity-40"
                           >✓ Valider</button>
                           <button
