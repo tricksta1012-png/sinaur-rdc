@@ -290,6 +290,7 @@ export function CartographiePage() {
   const [fondActuel, setFondActuel]   = useState<FondType>('plan');
   const [mapZoom, setMapZoom]         = useState(4.5);
   const [showCouverture, setShowCouverture] = useState(false);
+  const [showIncidentsPanel, setShowIncidentsPanel] = useState(false);
 
   // Search state
   const [searchQuery, setSearchQuery]           = useState('');
@@ -303,6 +304,9 @@ export function CartographiePage() {
   const [pulseOn, setPulseOn]     = useState(false);
   const survTimerRef              = useRef<ReturnType<typeof setInterval> | null>(null);
   const zoomEnCours               = useRef<AbortController | null>(null);
+
+  // 7-day window (computed once at mount)
+  const dateFrom7d = useMemo(() => new Date(Date.now() - 7 * 86_400_000).toISOString(), []);
 
   // Auth
   const user     = useAuthStore(s => s.user);
@@ -322,6 +326,7 @@ export function CartographiePage() {
         )
         .then(r => r.data),
     staleTime: 5 * 60 * 1000,
+    refetchInterval: 60_000,
   });
 
   // Debounce search input
@@ -350,6 +355,16 @@ export function CartographiePage() {
         .then(r => r.data.data?.slice(0, 15) ?? []),
     enabled: debouncedSearch.length >= 2,
     staleTime: 60_000,
+  });
+
+  const { data: recentEventsRaw, dataUpdatedAt: incidentsUpdatedAt } = useQuery({
+    queryKey: ['incidents-province'],
+    queryFn: () => apiClient
+      .get(`/events?limit=100&dateFrom=${encodeURIComponent(dateFrom7d)}`)
+      .then(r => r.data.data ?? []),
+    enabled: showIncidentsPanel,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 
   const { data: couvertureData } = useQuery({
@@ -381,6 +396,31 @@ export function CartographiePage() {
   }, [geojson]);
 
   const hasGeometry = useMemo(() => (geojson?.features?.length ?? 0) > 0, [geojson]);
+
+  // Province name lookup from level-1 features
+  const provinceLookup = useMemo<Record<string, string>>(() => {
+    if (level !== 1 || !geojson?.features) return {};
+    return Object.fromEntries(
+      geojson.features.map(f => [f.properties?.pcode as string, f.properties?.name as string])
+    );
+  }, [geojson, level]);
+
+  // Aggregate recent events by province (first 4 chars of location_pcode)
+  const incidentsByProvince = useMemo(() => {
+    const events: any[] = recentEventsRaw ?? [];
+    const counts: Record<string, { count: number; name: string }> = {};
+    for (const evt of events) {
+      const pcode = (evt.location_pcode ?? '') as string;
+      const key = pcode.length >= 4 ? pcode.slice(0, 4) : pcode;
+      if (!key) continue;
+      if (!counts[key]) counts[key] = { count: 0, name: provinceLookup[key] ?? evt.location_name ?? key };
+      counts[key].count += 1;
+    }
+    return Object.entries(counts)
+      .map(([pcode, v]) => ({ pcode, ...v }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 15);
+  }, [recentEventsRaw, provinceLookup]);
 
   // Split polygon features (levels 1-3) from point features (level 4 — centroid only)
   const polygonGeojson = useMemo(() => ({
@@ -765,6 +805,17 @@ export function CartographiePage() {
           >
             Couverture
           </button>
+          <button
+            onClick={() => setShowIncidentsPanel(v => !v)}
+            className={`text-[10px] font-mono px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1 ${
+              showIncidentsPanel
+                ? 'bg-orange-900/60 text-orange-300 border-orange-700'
+                : 'text-cc-500 hover:text-gray-300 bg-cc-800 border-cc-700'
+            }`}
+          >
+            {showIncidentsPanel && <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse shrink-0" />}
+            Incidents
+          </button>
         </div>
       </div>
 
@@ -985,6 +1036,56 @@ export function CartographiePage() {
               survIndex={survIndex}
               crisisCount={crisisFeatures.length}
             />
+
+            {/* Real-time incidents by province */}
+            {showIncidentsPanel && (
+              <div className="absolute top-3 left-3 w-56 bg-cc-900/95 border border-cc-700 rounded-xl shadow-xl backdrop-blur-sm z-10 overflow-hidden">
+                <div className="px-3 py-2 border-b border-cc-700 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse shrink-0" />
+                    <span className="text-[9px] font-mono text-cc-400 uppercase tracking-wider">Incidents 7j / province</span>
+                  </div>
+                  {incidentsUpdatedAt > 0 && (
+                    <span className="text-[8px] font-mono text-cc-600">
+                      {new Date(incidentsUpdatedAt).toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </div>
+                <div className="p-2 space-y-1.5 max-h-72 overflow-y-auto">
+                  {incidentsByProvince.length === 0 ? (
+                    <div className="text-center text-cc-600 text-[9px] py-4 font-mono italic">
+                      {!recentEventsRaw ? 'Chargement…' : 'Aucun incident récent'}
+                    </div>
+                  ) : (
+                    incidentsByProvince.map((item, idx) => {
+                      const max = incidentsByProvince[0]?.count ?? 1;
+                      const pct = Math.round((item.count / max) * 100);
+                      return (
+                        <div
+                          key={item.pcode}
+                          className="cursor-pointer group"
+                          onClick={() => void zoomToPcode(item.pcode, 80)}
+                        >
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="text-[9px] text-gray-300 truncate max-w-[130px] group-hover:text-white transition-colors">
+                              <span className="text-cc-700 font-mono mr-1">{idx + 1}.</span>
+                              {item.name}
+                            </span>
+                            <span className="text-[9px] font-bold text-orange-400 font-mono shrink-0">{item.count}</span>
+                          </div>
+                          <div className="h-1 bg-cc-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-orange-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+                <div className="px-3 py-1.5 border-t border-cc-800 text-[8px] font-mono text-cc-700 text-center">
+                  Actualisation auto · 30 s
+                </div>
+              </div>
+            )}
 
             {/* Legend */}
             {hasGeometry && (
