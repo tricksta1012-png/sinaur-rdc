@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import MapGL, { Source, Layer, type MapLayerMouseEvent, type MapRef } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { apiClient } from '../lib/api.js';
@@ -9,7 +9,7 @@ import { EntityPanel, type EntityProps, NIVEAU_LABELS, STATUT_STYLE } from '../c
 
 // ── TYPES ─────────────────────────────────────────────────────────────────────
 
-type ColorMode = 'statut' | 'sinistres';
+type ColorMode = 'statut' | 'sinistres' | 'responsable';
 type FondType = 'plan' | 'satellite' | 'hybride';
 
 interface CouvertureRow {
@@ -291,6 +291,8 @@ export function CartographiePage() {
   const [mapZoom, setMapZoom]         = useState(4.5);
   const [showCouverture, setShowCouverture] = useState(false);
   const [showIncidentsPanel, setShowIncidentsPanel] = useState(false);
+  const [showNominations, setShowNominations] = useState(false);
+  const [showRues, setShowRues] = useState(false);
 
   // Search state
   const [searchQuery, setSearchQuery]           = useState('');
@@ -308,12 +310,21 @@ export function CartographiePage() {
   // 7-day window (computed once at mount)
   const dateFrom7d = useMemo(() => new Date(Date.now() - 7 * 86_400_000).toISOString(), []);
 
+  // pcode commune pour le chargement des rues (level 3 = secteur/groupement)
+  const ruesPcode = useMemo(() => {
+    if (level === 4 && parentPcode) return parentPcode;
+    if (selected?.level === 3) return selected.pcode;
+    return null;
+  }, [level, parentPcode, selected]);
+
   // Auth
   const user     = useAuthStore(s => s.user);
   const hasScope = !!user
     && !['system_admin', 'national_decision_maker'].includes(user.role)
     && user.scope.length > 0;
   const userScopePcode = hasScope ? user!.scope[0] : null;
+
+  const qc = useQueryClient();
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -365,6 +376,26 @@ export function CartographiePage() {
     enabled: showIncidentsPanel,
     staleTime: 30_000,
     refetchInterval: 30_000,
+  });
+
+  const { data: propositionsRaw } = useQuery({
+    queryKey: ['carto-propositions'],
+    queryFn: () => apiClient
+      .get('/responsables/propositions?statut=A_VALIDER&limit=30')
+      .then(r => r.data.data ?? []),
+    enabled: showNominations,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
+  const { data: ruesRaw } = useQuery({
+    queryKey: ['carto-rues', ruesPcode],
+    queryFn: () => apiClient
+      .get(`/rues?commune_pcode=${ruesPcode}&statut=VALIDE&limit=300`)
+      .then(r => r.data.data ?? []),
+    enabled: showRues && !!ruesPcode,
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   });
 
   const { data: couvertureData } = useQuery({
@@ -422,6 +453,43 @@ export function CartographiePage() {
       .slice(0, 15);
   }, [recentEventsRaw, provinceLookup]);
 
+  // Nominations count badge
+  const propositionsCount: number = (propositionsRaw ?? []).length;
+
+  // Rues GeoJSON — lignes et points séparés
+  const ruesGeoJson = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: (ruesRaw ?? [])
+      .filter((r: any) => r.geometry || r.centroid)
+      .map((r: any): GeoJSON.Feature => ({
+        type: 'Feature',
+        geometry: r.geometry ?? r.centroid,
+        properties: { id: r.id, nom: r.nom, type_voie: r.type_voie },
+      })),
+  }), [ruesRaw]);
+
+  const ruesLines = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: ruesGeoJson.features.filter(
+      (f: GeoJSON.Feature) => f.geometry?.type === 'LineString' || f.geometry?.type === 'MultiLineString'
+    ),
+  }), [ruesGeoJson]);
+
+  const ruesPoints = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: ruesGeoJson.features.filter((f: GeoJSON.Feature) => f.geometry?.type === 'Point'),
+  }), [ruesGeoJson]);
+
+  // Mutations nominations
+  const validateNomMutation = useMutation({
+    mutationFn: (id: string) => apiClient.put(`/responsables/propositions/${id}/valider`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['carto-propositions'] }),
+  });
+  const rejectNomMutation = useMutation({
+    mutationFn: (id: string) => apiClient.put(`/responsables/propositions/${id}/rejeter`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['carto-propositions'] }),
+  });
+
   // Split polygon features (levels 1-3) from point features (level 4 — centroid only)
   const polygonGeojson = useMemo(() => ({
     type: 'FeatureCollection' as const,
@@ -465,6 +533,13 @@ export function CartographiePage() {
         'VIGILANCE', '#eab308',
         'NORMAL',    '#16a34a',
         '#64748b',
+      ] as unknown as string;
+    }
+    if (colorMode === 'responsable') {
+      return ['case',
+        ['all', ['has', 'responsable_nom'], ['!=', ['get', 'responsable_nom'], null]],
+        '#16a34a',
+        '#dc2626',
       ] as unknown as string;
     }
     return ['interpolate', ['linear'], ['get', 'nb_incidents'],
@@ -781,7 +856,7 @@ export function CartographiePage() {
           </div>
           {/* Color mode toggle */}
           <div className="flex rounded-lg overflow-hidden border border-cc-700">
-            {(['statut', 'sinistres'] as ColorMode[]).map(mode => (
+            {(['statut', 'sinistres', 'responsable'] as ColorMode[]).map(mode => (
               <button
                 key={mode}
                 onClick={() => setColorMode(mode)}
@@ -791,7 +866,7 @@ export function CartographiePage() {
                     : 'text-cc-500 hover:text-gray-300 bg-cc-800'
                 }`}
               >
-                {mode === 'statut' ? 'Statut' : 'Sinistres 30j'}
+                {mode === 'statut' ? 'Statut' : mode === 'sinistres' ? 'Sinistres' : 'Resp.'}
               </button>
             ))}
           </div>
@@ -815,6 +890,31 @@ export function CartographiePage() {
           >
             {showIncidentsPanel && <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse shrink-0" />}
             Incidents
+          </button>
+          <button
+            onClick={() => setShowNominations(v => !v)}
+            className={`relative text-[10px] font-mono px-2.5 py-1 rounded-lg border transition-colors ${
+              showNominations
+                ? 'bg-yellow-900/60 text-yellow-300 border-yellow-700'
+                : 'text-cc-500 hover:text-gray-300 bg-cc-800 border-cc-700'
+            }`}
+          >
+            Nominations
+            {propositionsCount > 0 && !showNominations && (
+              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-yellow-500 text-black text-[8px] font-bold rounded-full flex items-center justify-center">
+                {propositionsCount > 9 ? '9+' : propositionsCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setShowRues(v => !v)}
+            className={`text-[10px] font-mono px-2.5 py-1 rounded-lg border transition-colors ${
+              showRues
+                ? 'bg-blue-900/60 text-blue-300 border-blue-700'
+                : 'text-cc-500 hover:text-gray-300 bg-cc-800 border-cc-700'
+            }`}
+          >
+            Voies
           </button>
         </div>
       </div>
@@ -1010,6 +1110,39 @@ export function CartographiePage() {
                   />
                 </Source>
               )}
+              {/* Voies / rues — lignes et points */}
+              {showRues && ruesLines.features.length > 0 && (
+                <Source id="rues-lines" type="geojson" data={ruesLines}>
+                  <Layer
+                    id="rues-lines-layer"
+                    type="line"
+                    paint={{ 'line-color': '#60a5fa', 'line-width': 2, 'line-opacity': 0.85 }}
+                  />
+                  <Layer
+                    id="rues-lines-labels"
+                    type="symbol"
+                    layout={{
+                      'text-field': ['get', 'nom'],
+                      'text-size': 10,
+                      'text-font': ['Open Sans Regular'],
+                      'symbol-placement': 'line',
+                      'text-keep-upright': true,
+                      'text-max-angle': 45,
+                      'text-offset': [0, -0.6],
+                    }}
+                    paint={{ 'text-color': '#93c5fd', 'text-halo-color': '#000', 'text-halo-width': 1.5 }}
+                  />
+                </Source>
+              )}
+              {showRues && ruesPoints.features.length > 0 && (
+                <Source id="rues-points" type="geojson" data={ruesPoints}>
+                  <Layer
+                    id="rues-points-layer"
+                    type="circle"
+                    paint={{ 'circle-radius': 4, 'circle-color': '#60a5fa', 'circle-opacity': 0.75, 'circle-stroke-color': '#1e40af', 'circle-stroke-width': 1 }}
+                  />
+                </Source>
+              )}
             </MapGL>
 
             {/* No-geometry notice — overlay on top of the map, never replaces it */}
@@ -1037,9 +1170,73 @@ export function CartographiePage() {
               crisisCount={crisisFeatures.length}
             />
 
+            {/* Nominations détectées par l'IA */}
+            {showNominations && (
+              <div className="absolute top-3 left-3 w-72 bg-cc-900/95 border border-yellow-800/70 rounded-xl shadow-xl backdrop-blur-sm z-20 overflow-hidden">
+                <div className="px-3 py-2 border-b border-yellow-800/40 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-yellow-400 text-sm">🔔</span>
+                    <span className="text-[9px] font-mono text-yellow-300 uppercase tracking-wider">Nominations détectées</span>
+                    {propositionsCount > 0 && (
+                      <span className="bg-yellow-500 text-black text-[8px] font-bold px-1.5 py-px rounded-full">{propositionsCount}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="max-h-80 overflow-y-auto p-2 space-y-2">
+                  {(!propositionsRaw || propositionsRaw.length === 0) ? (
+                    <div className="text-center text-cc-600 text-[9px] py-4 font-mono italic">
+                      {!propositionsRaw ? 'Chargement…' : 'Aucune nomination en attente'}
+                    </div>
+                  ) : (
+                    (propositionsRaw as any[]).slice(0, 10).map((p: any) => (
+                      <div key={p.id} className="bg-cc-800/60 border border-cc-700 rounded-lg px-2.5 py-2">
+                        <div className="flex items-start gap-2 mb-1.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[10px] text-white font-semibold truncate">{p.personne_nom ?? p.nom_personne ?? '—'}</div>
+                            <div className="text-[9px] text-yellow-400 font-mono truncate">{p.fonction ?? '—'}</div>
+                            <div className="text-[8px] text-cc-500 font-mono mt-0.5">{p.entite_nom ?? p.entite_pcode ?? '—'}</div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <div className="text-[8px] font-mono font-bold" style={{
+                              color: (p.confidence ?? 0.7) >= 0.85 ? '#22c55e' : (p.confidence ?? 0.7) >= 0.65 ? '#eab308' : '#f97316',
+                            }}>
+                              {Math.round((p.confidence ?? 0.7) * 100)}%
+                            </div>
+                            {p.rapprochement === 'AMBIGU' && (
+                              <span className="text-[7px] text-orange-400 font-mono">AMBIGU</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => validateNomMutation.mutate(p.id)}
+                            disabled={validateNomMutation.isPending || p.rapprochement === 'ENTITE_INTROUVABLE'}
+                            className="flex-1 py-0.5 bg-green-900/60 hover:bg-green-800 border border-green-700 text-green-300 text-[8px] font-mono rounded transition-colors disabled:opacity-40"
+                          >✓ Valider</button>
+                          <button
+                            onClick={() => rejectNomMutation.mutate(p.id)}
+                            disabled={rejectNomMutation.isPending}
+                            className="flex-1 py-0.5 bg-red-900/60 hover:bg-red-800 border border-red-700 text-red-300 text-[8px] font-mono rounded transition-colors disabled:opacity-40"
+                          >✕ Rejeter</button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {propositionsRaw && (propositionsRaw as any[]).length > 10 && (
+                  <div className="px-3 py-1.5 border-t border-cc-800 text-[8px] font-mono text-cc-600 text-center">
+                    +{(propositionsRaw as any[]).length - 10} autres · voir page Propositions
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Real-time incidents by province */}
             {showIncidentsPanel && (
-              <div className="absolute top-3 left-3 w-56 bg-cc-900/95 border border-cc-700 rounded-xl shadow-xl backdrop-blur-sm z-10 overflow-hidden">
+              <div
+                className="absolute top-3 w-56 bg-cc-900/95 border border-cc-700 rounded-xl shadow-xl backdrop-blur-sm z-10 overflow-hidden"
+                style={{ left: showNominations ? '308px' : '12px' }}
+              >
                 <div className="px-3 py-2 border-b border-cc-700 flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse shrink-0" />
@@ -1091,7 +1288,7 @@ export function CartographiePage() {
             {hasGeometry && (
               <div className="absolute bottom-4 left-4 bg-cc-900/90 border border-cc-700 rounded-lg p-3 space-y-1.5 backdrop-blur-sm">
                 <div className="text-[9px] font-mono text-cc-500 uppercase mb-1.5">
-                  {colorMode === 'statut' ? 'Situation' : 'Incidents 30j'}
+                  {colorMode === 'statut' ? 'Situation' : colorMode === 'sinistres' ? 'Incidents 30j' : 'Responsable'}
                 </div>
                 {colorMode === 'statut' ? (
                   [
@@ -1100,6 +1297,16 @@ export function CartographiePage() {
                     { color: '#eab308', label: 'VIGILANCE' },
                     { color: '#16a34a', label: 'NORMAL'    },
                     { color: '#64748b', label: 'Inconnu'   },
+                  ].map(l => (
+                    <div key={l.label} className="flex items-center gap-2">
+                      <div className="w-3.5 h-3.5 rounded-sm shrink-0" style={{ backgroundColor: l.color }} />
+                      <span className="text-[9px] text-gray-400">{l.label}</span>
+                    </div>
+                  ))
+                ) : colorMode === 'responsable' ? (
+                  [
+                    { color: '#16a34a', label: 'Responsable nommé' },
+                    { color: '#dc2626', label: 'Sans responsable'  },
                   ].map(l => (
                     <div key={l.label} className="flex items-center gap-2">
                       <div className="w-3.5 h-3.5 rounded-sm shrink-0" style={{ backgroundColor: l.color }} />
@@ -1117,6 +1324,17 @@ export function CartographiePage() {
                       <span className="text-[9px] text-gray-400">{l.label}</span>
                     </div>
                   ))
+                )}
+                {showRues && ruesGeoJson.features.length > 0 && (
+                  <div className="mt-1 pt-1.5 border-t border-cc-700 flex items-center gap-2">
+                    <div className="w-3.5 h-1 rounded-full bg-blue-400 shrink-0" />
+                    <span className="text-[9px] text-gray-400">Voies ({ruesGeoJson.features.length})</span>
+                  </div>
+                )}
+                {showRues && !ruesPcode && (
+                  <div className="mt-1 pt-1.5 border-t border-cc-700 text-[8px] text-blue-400 font-mono italic">
+                    Voies : naviguez au<br />niveau Secteur/Groupement
+                  </div>
                 )}
               </div>
             )}
