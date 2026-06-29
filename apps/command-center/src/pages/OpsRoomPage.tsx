@@ -452,7 +452,14 @@ export function OpsRoomPage() {
 
   const { data: activeCrises } = useQuery({
     queryKey: ['cc-crises-active'],
-    queryFn: () => apiClient.get('/crises?status=active&limit=10').then(r => r.data.data),
+    queryFn: () => apiClient.get('/crises?limit=20').then(r => {
+      const rows: any[] = r.data.data ?? [];
+      const cutoff = new Date(Date.now() - 7 * 86_400_000);
+      return rows.filter(c =>
+        c.status !== 'resolved' && c.status !== 'rejected' &&
+        new Date(c.created_at ?? c.start_date) >= cutoff
+      );
+    }),
     staleTime: 30_000,
     refetchInterval: 30_000,
   });
@@ -901,22 +908,32 @@ export function OpsRoomPage() {
           </>
         )}
 
-        {activeCrises && activeCrises.length > 0 && (
-          <div className="absolute bottom-4 right-1 w-64 bg-cc-900/95 border border-cc-700 rounded-xl p-3 backdrop-blur-sm">
-            <div className="text-xs font-mono text-cc-500 uppercase tracking-wider mb-2">Crises actives</div>
+        <div className="absolute bottom-4 right-1 w-64 bg-cc-900/95 border border-cc-700 rounded-xl p-3 backdrop-blur-sm">
+          <div className="text-xs font-mono text-cc-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <span>Crises — 7 derniers jours</span>
+            {activeCrises && activeCrises.length > 0 && (
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            )}
+          </div>
+          {!activeCrises || activeCrises.length === 0 ? (
+            <div className="text-[10px] text-cc-600 font-mono">Aucune crise récente</div>
+          ) : (
             <div className="space-y-1.5">
               {activeCrises.slice(0, 5).map((c: any) => (
                 <div key={c.id} className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 animate-pulse" />
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${
+                    c.status === 'active' ? 'bg-red-500 animate-pulse' :
+                    c.status === 'monitoring' ? 'bg-yellow-500' : 'bg-blue-500'
+                  }`} />
                   <div className="min-w-0">
                     <div className="text-xs text-gray-200 truncate font-medium">{c.title}</div>
-                    <div className="text-xs text-cc-500 font-mono">{c.glideNumber}</div>
+                    <div className="text-[10px] text-cc-500 font-mono">{c.glide_number ?? c.glideNumber}</div>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Live feed */}

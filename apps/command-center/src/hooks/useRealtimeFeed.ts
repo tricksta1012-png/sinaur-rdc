@@ -97,7 +97,16 @@ export function useRealtimeFeed() {
 
     const ws = new WebSocket(buildWsUrl(token))
 
-    ws.onopen = () => setConnected(true)
+    ws.onopen = () => {
+      setConnected(true)
+      // Heartbeat toutes les 25s pour éviter la fermeture Railway (idle ~60s)
+      const ping = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'PING' }))
+        }
+      }, 25_000)
+      ws.addEventListener('close', () => clearInterval(ping), { once: true })
+    }
 
     ws.onclose = () => {
       setConnected(false)
