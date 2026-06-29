@@ -64,7 +64,7 @@ export async function publicRoutes(fastify: FastifyInstance) {
         info->>'areaDesc'  AS area_name,
         info->>'areaCode'  AS area_pcode
       FROM cap_alerts
-      WHERE status = 'actual'
+      WHERE status = 'Actual'
         AND scope  = 'Public'
       ORDER BY sent_at DESC
       LIMIT 50
@@ -134,7 +134,7 @@ export async function publicRoutes(fastify: FastifyInstance) {
           COUNT(DISTINCT location_pcode) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')::int AS affected_provinces
         FROM disaster_events WHERE is_public = TRUE
       `,
-      sql`SELECT COUNT(*)::int AS count FROM cap_alerts WHERE status = 'actual' AND scope = 'Public'`,
+      sql`SELECT COUNT(*)::int AS count FROM cap_alerts WHERE status = 'Actual' AND scope = 'Public'`,
     ])
 
     return reply
@@ -238,7 +238,7 @@ export async function publicRoutes(fastify: FastifyInstance) {
         info->>'areaCode'  AS area_pcode,
         info->>'event'     AS event_name
       FROM cap_alerts
-      WHERE status = 'actual' AND scope = 'Public'
+      WHERE status = 'Actual' AND scope = 'Public'
       ORDER BY sent_at DESC
       LIMIT 20
     `
