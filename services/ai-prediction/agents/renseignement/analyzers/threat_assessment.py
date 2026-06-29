@@ -67,15 +67,18 @@ def assess_provinces(events: list[IntelEvent]) -> list[ProvinceAssessment]:
 
         military_count = sum(1 for e in evs if e.category == IntelCategory.ACTIVITE_MILITAIRE)
         incident_count = sum(1 for e in evs if e.category == IntelCategory.INCIDENT_SECURITAIRE)
+        infra_count    = sum(1 for e in evs if e.category == IntelCategory.DOMMAGE_INFRASTRUCTURE)
         total = len(evs)
 
-        score = min(100.0, military_count * 12 + incident_count * 8 + total * 2)
+        score = min(100.0, military_count * 15 + incident_count * 10 + infra_count * 4)
         level = _score_to_level(score)
         label, justif = THREAT_META[level]
 
         actors = list({a for e in evs for a in e.actor_names})
         sources = list({e.source_id for e in evs})
-        confidence = min(0.95, 0.45 + total * 0.04)
+        # Confidence based on security-relevant events, not total article count
+        security_total = military_count + incident_count + infra_count
+        confidence = min(0.95, 0.40 + security_total * 0.06)
 
         assessments.append(ProvinceAssessment(
             province=PCODE_NAMES.get(p_code, p_code),
