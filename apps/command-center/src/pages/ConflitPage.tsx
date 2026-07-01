@@ -974,7 +974,7 @@ export function ConflitPage() {
   const { tokens } = useAuthStore();
 
   // ── State ─────────────────────────────────────────────────────────────
-  const [horizon, setHorizon]                   = useState<HorizonDays>(14);
+  const [horizon, setHorizon]                   = useState<HorizonDays>(30);
   const [showCorridors, setShowCorridors]       = useState(true);
   const [showPredictionLayer, setShowPrediction] = useState(false);
   const [selectedId, setSelectedId]             = useState<string | null>(null);

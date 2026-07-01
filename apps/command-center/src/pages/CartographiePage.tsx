@@ -441,10 +441,10 @@ export function CartographiePage() {
     const events: any[] = recentEventsRaw ?? [];
     const counts: Record<string, { count: number; name: string }> = {};
     for (const evt of events) {
-      const pcode = (evt.location_pcode ?? '') as string;
+      const pcode = (evt.locationPcode ?? evt.location_pcode ?? '') as string;
       const key = pcode.length >= 4 ? pcode.slice(0, 4) : pcode;
       if (!key) continue;
-      if (!counts[key]) counts[key] = { count: 0, name: provinceLookup[key] ?? evt.location_name ?? key };
+      if (!counts[key]) counts[key] = { count: 0, name: provinceLookup[key] ?? evt.locationName ?? evt.location_name ?? key };
       counts[key].count += 1;
     }
     return Object.entries(counts)
