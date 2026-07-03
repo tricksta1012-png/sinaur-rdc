@@ -1,3 +1,0 @@
-# railway.toml — configuration minimale
-# Les services utilisent des images Docker pré-construites depuis Docker Hub.
-# Ne pas ajouter de paramètres builder ici.
