@@ -96,7 +96,7 @@ export async function hubRoutes(fastify: FastifyInstance): Promise<void> {
         const contentType = resp.headers['content-type'] ?? '';
         const preview: string[] = [];
 
-        if (type_source === 'RSS' || contentType.includes('xml') || contentType.includes('rss')) {
+        if (type_source === 'RSS' || String(contentType).includes('xml') || String(contentType).includes('rss')) {
           // Extraire les premiers titres RSS
           const matches = resp.data.match(/<title[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/g) ?? [];
           for (const m of matches.slice(1, 5)) {
@@ -157,14 +157,18 @@ export async function hubRoutes(fastify: FastifyInstance): Promise<void> {
       const body = SourceUpdateSchema.parse(request.body);
 
       const sets: string[] = [];
-      const vals: unknown[] = [];
+      const vals: (string | number | boolean | null)[] = [];
       let i = 1;
       for (const [k, v] of Object.entries(body)) {
-        if (v !== undefined) { sets.push(`${k} = $${i++}`); vals.push(k === 'config' ? JSON.stringify(v) : v); }
+        if (v !== undefined) {
+          sets.push(`${k} = $${i++}`);
+          vals.push(k === 'config' ? JSON.stringify(v) : v as string | number | boolean | null);
+        }
       }
       if (sets.length === 0) return reply.status(400).send({ error: 'No fields to update' });
 
-      const [row] = await sql.unsafe(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const [row] = await (sql.unsafe as any)(
         `UPDATE source_collecte SET ${sets.join(', ')}, mis_a_jour_le = NOW()
          WHERE id = $${i} RETURNING id, nom, statut_sante, actif`,
         [...vals, id],
