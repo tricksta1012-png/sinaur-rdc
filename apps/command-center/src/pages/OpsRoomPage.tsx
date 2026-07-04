@@ -455,7 +455,7 @@ export function OpsRoomPage() {
     queryKey: ['cc-crises-active'],
     queryFn: () => apiClient.get('/crises?limit=20').then(r => {
       const rows: any[] = r.data.data ?? [];
-      const cutoff = new Date(Date.now() - 7 * 86_400_000);
+      const cutoff = new Date(Date.now() - 30 * 86_400_000);
       return rows.filter(c =>
         c.status !== 'resolved' && c.status !== 'rejected' &&
         new Date(c.created_at ?? c.start_date) >= cutoff

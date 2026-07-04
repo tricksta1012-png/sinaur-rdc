@@ -308,7 +308,7 @@ export function CartographiePage() {
   const zoomEnCours               = useRef<AbortController | null>(null);
 
   // 7-day window (computed once at mount)
-  const dateFrom7d = useMemo(() => new Date(Date.now() - 7 * 86_400_000).toISOString(), []);
+  const dateFrom7d = useMemo(() => new Date(Date.now() - 30 * 86_400_000).toISOString(), []);
 
   // pcode commune pour le chargement des rues (level 3 = secteur/groupement)
   const ruesPcode = useMemo(() => {
