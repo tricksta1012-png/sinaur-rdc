@@ -29,6 +29,19 @@ Thumbs.db
 logs/
 *.log
 npm-debug.log*
+docker-public-build*.log.err
+
+# TypeScript artefacts compilés en src/ (tsc sans outDir séparé)
+apps/*/src/**/*.js
+apps/*/src/**/*.js.map
+apps/*/src/**/*.d.ts
+apps/*/src/**/*.d.ts.map
+
+# Claude Code (mémoire locale)
+.claude/
+
+# Dockerfile racine — artefact de test Railway, non utilisé
+/Dockerfile
 
 # Test coverage
 coverage/

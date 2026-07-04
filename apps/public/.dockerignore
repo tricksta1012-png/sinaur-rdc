@@ -1,0 +1,16 @@
+node_modules
+.git
+*.log
+src
+public
+*.md
+*.json
+*.ts
+*.tsx
+*.js
+*.cjs
+*.mjs
+vite.config.*
+tailwind.config.*
+postcss.config.*
+tsconfig.*
