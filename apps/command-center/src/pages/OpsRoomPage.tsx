@@ -395,7 +395,7 @@ function EventDetailPanel({ event, onClose }: { event: SelectedEvent; onClose: (
 }
 
 export function OpsRoomPage() {
-  const { events, connected, clearFeed } = useRealtimeFeed();
+  const { events, connected, clearFeed, reconnect } = useRealtimeFeed();
   const { tokens } = useAuthStore();
   const qc = useQueryClient();
   const [selectedEvent, setSelectedEvent] = useState<SelectedEvent | null>(null);
@@ -938,7 +938,7 @@ export function OpsRoomPage() {
 
       {/* Live feed */}
       <div className="w-80 shrink-0 bg-cc-900 border-l border-cc-700 flex flex-col">
-        <LiveFeed events={events} onClear={clearFeed} />
+        <LiveFeed events={events} onClear={clearFeed} onReconnect={reconnect} connected={connected} />
       </div>
     </div>
   );

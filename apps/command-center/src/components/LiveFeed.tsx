@@ -71,9 +71,11 @@ const FILTER_OPTS: { key: FilterKey; label: string }[] = [
 interface Props {
   events: (FeedEvent & { receivedAt: string })[];
   onClear: () => void;
+  onReconnect?: () => void;
+  connected?: boolean;
 }
 
-export function LiveFeed({ events, onClear }: Props) {
+export function LiveFeed({ events, onClear, onReconnect, connected }: Props) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [filter, setFilter] = useState<FilterKey>('ALL');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -104,7 +106,7 @@ export function LiveFeed({ events, onClear }: Props) {
       <div className="px-3 pt-2.5 pb-2 border-b border-cc-700 shrink-0 space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${connected ? 'bg-green-500 animate-pulse' : 'bg-red-600'}`} />
             <span className="text-[10px] font-mono text-cc-500 uppercase tracking-wider">Flux temps réel</span>
             {events.length > 0 && (
               <span className="text-[10px] bg-cc-800 text-cc-400 px-1.5 py-0.5 rounded-full font-mono">{events.length}</span>
@@ -115,9 +117,20 @@ export function LiveFeed({ events, onClear }: Props) {
               </span>
             )}
           </div>
-          <button onClick={onClear} className="text-[10px] text-cc-600 hover:text-gray-300 transition-colors font-mono">
-            ✕ Effacer
-          </button>
+          <div className="flex items-center gap-2">
+            {!connected && onReconnect && (
+              <button
+                onClick={onReconnect}
+                className="text-[10px] text-sinaur-400 hover:text-sinaur-300 font-mono transition-colors border border-sinaur-800 hover:border-sinaur-600 px-1.5 py-0.5 rounded"
+                title="Reconnecter le flux temps réel"
+              >
+                ↺ Reconnecter
+              </button>
+            )}
+            <button onClick={onClear} className="text-[10px] text-cc-600 hover:text-gray-300 transition-colors font-mono">
+              ✕ Effacer
+            </button>
+          </div>
         </div>
 
         {/* Filter pills */}

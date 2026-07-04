@@ -2,10 +2,14 @@ import type { SocketStream } from '@fastify/websocket';
 type WebSocket = SocketStream['socket'];
 
 type WsEvent =
-  | { type: 'NEW_EVENT'; payload: unknown }
-  | { type: 'EVENT_UPDATED'; payload: unknown }
-  | { type: 'NEW_ALERT'; payload: unknown }
-  | { type: 'STATS_UPDATE'; payload: unknown };
+  | { type: 'NEW_EVENT';      payload: unknown }
+  | { type: 'EVENT_UPDATED';  payload: unknown }
+  | { type: 'NEW_ALERT';      payload: unknown }
+  | { type: 'CRISIS_CREATED'; payload: unknown }
+  | { type: 'CRISIS_UPDATED'; payload: unknown }
+  | { type: 'TASK_CREATED';   payload: unknown }
+  | { type: 'TASK_UPDATED';   payload: unknown }
+  | { type: 'STATS_UPDATE';   payload: unknown };
 
 // Registry des connexions WebSocket actives par périmètre géographique
 const clients = new Map<WebSocket, { scope: string[] }>();
@@ -38,6 +42,22 @@ export function broadcastNewEvent(event: unknown, affectedPcodes: string[]): voi
 
 export function broadcastAlert(alert: unknown, targetPcodes: string[] = []): void {
   broadcast({ type: 'NEW_ALERT', payload: alert }, targetPcodes);
+}
+
+export function broadcastCrisisCreated(crisis: unknown): void {
+  broadcast({ type: 'CRISIS_CREATED', payload: crisis });
+}
+
+export function broadcastCrisisUpdated(crisis: unknown): void {
+  broadcast({ type: 'CRISIS_UPDATED', payload: crisis });
+}
+
+export function broadcastTaskCreated(task: unknown): void {
+  broadcast({ type: 'TASK_CREATED', payload: task });
+}
+
+export function broadcastTaskUpdated(task: unknown): void {
+  broadcast({ type: 'TASK_UPDATED', payload: task });
 }
 
 export function getConnectedCount(): number {

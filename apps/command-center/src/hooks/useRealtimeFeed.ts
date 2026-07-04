@@ -54,8 +54,9 @@ function buildWsUrl(token: string): string {
 export function useRealtimeFeed() {
   const [events, setEvents] = useState<(FeedEvent & { receivedAt: string })[]>([])
   const [connected, setConnected] = useState(false)
-  const wsRef = useRef<WebSocket | null>(null)
+  const wsRef        = useRef<WebSocket | null>(null)
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryCount   = useRef(0)
   const tokens = useAuthStore(s => s.tokens)
 
   // Chargement HTTP initial : évite que le panneau reste vide en attendant un message WebSocket
@@ -84,21 +85,23 @@ export function useRealtimeFeed() {
   }, [tokens?.accessToken])
 
   const connect = useCallback(async () => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return
+    if (wsRef.current?.readyState === WebSocket.OPEN ||
+        wsRef.current?.readyState === WebSocket.CONNECTING) return
 
     let token = tokens?.accessToken ?? ''
 
-    // Refresh expired token before opening a new connection
     if (token && isTokenExpired(token)) {
-      const refreshed = await tryRefreshToken();
-      if (!refreshed) return;
-      token = refreshed;
+      const refreshed = await tryRefreshToken()
+      if (!refreshed) return
+      token = refreshed
     }
 
     const ws = new WebSocket(buildWsUrl(token))
+    wsRef.current = ws
 
     ws.onopen = () => {
       setConnected(true)
+      retryCount.current = 0
       // Heartbeat toutes les 25s pour éviter la fermeture Railway (idle ~60s)
       const ping = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -110,8 +113,11 @@ export function useRealtimeFeed() {
 
     ws.onclose = () => {
       setConnected(false)
-      // Use latest connect via ref to avoid stale closure on refresh
-      reconnectRef.current = setTimeout(() => connect(), 5_000)
+      // Backoff exponentiel : 2s, 4s, 8s … plafonné à 30s
+      const delay = Math.min(2_000 * Math.pow(2, retryCount.current), 30_000)
+      retryCount.current += 1
+      // connectRef.current assure qu'on appelle toujours la version la plus récente
+      reconnectRef.current = setTimeout(() => connectRef.current(), delay)
     }
 
     ws.onerror = () => ws.close()
@@ -126,19 +132,31 @@ export function useRealtimeFeed() {
         ])
       } catch {}
     }
-
-    wsRef.current = ws
   }, [tokens?.accessToken])
+
+  // Ref toujours à jour — évite le stale closure dans onclose
+  const connectRef = useRef(connect)
+  useEffect(() => { connectRef.current = connect }, [connect])
 
   useEffect(() => {
     if (tokens) connect()
     return () => {
       if (reconnectRef.current) clearTimeout(reconnectRef.current)
       wsRef.current?.close()
+      wsRef.current = null
     }
   }, [connect, tokens])
 
   const clearFeed = () => setEvents([])
 
-  return { events, connected, clearFeed }
+  // Reconnexion manuelle (bouton dans l'UI)
+  const reconnect = useCallback(() => {
+    if (reconnectRef.current) clearTimeout(reconnectRef.current)
+    wsRef.current?.close()
+    wsRef.current = null
+    retryCount.current = 0
+    connect()
+  }, [connect])
+
+  return { events, connected, clearFeed, reconnect }
 }
