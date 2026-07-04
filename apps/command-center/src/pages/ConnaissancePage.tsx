@@ -364,7 +364,7 @@ function GrapheViz({ nodes, links }: { nodes: GrapheNode[]; links: GrapheLink[] 
 export function ConnaissancePage() {
   const [tab, setTab] = useState<KbTab>('entites');
   const [typeFilter, setTypeFilter] = useState('');
-  const [statutFilter, setstatutFilter] = useState('');
+  const [statutFilter, setStatutFilter] = useState('');
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
