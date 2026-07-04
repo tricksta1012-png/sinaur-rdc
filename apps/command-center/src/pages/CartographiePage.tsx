@@ -490,6 +490,12 @@ export function CartographiePage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['carto-propositions'] }),
   });
 
+  // Mutation rafraîchissement statuts (system_admin only)
+  const refreshStatutsMutation = useMutation({
+    mutationFn: () => apiClient.post('/geo/refresh-statuts', {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cartographie'] }),
+  });
+
   // Split polygon features (levels 1-3) from point features (level 4 — centroid only)
   const polygonGeojson = useMemo(() => ({
     type: 'FeatureCollection' as const,
@@ -916,6 +922,22 @@ export function CartographiePage() {
           >
             Voies
           </button>
+          {user?.role === 'system_admin' && (
+            <button
+              onClick={() => refreshStatutsMutation.mutate()}
+              disabled={refreshStatutsMutation.isPending}
+              title="Recalcule statut_situation de toutes les divisions depuis les incidents (30j)"
+              className={`text-[10px] font-mono px-2.5 py-1 rounded-lg border transition-colors ${
+                refreshStatutsMutation.isPending
+                  ? 'bg-cc-800 text-cc-600 border-cc-700 cursor-wait'
+                  : refreshStatutsMutation.isSuccess
+                  ? 'bg-green-900/60 text-green-300 border-green-700'
+                  : 'text-cc-500 hover:text-gray-300 bg-cc-800 border-cc-700'
+              }`}
+            >
+              {refreshStatutsMutation.isPending ? '↻ Calcul…' : '↻ Statuts'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -955,7 +977,7 @@ export function CartographiePage() {
               onLoad={onMapLoad}
               onMove={e => setMapZoom(e.viewState.zoom)}
               interactiveLayerIds={[
-                ...(hasGeometry ? ['carto-fill', 'carto-points'] : []),
+                'carto-fill', 'carto-points',
                 ...(hasCrises ? ['crisis-pulse-layer'] : []),
                 ...(showGlobalQuartiers ? ['quartiers-globe-points'] : []),
               ]}

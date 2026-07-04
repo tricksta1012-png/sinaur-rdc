@@ -234,7 +234,7 @@ export async function eventRoutes(fastify: FastifyInstance): Promise<void> {
     };
 
     return reply
-      .header('Cache-Control', 'public, max-age=30')
+      .header('Cache-Control', 'private, no-store')
       .send(geojson);
   });
 

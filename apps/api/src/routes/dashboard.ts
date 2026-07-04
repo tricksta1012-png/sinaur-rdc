@@ -42,7 +42,7 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
             COUNT(*) FILTER (WHERE e.status IN ('reported','under_review'))                    AS pending_events,
             COUNT(*) FILTER (WHERE e.severity IN ('Severe','Extreme') AND e.status = 'active') AS critical_events,
             COUNT(*) FILTER (WHERE e.start_date >= NOW() - INTERVAL '24 hours')                AS events_24h,
-            COUNT(*) FILTER (WHERE e.start_date >= NOW() - INTERVAL '7 days')                  AS events_7d,
+            COUNT(*) FILTER (WHERE e.start_date >= NOW() - INTERVAL '30 days')                 AS events_30d,
             COALESCE(SUM(e.estimated_affected) FILTER (WHERE e.status = 'active'), 0)          AS total_affected
           FROM disaster_events e
           WHERE e.deleted_at IS NULL ${scopeFilter}
@@ -60,8 +60,18 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
           GROUP BY day ORDER BY day
         `,
         sql`
-          SELECT pcode, province_name, active_events, severe_events, total_affected
-          FROM province_stats
+          SELECT
+            ad.pcode,
+            ad.name_fr AS province_name,
+            COUNT(de.id) FILTER (WHERE de.status = 'active')                                       AS active_events,
+            COUNT(de.id) FILTER (WHERE de.severity IN ('Severe','Extreme') AND de.status = 'active') AS severe_events,
+            COALESCE(SUM(de.estimated_affected) FILTER (WHERE de.status = 'active'), 0)            AS total_affected
+          FROM admin_divisions ad
+          LEFT JOIN disaster_events de
+            ON (de.location_pcode = ad.pcode OR ad.pcode = ANY(de.affected_pcodes))
+            AND de.deleted_at IS NULL
+          WHERE ad.level = 1 AND ad.is_active = TRUE
+          GROUP BY ad.pcode, ad.name_fr
           ORDER BY severe_events DESC, active_events DESC
           LIMIT 10
         `,
@@ -115,7 +125,7 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
             pendingEvents:    Number(counts.pendingEvents),
             criticalEvents:   Number(counts.criticalEvents),
             events24h:        Number(counts.events24h),
-            events7d:         Number(counts.events7d),
+            events30d:        Number(counts.events30d),
             totalAffected:    Number(counts.totalAffected),
             moderationQueue:  Number(modQueue.pending),
             wsConnected:      getConnectedCount(),
@@ -251,7 +261,37 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
     async (_request, reply) => {
       await sql`REFRESH MATERIALIZED VIEW CONCURRENTLY province_stats`;
       await sql`REFRESH MATERIALIZED VIEW CONCURRENTLY current_risk_scores`.catch(() => {});
-      return reply.send({ success: true, data: { message: 'Vues matérialisées rafraîchies' } });
+      // Recalcul des statuts depuis les incidents récents
+      await sql`
+        WITH incident_counts AS (
+          SELECT
+            ad.pcode,
+            COUNT(de.id)::int AS nb_incidents
+          FROM admin_divisions ad
+          LEFT JOIN disaster_events de
+            ON de.location_pcode LIKE ad.pcode || '%'
+            AND de.created_at >= NOW() - INTERVAL '30 days'
+            AND de.deleted_at IS NULL
+          WHERE ad.is_active = TRUE
+          GROUP BY ad.pcode
+        )
+        UPDATE admin_divisions ad
+        SET statut_situation = CASE
+          WHEN ic.nb_incidents = 0  THEN 'NORMAL'
+          WHEN ic.nb_incidents <= 5 THEN 'VIGILANCE'
+          WHEN ic.nb_incidents <= 15 THEN 'ALERTE'
+          ELSE 'CRISE'
+        END
+        FROM incident_counts ic
+        WHERE ad.pcode = ic.pcode
+          AND (ad.statut_situation IS DISTINCT FROM CASE
+            WHEN ic.nb_incidents = 0  THEN 'NORMAL'
+            WHEN ic.nb_incidents <= 5 THEN 'VIGILANCE'
+            WHEN ic.nb_incidents <= 15 THEN 'ALERTE'
+            ELSE 'CRISE'
+          END)
+      `.catch(() => {});
+      return reply.send({ success: true, data: { message: 'Vues matérialisées et statuts rafraîchis' } });
     },
   );
 }

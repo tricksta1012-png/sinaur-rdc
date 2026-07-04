@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { sql } from '../db.js';
+import { requireAuth, requireRole } from '../auth/jwt.js';
 
 const listSchema = z.object({
   level: z.coerce.number().int().min(0).max(6).optional(),
@@ -184,7 +185,7 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
     };
 
     return reply
-      .header('Cache-Control', 'public, max-age=300')
+      .header('Cache-Control', 'private, no-store')
       .send(featureCollection);
   });
 
@@ -293,6 +294,49 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
     });
   });
 
+  // POST /geo/refresh-statuts — recalcule statut_situation depuis les incidents des 30 derniers jours
+  fastify.post(
+    '/geo/refresh-statuts',
+    { preHandler: [requireAuth, requireRole('system_admin')] },
+    async (_request, reply) => {
+      const result = await sql`
+        WITH incident_counts AS (
+          SELECT
+            ad.pcode,
+            COUNT(de.id)::int AS nb_incidents
+          FROM admin_divisions ad
+          LEFT JOIN disaster_events de
+            ON de.location_pcode LIKE ad.pcode || '%'
+            AND de.created_at >= NOW() - INTERVAL '30 days'
+            AND de.deleted_at IS NULL
+          WHERE ad.is_active = TRUE
+          GROUP BY ad.pcode
+        ),
+        new_statuts AS (
+          SELECT
+            pcode,
+            CASE
+              WHEN nb_incidents = 0  THEN 'NORMAL'
+              WHEN nb_incidents <= 5 THEN 'VIGILANCE'
+              WHEN nb_incidents <= 15 THEN 'ALERTE'
+              ELSE 'CRISE'
+            END AS new_statut
+          FROM incident_counts
+        )
+        UPDATE admin_divisions ad
+        SET statut_situation = ns.new_statut
+        FROM new_statuts ns
+        WHERE ad.pcode = ns.pcode
+          AND (ad.statut_situation IS DISTINCT FROM ns.new_statut)
+        RETURNING ad.pcode, ns.new_statut
+      `;
+      return reply.send({
+        success: true,
+        data: { updated: result.length, changes: result },
+      });
+    },
+  );
+
   // GET /geo/couverture — taux de couverture en responsables par niveau
   fastify.get('/geo/couverture', async (request, reply) => {
     const rows = await sql`
@@ -314,7 +358,7 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
     }));
 
     return reply
-      .header('Cache-Control', 'public, max-age=300')
+      .header('Cache-Control', 'private, no-store')
       .send({ success: true, data });
   });
 }

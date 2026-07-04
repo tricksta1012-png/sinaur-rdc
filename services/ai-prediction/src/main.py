@@ -16,6 +16,7 @@ from .api.predictions import router as predictions_router
 from .api.internal import router as internal_router
 from .api.veille import router as veille_router
 from .api.antifraud import router as antifraud_router
+from .api.connaissance import router as connaissance_router
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -78,3 +79,4 @@ app.include_router(predictions_router)
 app.include_router(internal_router)
 app.include_router(veille_router)
 app.include_router(antifraud_router)
+app.include_router(connaissance_router)

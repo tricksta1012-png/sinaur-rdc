@@ -1,8 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useMemo } from 'react';
 import { apiClient } from '../lib/api.js';
 import { useRealtimeFeed } from '../hooks/useRealtimeFeed.js';
 import { useAuthStore } from '../stores/auth.js';
+import { FraicheurBadge } from '../components/FraicheurBadge.js';
 
 const PROVINCES_DRC: Record<string, string> = {
   'CD10': 'Kinshasa', 'CD20': 'Kongo-Central', 'CD21': 'Kwango',
@@ -39,6 +41,49 @@ const HAZARD_COLOR: Record<string, string> = {
   volcanic_eruption: '#dc2626', drought: '#b45309', conflict: '#991b1b',
   earthquake: '#1e3a5f', fire: '#ea580c', other: '#4b5563',
 };
+
+function TrendChart({ trend }: { trend: { statDate: string; hazardType: string; eventCount: number }[] }) {
+  const daily = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const t of trend) {
+      const d = String(t.statDate).slice(0, 10);
+      map[d] = (map[d] ?? 0) + Number(t.eventCount);
+    }
+    const result: { date: string; count: number; label: string }[] = [];
+    const today = new Date();
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      result.push({ date: key, count: map[key] ?? 0, label: d.toLocaleDateString('fr', { day: 'numeric', month: 'short' }) });
+    }
+    return result;
+  }, [trend]);
+
+  const maxCount = Math.max(1, ...daily.map(d => d.count));
+  const H = 56, barW = 8, gap = 2, W = 30 * (barW + gap) - gap;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }} preserveAspectRatio="none">
+      {daily.map((d, i) => {
+        const barH = Math.max(2, Math.round((d.count / maxCount) * (H - 6)));
+        return (
+          <g key={d.date}>
+            <rect
+              x={i * (barW + gap)}
+              y={H - barH}
+              width={barW}
+              height={barH}
+              fill={d.count > 0 ? '#2563eb' : '#1e3a5f'}
+              opacity={d.count > 0 ? 0.85 : 0.25}
+              rx={1}
+            />
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
 
 function KpiCard({ label, value, sub, color, href }: { label: string; value: string | number; sub?: string; color: string; href?: string }) {
   const navigate = useNavigate();
@@ -131,7 +176,7 @@ export function DashboardPage() {
   const tokens = useAuthStore(s => s.tokens);
   const scope = tokens?.accessToken ? decodeJwtScope(tokens.accessToken) : [];
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, isError, dataUpdatedAt, refetch } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: () => apiClient.get('/dashboard/stats').then(r => r.data.data),
     staleTime: 30_000,
@@ -150,6 +195,7 @@ export function DashboardPage() {
   const hazardBreakdown = data?.hazardBreakdown ?? [];
   const topProvinces    = data?.topProvinces    ?? [];
   const recentActivity  = data?.recentActivity  ?? [];
+  const trend           = data?.trend           ?? [];
 
   // Max count for hazard bar chart
   const maxHazard = Math.max(1, ...hazardBreakdown.map((h: any) => Number(h.count)));
@@ -181,9 +227,12 @@ export function DashboardPage() {
             )}
           </p>
         </div>
-        <div className="text-xs text-cc-600 font-mono">
-          Mis à jour : {new Date().toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' })}
-        </div>
+        <FraicheurBadge
+          dataUpdatedAt={dataUpdatedAt}
+          isFetching={isFetching}
+          isError={isError}
+          onRefresh={() => refetch()}
+        />
       </div>
 
       {/* Provincial scope banner */}
@@ -228,7 +277,7 @@ export function DashboardPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <KpiCard label="Événements actifs"    value={counts.activeEvents   ?? '…'} color="#dc2626" href="/ops" />
         <KpiCard label="Événements 24h"       value={counts.events24h      ?? '…'} color="#ea580c" href="/ops" />
-        <KpiCard label="Événements 7j"        value={counts.events7d       ?? '…'} color="#ca8a04" href="/ops" />
+        <KpiCard label="Événements 30j"       value={counts.events30d      ?? '…'} color="#ca8a04" href="/ops" />
         <KpiCard label="Personnes affectées"  value={counts.totalAffected  ?? '…'} sub="événements actifs" color="#7c3aed" />
       </div>
 
@@ -238,6 +287,31 @@ export function DashboardPage() {
         <KpiCard label="Personnes déplacées" value={crisisStats.crisisDisplaced ?? '…'} color="#7c3aed" href="/crises" />
         <KpiCard label="Stocks critiques"    value={data?.stockStats?.criticalStocks ?? '…'} color="#ea580c" href="/stocks" />
         <KpiCard label="Connexions actives"  value={counts.wsConnected ?? '…'} sub="opérateurs en ligne" color="#2563eb" />
+      </div>
+
+      {/* Trend chart — évolution 30 jours */}
+      <div className="cc-card p-4 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-xs font-mono text-cc-500 uppercase tracking-wider">Évolution des événements — 30 derniers jours</div>
+          {trend.length > 0 && (
+            <div className="text-[10px] font-mono text-cc-600">
+              {trend.reduce((s: number, t: any) => s + Number(t.eventCount), 0)} événements total
+            </div>
+          )}
+        </div>
+        {trend.length === 0 ? (
+          <EmptyState text="Aucune donnée de tendance disponible" />
+        ) : (
+          <div>
+            <TrendChart trend={trend} />
+            <div className="flex justify-between mt-1">
+              <span className="text-[9px] font-mono text-cc-600">
+                {new Date(Date.now() - 29 * 86_400_000).toLocaleDateString('fr', { day: 'numeric', month: 'short' })}
+              </span>
+              <span className="text-[9px] font-mono text-cc-600">Aujourd'hui</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Two-column layout */}

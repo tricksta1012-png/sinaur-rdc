@@ -6,6 +6,7 @@ import { apiClient } from '../lib/api.js';
 import { useRealtimeFeed } from '../hooks/useRealtimeFeed.js';
 import { LiveFeed } from '../components/LiveFeed.js';
 import { useAuthStore } from '../stores/auth.js';
+import { FraicheurBadge } from '../components/FraicheurBadge.js';
 
 const MAP_STYLE = {
   version: 8 as const,
@@ -431,7 +432,7 @@ export function OpsRoomPage() {
 
   const hasActiveFilters = !!(filterHazard || filterPeriod || filterSeverity);
 
-  const { data: statsData } = useQuery({
+  const { data: statsData, isFetching: statsFetching, isError: statsError, dataUpdatedAt: statsUpdatedAt, refetch: statsRefetch } = useQuery({
     queryKey: ['cc-stats'],
     queryFn: () => apiClient.get('/dashboard/stats').then(r => r.data.data),
     staleTime: 30_000,
@@ -706,9 +707,19 @@ export function OpsRoomPage() {
             {provinceBounds ? `🏛️ ${provinceName}` : '🌍 RDC'}
           </button>
 
-          {/* Result count */}
-          <div className="ml-auto text-[10px] font-mono text-cc-500 bg-cc-900/80 border border-cc-700 px-2 py-1 rounded-lg backdrop-blur-sm">
-            {eventCount} événement{eventCount !== 1 ? 's' : ''}
+          {/* Result count + freshness */}
+          <div className="ml-auto flex items-center gap-2">
+            <div className="text-[10px] font-mono text-cc-500 bg-cc-900/80 border border-cc-700 px-2 py-1 rounded-lg backdrop-blur-sm">
+              {eventCount} événement{eventCount !== 1 ? 's' : ''}
+            </div>
+            <div className="bg-cc-900/80 border border-cc-700 px-2 py-1 rounded-lg backdrop-blur-sm">
+              <FraicheurBadge
+                dataUpdatedAt={statsUpdatedAt}
+                isFetching={statsFetching}
+                isError={statsError}
+                onRefresh={() => statsRefetch()}
+              />
+            </div>
           </div>
         </div>
 
@@ -911,7 +922,7 @@ export function OpsRoomPage() {
 
         <div className="absolute bottom-4 right-1 w-64 bg-cc-900/95 border border-cc-700 rounded-xl p-3 backdrop-blur-sm">
           <div className="text-xs font-mono text-cc-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <span>Crises — 7 derniers jours</span>
+            <span>Crises — 30 derniers jours</span>
             {activeCrises && activeCrises.length > 0 && (
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
             )}
