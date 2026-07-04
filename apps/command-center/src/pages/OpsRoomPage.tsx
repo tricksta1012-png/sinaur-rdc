@@ -9,6 +9,7 @@ import { useAuthStore } from '../stores/auth.js';
 
 const MAP_STYLE = {
   version: 8 as const,
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
   sources: {
     osm: {
       type: 'raster' as const,
