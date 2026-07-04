@@ -18,7 +18,7 @@ import { logSecurityEvent, hasSuspiciousInput } from '../auth/security.js'
 // Champs HXL pour les exports CSV
 const HXL_EVENTS_HEADER  = 'id,hazard_type,severity,location_pcode,location_name,province,source,created_at,description'
 const HXL_EVENTS_TAGS    = '#event+id,#crisis+type,#severity+code,#adm+pcode,#adm+name,#adm1+name,#source,#date+created,#description'
-const HXL_ALERTS_HEADER  = 'identifier,sent_at,status,urgency,severity,certainty,headline,area_name,area_pcode,category'
+const HXL_ALERTS_HEADER  = 'identifier,sent,status,urgency,severity,certainty,headline,area_name,area_pcode,category'
 const HXL_ALERTS_TAGS    = '#alert+id,#date+sent,#alert+status,#alert+urgency,#alert+severity,#alert+certainty,#alert+headline,#adm+name,#adm+pcode,#alert+category'
 
 function csvEscape(val: unknown): string {
@@ -51,7 +51,7 @@ export async function publicRoutes(fastify: FastifyInstance) {
     const rows = await sql`
       SELECT
         identifier,
-        sent_at,
+        sent,
         status,
         msg_type,
         scope,
@@ -66,7 +66,7 @@ export async function publicRoutes(fastify: FastifyInstance) {
       FROM cap_alerts
       WHERE status = 'Actual'
         AND scope  = 'Public'
-      ORDER BY sent_at DESC
+      ORDER BY sent DESC
       LIMIT 50
     `
 
@@ -194,7 +194,7 @@ export async function publicRoutes(fastify: FastifyInstance) {
     const rows = await sql`
       SELECT
         identifier,
-        sent_at,
+        sent,
         status,
         info->>'urgency'   AS urgency,
         info->>'severity'  AS severity,
@@ -205,12 +205,12 @@ export async function publicRoutes(fastify: FastifyInstance) {
         info->>'category'  AS category
       FROM cap_alerts
       WHERE scope = 'Public'
-      ORDER BY sent_at DESC
+      ORDER BY sent DESC
       LIMIT 1000
     `
 
     const csv = toCSV(HXL_ALERTS_HEADER, HXL_ALERTS_TAGS, rows as any, [
-      'identifier', 'sentAt', 'status', 'urgency', 'severity', 'certainty',
+      'identifier', 'sent', 'status', 'urgency', 'severity', 'certainty',
       'headline', 'areaName', 'areaPcode', 'category',
     ])
 
@@ -229,7 +229,7 @@ export async function publicRoutes(fastify: FastifyInstance) {
     const rows = await sql`
       SELECT
         identifier,
-        sent_at,
+        sent,
         info->>'headline'  AS headline,
         info->>'description' AS description,
         info->>'urgency'   AS urgency,
@@ -239,7 +239,7 @@ export async function publicRoutes(fastify: FastifyInstance) {
         info->>'event'     AS event_name
       FROM cap_alerts
       WHERE status = 'Actual' AND scope = 'Public'
-      ORDER BY sent_at DESC
+      ORDER BY sent DESC
       LIMIT 20
     `
 
@@ -249,7 +249,7 @@ export async function publicRoutes(fastify: FastifyInstance) {
   <entry>
     <title><![CDATA[${r.headline ?? r.eventName ?? 'Alerte SINAUR-RDC'}]]></title>
     <id>urn:sinaur-rdc:alert:${r.identifier}</id>
-    <updated>${r.sentAt instanceof Date ? r.sentAt.toISOString() : r.sentAt}</updated>
+    <updated>${r.sent instanceof Date ? r.sent.toISOString() : r.sent}</updated>
     <summary type="text"><![CDATA[${r.urgency ?? ''} — ${r.severity ?? ''} — ${r.areaDesc ?? r.areaPcode ?? ''}]]></summary>
     <content type="html"><![CDATA[
       <p><strong>${r.headline ?? ''}</strong></p>
