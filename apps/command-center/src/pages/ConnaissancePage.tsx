@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { apiClient } from '../lib/api.js';
+import { FraicheurBadge } from '../components/FraicheurBadge.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -371,11 +372,11 @@ export function ConnaissancePage() {
   const { data: status } = useQuery({
     queryKey: ['kb-status'],
     queryFn: () => apiClient.get<Record<string, unknown>>('/connaissance/status').then(r => r.data),
-    refetchInterval: 120_000,
-    staleTime: 60_000,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 
-  const { data: entitesData, isLoading: loadingEntites } = useQuery({
+  const { data: entitesData, isLoading: loadingEntites, isFetching: fetchingEntites, dataUpdatedAt: entitesUpdatedAt, refetch: refetchEntites } = useQuery({
     queryKey: ['kb-entites', typeFilter, statutFilter, search],
     queryFn: () => {
       const params: Record<string, string> = { limit: '100' };
@@ -384,21 +385,24 @@ export function ConnaissancePage() {
       if (search) params.q = search;
       return apiClient.get<{ data: Entite[]; total: number }>('/connaissance/entites', { params }).then(r => r.data);
     },
-    staleTime: 60_000,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
     enabled: tab === 'entites',
   });
 
-  const { data: grapheData, isLoading: loadingGraphe } = useQuery({
+  const { data: grapheData, isLoading: loadingGraphe, isFetching: fetchingGraphe, dataUpdatedAt: grapheUpdatedAt, refetch: refetchGraphe } = useQuery({
     queryKey: ['kb-graphe'],
     queryFn: () => apiClient.get<{ nodes: GrapheNode[]; links: GrapheLink[] }>('/connaissance/graphe').then(r => r.data),
-    staleTime: 120_000,
+    refetchInterval: 120_000,
+    staleTime: 60_000,
     enabled: tab === 'graphe',
   });
 
-  const { data: apprentissageData, isLoading: loadingApprentissage } = useQuery({
+  const { data: apprentissageData, isLoading: loadingApprentissage, isFetching: fetchingJournal, dataUpdatedAt: journalUpdatedAt, refetch: refetchJournal } = useQuery({
     queryKey: ['kb-apprentissage'],
     queryFn: () => apiClient.get<{ data: Journal[] }>('/connaissance/apprentissage', { params: { limit: '100' } }).then(r => r.data),
-    staleTime: 60_000,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
     enabled: tab === 'apprentissage',
   });
 
@@ -440,7 +444,7 @@ export function ConnaissancePage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-slate-700 pb-0">
+      <div className="flex items-center gap-1 border-b border-slate-700 pb-0">
         {TABS.map(t => (
           <button
             key={t.id}
@@ -454,6 +458,32 @@ export function ConnaissancePage() {
             {t.label}
           </button>
         ))}
+        <div className="ml-auto pb-1">
+          {tab === 'entites' && (
+            <FraicheurBadge
+              dataUpdatedAt={entitesUpdatedAt}
+              isFetching={fetchingEntites}
+              isError={false}
+              onRefresh={() => refetchEntites()}
+            />
+          )}
+          {tab === 'graphe' && (
+            <FraicheurBadge
+              dataUpdatedAt={grapheUpdatedAt}
+              isFetching={fetchingGraphe}
+              isError={false}
+              onRefresh={() => refetchGraphe()}
+            />
+          )}
+          {tab === 'apprentissage' && (
+            <FraicheurBadge
+              dataUpdatedAt={journalUpdatedAt}
+              isFetching={fetchingJournal}
+              isError={false}
+              onRefresh={() => refetchJournal()}
+            />
+          )}
+        </div>
       </div>
 
       {/* Onglet Entités */}

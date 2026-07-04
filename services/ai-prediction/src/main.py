@@ -3,6 +3,7 @@ Service de prédiction IA SINAUR-RDC — FastAPI application.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -36,7 +37,18 @@ async def lifespan(app: FastAPI):
         logger.info(f"Loaded {len(HAZARD_TYPES)} models")
     except Exception as e:
         logger.warning(f"Model pre-load partial failure: {e}")
+
+    # Démarrer l'agent d'ingestion en arrière-plan
+    from .agents.ingestion import run_ingestion_loop
+    ingestion_task = asyncio.create_task(run_ingestion_loop())
+
     yield
+
+    ingestion_task.cancel()
+    try:
+        await ingestion_task
+    except asyncio.CancelledError:
+        pass
     logger.info("AI prediction service shutting down")
 
 
