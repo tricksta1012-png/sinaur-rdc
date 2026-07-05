@@ -983,8 +983,8 @@ export function CartographiePage() {
               ]}
               style={{ width: '100%', height: '100%' }}
             >
-              {polygonGeojson.features.length > 0 && (
-                <Source id="carto" type="geojson" data={polygonGeojson}>
+              {/* Source toujours monté pour éviter unmount/remount lors de la navigation entre niveaux */}
+              <Source id="carto" type="geojson" data={polygonGeojson}>
                   {/* Fill */}
                   <Layer
                     id="carto-fill"
@@ -1034,7 +1034,6 @@ export function CartographiePage() {
                     }}
                   />
                 </Source>
-              )}
 
               {/* Crisis pulse overlay */}
               {crisisGeoJson.features.length > 0 && (

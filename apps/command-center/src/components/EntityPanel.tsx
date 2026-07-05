@@ -78,13 +78,13 @@ interface Mandat {
 interface IncidentItem {
   id: string;
   title: string;
-  hazard_type: string;
+  hazardType: string;
   severity: string;
   status: string;
-  location_pcode: string;
-  location_name: string;
-  estimated_affected: number | null;
-  start_date: string;
+  locationPcode: string;
+  locationName: string;
+  estimatedAffected: number | null;
+  startDate: string;
   source: string;
 }
 
@@ -620,7 +620,7 @@ function TabIncidents({
   return (
     <div className="divide-y divide-cc-700/60">
       {incidents.map(inc => {
-        const icon   = HAZARD_ICONS[inc.hazard_type] ?? '⚠️';
+        const icon   = HAZARD_ICONS[inc.hazardType] ?? '⚠️';
         const sevCls = SEVERITY_CLS[inc.severity] ?? SEVERITY_CLS['Unknown']!;
         return (
           <div key={inc.id} className="px-4 py-2.5 space-y-1">
@@ -634,20 +634,27 @@ function TabIncidents({
                   <span className={`text-[8px] font-mono border rounded px-1 ${sevCls}`}>
                     {inc.severity}
                   </span>
-                  <span className="text-[8px] text-cc-600 font-mono truncate max-w-[120px]">
-                    {inc.location_name}
+                  <span className="text-[8px] text-cc-600 font-mono truncate max-w-[100px]">
+                    {inc.locationName}
                   </span>
                 </div>
               </div>
               <span className="text-[8px] text-cc-600 font-mono shrink-0 mt-0.5">
-                {fmtDate(inc.start_date)}
+                {fmtDate(inc.startDate)}
               </span>
             </div>
-            {inc.estimated_affected != null && inc.estimated_affected > 0 && (
-              <div className="text-[9px] text-orange-400 font-mono pl-6">
-                ~{inc.estimated_affected.toLocaleString('fr-FR')} pers. affectées
-              </div>
-            )}
+            <div className="flex items-center gap-3 pl-6">
+              {inc.estimatedAffected != null && inc.estimatedAffected > 0 && (
+                <span className="text-[9px] text-orange-400 font-mono">
+                  ~{inc.estimatedAffected.toLocaleString('fr-FR')} pers.
+                </span>
+              )}
+              {inc.source && (
+                <span className="text-[8px] text-cc-500 font-mono italic">
+                  src: {inc.source}
+                </span>
+              )}
+            </div>
           </div>
         );
       })}
