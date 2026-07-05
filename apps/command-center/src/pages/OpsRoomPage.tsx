@@ -736,25 +736,24 @@ export function OpsRoomPage() {
           onMouseMove={onMouseMove}
           onMouseLeave={() => { setClusterHover(null); setRiskHover(null); }}
         >
-          {provinceGeoJSON.features.length > 0 && (
-            <Source id="provinces" type="geojson" data={provinceGeoJSON}>
-              <Layer
-                id="province-fill"
-                type="fill"
-                paint={{
-                  'fill-color': [
-                    'interpolate', ['linear'], ['get', 'alertCount'],
-                    0, 'rgba(30,58,95,0.20)',
-                    1, 'rgba(202,138,4,0.28)',
-                    3, 'rgba(234,88,12,0.38)',
-                    6, 'rgba(220,38,38,0.48)',
-                  ],
-                  'fill-opacity': 1,
-                }}
-              />
-              <Layer id="province-border" type="line" paint={{ 'line-color': '#2d4a6e', 'line-width': 1 }} />
-            </Source>
-          )}
+          {/* Province source toujours monté en premier pour que les events soient au-dessus */}
+          <Source id="provinces" type="geojson" data={provinceGeoJSON}>
+            <Layer
+              id="province-fill"
+              type="fill"
+              paint={{
+                'fill-color': [
+                  'interpolate', ['linear'], ['get', 'alertCount'],
+                  0, 'rgba(30,58,95,0.20)',
+                  1, 'rgba(202,138,4,0.28)',
+                  3, 'rgba(234,88,12,0.38)',
+                  6, 'rgba(220,38,38,0.48)',
+                ],
+                'fill-opacity': 1,
+              }}
+            />
+            <Layer id="province-border" type="line" paint={{ 'line-color': '#2d4a6e', 'line-width': 1 }} />
+          </Source>
 
           {annotatedGeoJSON && (
             <Source id="events" type="geojson" data={annotatedGeoJSON}
