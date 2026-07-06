@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import Map, { Source, Layer, Popup, type MapLayerMouseEvent, type MapRef } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { publicApi } from '../api.js';
@@ -81,6 +81,15 @@ const EMPTY_GEOJSON = { type: 'FeatureCollection' as const, features: [] };
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+interface ProvinceEvent {
+  id: string;
+  hazardType: string;
+  severity: string;
+  locationName: string;
+  description: string;
+  createdAt: string;
+}
+
 interface SelectedProvince {
   pcode: string;
   nameFr: string;
@@ -88,6 +97,15 @@ interface SelectedProvince {
   events7d: number;
   activeAlerts: number;
   lastEventAt: string | null;
+  lng: number;
+  lat: number;
+}
+
+interface HoverProvince {
+  nameFr: string;
+  events30d: number;
+  lng: number;
+  lat: number;
 }
 
 interface SelectedEvent {
@@ -123,7 +141,11 @@ function intensityStep(n: number): string {
 
 // ── Panneau Province ─────────────────────────────────────────────────────────
 
-function ProvincePanel({ province, onClose }: { province: SelectedProvince; onClose: () => void }) {
+function ProvincePanel({ province, events, onClose }: {
+  province: SelectedProvince;
+  events: ProvinceEvent[];
+  onClose: () => void;
+}) {
   const risk = province.events30d === 0 ? 'calme'
     : province.events30d <= 3  ? 'faible'
     : province.events30d <= 8  ? 'modéré'
@@ -180,24 +202,46 @@ function ProvincePanel({ province, onClose }: { province: SelectedProvince; onCl
           </div>
         )}
 
-        {/* Explication contextuelle */}
-        {province.events30d > 0 ? (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
-            <div className="font-semibold mb-1">Situation</div>
-            <p>
-              {province.events30d} événements recensés sur 30 jours
-              {province.events7d > 0 ? `, dont ${province.events7d} sur la dernière semaine` : ''}.
-              {province.activeAlerts > 0
-                ? ` ${province.activeAlerts} alerte${province.activeAlerts > 1 ? 's' : ''} officielle${province.activeAlerts > 1 ? 's' : ''} en cours.`
-                : ''}
-            </p>
-            <p className="mt-1 text-amber-700">
-              Cliquez sur les marqueurs de la carte pour plus de détails sur chaque événement.
-            </p>
+        {/* Événements de la province */}
+        {events.length > 0 ? (
+          <div>
+            <div className="text-xs font-semibold text-gray-600 mb-2">
+              Événements récents ({events.length})
+            </div>
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+              {events.map(evt => {
+                const color = HAZARD_COLOR[evt.hazardType] ?? '#6b7280';
+                const icon  = HAZARD_ICON[evt.hazardType]  ?? '⚠️';
+                return (
+                  <div key={evt.id} className="flex gap-2 p-2 rounded-lg bg-gray-50 border border-gray-100">
+                    <span className="text-base leading-none mt-0.5">{icon}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1 mb-0.5">
+                        <span className="text-[10px] font-semibold" style={{ color }}>
+                          {HAZARD_LABEL[evt.hazardType] ?? evt.hazardType}
+                        </span>
+                        {evt.locationName && (
+                          <span className="text-[10px] text-gray-400 truncate">· {evt.locationName}</span>
+                        )}
+                      </div>
+                      {evt.description && (
+                        <p className="text-[10px] text-gray-600 leading-tight line-clamp-2">{evt.description}</p>
+                      )}
+                      <div className="text-[9px] text-gray-400 mt-0.5">{timeAgo(evt.createdAt)}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {province.activeAlerts > 0 && (
+              <p className="text-[10px] text-red-600 font-medium mt-2">
+                {province.activeAlerts} alerte{province.activeAlerts > 1 ? 's' : ''} CAP officielle{province.activeAlerts > 1 ? 's' : ''} en cours
+              </p>
+            )}
           </div>
         ) : (
           <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-800">
-            Aucun événement enregistré dans cette province sur les 30 derniers jours.
+            Aucun événement avec coordonnées dans cette province sur les 30 derniers jours.
           </div>
         )}
       </div>
@@ -294,8 +338,29 @@ export function CartePage() {
 
   const [selectedProvince, setSelectedProvince] = useState<SelectedProvince | null>(null);
   const [selectedEvent, setSelectedEvent]       = useState<SelectedEvent | null>(null);
+  const [hoverProvince, setHoverProvince]       = useState<HoverProvince | null>(null);
 
   const closeAll = () => { setSelectedProvince(null); setSelectedEvent(null); };
+
+  const provinceEvents = useMemo<ProvinceEvent[]>(() => {
+    if (!selectedProvince || !eventsGeo) return [];
+    return eventsGeo.features
+      .filter(f => {
+        const p = f.properties as Record<string, unknown>;
+        return String(p.provinceName ?? p.province_name ?? '') === selectedProvince.nameFr;
+      })
+      .map(f => {
+        const p = f.properties as Record<string, unknown>;
+        return {
+          id:           String(p.id ?? ''),
+          hazardType:   String(p.hazardType ?? p.hazard_type ?? 'other'),
+          severity:     String(p.severity ?? 'Unknown'),
+          locationName: String(p.locationName ?? p.location_name ?? ''),
+          description:  String(p.description ?? ''),
+          createdAt:    String(p.createdAt ?? p.created_at ?? ''),
+        };
+      });
+  }, [selectedProvince, eventsGeo]);
 
   const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     const feature = e.features?.[0];
@@ -328,10 +393,30 @@ export function CartePage() {
         events7d:     Number(p.events7d  ?? p.events_7d  ?? 0),
         activeAlerts: Number(p.activeAlerts ?? p.active_alerts ?? 0),
         lastEventAt:  (p.lastEventAt ?? p.last_event_at ?? null) as string | null,
+        lng: e.lngLat.lng,
+        lat: e.lngLat.lat,
       });
       setSelectedEvent(null);
+      setHoverProvince(null);
     }
   }, []);
+
+  const onMouseMove = useCallback((e: MapLayerMouseEvent) => {
+    const feature = e.features?.[0];
+    if (feature?.layer.id === 'province-fill') {
+      const p = feature.properties as Record<string, unknown>;
+      setHoverProvince({
+        nameFr:    String(p.nameFr ?? p.name_fr ?? ''),
+        events30d: Number(p.events30d ?? p.events_30d ?? 0),
+        lng: e.lngLat.lng,
+        lat: e.lngLat.lat,
+      });
+    } else {
+      setHoverProvince(null);
+    }
+  }, []);
+
+  const onMouseLeave = useCallback(() => setHoverProvince(null), []);
 
   const eventCount = eventsGeo?.features.length ?? 0;
   const alertCount = alerts?.length ?? 0;
@@ -381,6 +466,8 @@ export function CartePage() {
           mapStyle={MAP_STYLE}
           interactiveLayerIds={['province-fill', 'event-circles']}
           onClick={onMapClick}
+          onMouseMove={onMouseMove}
+          onMouseLeave={onMouseLeave}
           cursor="pointer"
         >
           {/* Provinces — toujours monté en premier */}
@@ -497,6 +584,27 @@ export function CartePage() {
             />
           </Source>
 
+          {/* Tooltip survol province */}
+          {hoverProvince && !selectedProvince && !selectedEvent && (
+            <Popup
+              longitude={hoverProvince.lng}
+              latitude={hoverProvince.lat}
+              closeButton={false}
+              anchor="bottom"
+              offset={8}
+              style={{ pointerEvents: 'none' }}
+            >
+              <div className="text-xs">
+                <div className="font-semibold text-gray-900">{hoverProvince.nameFr}</div>
+                <div className="text-gray-500">
+                  {hoverProvince.events30d > 0
+                    ? `${hoverProvince.events30d} événement${hoverProvince.events30d > 1 ? 's' : ''} (30j)`
+                    : 'Aucun événement récent'}
+                </div>
+              </div>
+            </Popup>
+          )}
+
           {/* Popup rapide sur l'événement sélectionné */}
           {selectedEvent && (
             <Popup
@@ -516,7 +624,7 @@ export function CartePage() {
 
         {/* Panneau détail Province */}
         {selectedProvince && (
-          <ProvincePanel province={selectedProvince} onClose={closeAll} />
+          <ProvincePanel province={selectedProvince} events={provinceEvents} onClose={closeAll} />
         )}
 
         {/* Panneau détail Événement */}
