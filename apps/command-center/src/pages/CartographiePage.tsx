@@ -520,14 +520,29 @@ export function CartographiePage() {
   }), [crisisFeatures]);
   const hasCrises = crisisFeatures.length > 0;
 
-  // Points quartiers globaux (niveau 4 sans drill-down) — visible zoom ≥ 12
-  const quartiersGlobalGeoJson = useMemo(() => ({
+  // true quand la vue courante contient des zones Voronoï approximatives
+  const hasVoronoi = useMemo(() =>
+    geojson?.features?.some(f => f.properties?.geometry_type === 'VORONOI_APPROX') ?? false,
+    [geojson]
+  );
+
+  // Quartiers globaux (niveau 4) — polygones Voronoï + points restants séparés
+  const quartiersGlobalPolygons = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: quartiersGlobalRaw?.features?.filter(f => !f.properties?._is_point) ?? [],
+  }), [quartiersGlobalRaw]);
+  const quartiersGlobalPoints = useMemo(() => ({
     type: 'FeatureCollection' as const,
     features: quartiersGlobalRaw?.features?.filter(f => f.properties?._is_point) ?? [],
   }), [quartiersGlobalRaw]);
+  const quartiersGlobalAll = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: quartiersGlobalRaw?.features ?? [],
+  }), [quartiersGlobalRaw]);
 
   // Afficher l'overlay global seulement quand pas déjà en drill-down niveau 4
-  const showGlobalQuartiers = mapZoom >= 12 && level < 4 && quartiersGlobalGeoJson.features.length > 0;
+  const showGlobalQuartiers = mapZoom >= 12 && level < 4 &&
+    (quartiersGlobalPolygons.features.length > 0 || quartiersGlobalPoints.features.length > 0);
 
   // ── Fill color expression ──────────────────────────────────────────────────
 
@@ -733,6 +748,7 @@ export function CartographiePage() {
     if (
       f.layer?.id === 'carto-fill' || f.layer?.id === 'carto-outline' ||
       f.layer?.id === 'carto-points' || f.layer?.id === 'quartiers-globe-points' ||
+      f.layer?.id === 'quartiers-globe-fill' ||
       f.layer?.id === 'crisis-pulse-layer'
     ) {
       const props = f.properties as EntityProps;
@@ -969,6 +985,13 @@ export function CartographiePage() {
 
           {/* Map */}
           <div className="flex-1 relative">
+            {/* Avertissement zones indicatives — visible uniquement au niveau quartier */}
+            {level === 4 && hasVoronoi && (
+              <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-amber-950/90 border border-amber-700/60 text-amber-300 text-[10px] font-mono px-3 py-1.5 rounded-full shadow backdrop-blur-sm pointer-events-none">
+                <span className="inline-block w-3 h-px border-t border-dashed border-amber-400 mr-0.5" />
+                Limites de quartiers indicatives (approximation Voronoï) — les communes sont officielles
+              </div>
+            )}
             <MapGL
               ref={mapRef}
               mapStyle={FONDS_CARTE[fondActuel].style as any}
@@ -979,7 +1002,7 @@ export function CartographiePage() {
               interactiveLayerIds={[
                 'carto-fill', 'carto-points',
                 ...(hasCrises ? ['crisis-pulse-layer'] : []),
-                ...(showGlobalQuartiers ? ['quartiers-globe-points'] : []),
+                ...(showGlobalQuartiers ? ['quartiers-globe-fill', 'quartiers-globe-points'] : []),
               ]}
               style={{ width: '100%', height: '100%' }}
             >
@@ -1041,6 +1064,18 @@ export function CartographiePage() {
                         isSatellite ? 1.5 : 0.8,
                       ] as any,
                       'line-opacity': isSatellite ? 0.7 : 0.9,
+                    }}
+                  />
+                  {/* Surimpression pointillée — zones Voronoï indicatives */}
+                  <Layer
+                    id="carto-approx-dash"
+                    type="line"
+                    filter={['==', ['get', 'geometry_type'], 'VORONOI_APPROX']}
+                    paint={{
+                      'line-color': isSatellite ? '#e2e8f0' : '#94a3b8',
+                      'line-width': 1,
+                      'line-dasharray': [4, 3],
+                      'line-opacity': 0.75,
                     }}
                   />
                   {/* Labels */}
@@ -1125,10 +1160,39 @@ export function CartographiePage() {
 
               {/* Overlay quartiers globaux — visible à zoom ≥ 12, indépendant du drill-down */}
               {showGlobalQuartiers && (
-                <Source id="quartiers-globe" type="geojson" data={quartiersGlobalGeoJson}>
+                <Source id="quartiers-globe" type="geojson" data={quartiersGlobalAll}>
+                  {/* Zones Voronoï — polygones colorés par statut */}
+                  <Layer
+                    id="quartiers-globe-fill"
+                    type="fill"
+                    filter={['!=', '$type', 'Point']}
+                    paint={{
+                      'fill-color': ['match', ['get', 'statut'],
+                        'CRISE',     '#dc2626',
+                        'ALERTE',    '#ea580c',
+                        'VIGILANCE', '#eab308',
+                        'NORMAL',    '#16a34a',
+                        '#64748b',
+                      ],
+                      'fill-opacity': isSatellite ? 0.25 : 0.40,
+                    }}
+                  />
+                  <Layer
+                    id="quartiers-globe-dashes"
+                    type="line"
+                    filter={['!=', '$type', 'Point']}
+                    paint={{
+                      'line-color': isSatellite ? '#e2e8f0' : '#94a3b8',
+                      'line-width': 0.8,
+                      'line-dasharray': [4, 3],
+                      'line-opacity': 0.6,
+                    }}
+                  />
+                  {/* Points — quartiers sans commune (pas de Voronoï possible) */}
                   <Layer
                     id="quartiers-globe-points"
                     type="circle"
+                    filter={['==', '$type', 'Point']}
                     paint={{
                       'circle-radius': 5,
                       'circle-color': '#2d7dd2',

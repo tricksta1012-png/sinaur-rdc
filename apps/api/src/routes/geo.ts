@@ -129,6 +129,7 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
         ad.responsable_titre,
         ad.responsable_contact,
         ad.statut_situation,
+        ad.geometry_type,
         ${postgis ? sql`ST_AsGeoJSON(ad.geometry)::json AS geometry,` : sql`ad.geometry,`}
         ${postgis ? sql`ST_AsGeoJSON(ad.centroid)::json AS centroid,` : sql`ad.centroid,`}
         COALESCE((
@@ -172,6 +173,7 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
           responsable_titre:   r.responsableTitre ?? r.responsable_titre ?? null,
           responsable_contact: r.responsableContact ?? r.responsable_contact ?? null,
           statut:              r.statutSituation ?? r.statut_situation ?? 'NORMAL',
+          geometry_type:       r.geometryType ?? r.geometry_type ?? null,
           nb_incidents:        Number(r.nbIncidents ?? r.nb_incidents ?? 0),
           _is_point:           !geom && !!centroid,
         },
