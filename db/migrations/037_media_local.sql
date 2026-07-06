@@ -36,9 +36,17 @@ CREATE INDEX IF NOT EXISTS media_local_statut_idx     ON media_local (statut);
 CREATE INDEX IF NOT EXISTS media_local_collectif_idx  ON media_local (collectif);
 CREATE INDEX IF NOT EXISTS media_local_type_idx       ON media_local (type_media);
 
+CREATE OR REPLACE FUNCTION update_mis_a_jour_le()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.mis_a_jour_le = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TRIGGER media_local_updated_at
   BEFORE UPDATE ON media_local
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION update_mis_a_jour_le();
 
 -- ── Pré-remplissage — médias identifiés dans le document stratégique ──────────
 
