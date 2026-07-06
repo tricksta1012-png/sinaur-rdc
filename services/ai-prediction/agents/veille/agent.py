@@ -151,6 +151,18 @@ class VeilleAgent:
                 fp = compute_fingerprint(event)
                 _EVENT_STORE[fp] = event
 
+            # Persister en base via evenement_flux
+            if new_events:
+                try:
+                    flux_n = await self._propagate_to_flux(new_events)
+                    result["flux_count"] = flux_n
+                except Exception as flux_exc:
+                    logger.warning(
+                        "veille_agent.flux_propagation_failed",
+                        source=source_id,
+                        error=str(flux_exc),
+                    )
+
             self._feed_feature_cache(connector, canonical)
 
             _CONNECTOR_HEALTH[source_id] = {
@@ -186,6 +198,83 @@ class VeilleAgent:
             )
 
         return result
+
+    async def _propagate_to_flux(self, events: list[CanonicalEvent]) -> int:
+        """Persiste les nouveaux événements dans evenement_flux (table pivot commune)."""
+        from db import engine
+        from sqlalchemy import text
+
+        _TYPE_MAP = {
+            "CONFLIT":     "CONFLIT",
+            "EPIDEMIE":    "EPIDEMIE",
+            "INONDATION":  "CATASTROPHE",
+            "GLISSEMENT":  "CATASTROPHE",
+            "VOLCAN":      "CATASTROPHE",
+            "SECHERESSE":  "CATASTROPHE",
+            "DEPLACEMENT": "HUMANITAIRE",
+            "AUTRE":       "AUTRE",
+        }
+
+        def _gravite(severity: int) -> str:
+            if severity >= 4: return "CRITIQUE"
+            if severity >= 3: return "ELEVEE"
+            return "NORMALE"
+
+        def _statut(e: CanonicalEvent) -> str:
+            if e.sources_count >= 3 or e.corroboration_score >= 0.6:
+                return "CORROBORE"
+            if e.sources_count >= 2 or e.corroboration_score >= 0.3:
+                return "PROBABLE"
+            return "A_CORROBORER"
+
+        inserted = 0
+        async with engine.begin() as conn:
+            for e in events:
+                grav = _gravite(e.severity)
+                stat = _statut(e)
+                impacte = stat in ("CORROBORE", "PROBABLE") and grav in ("ELEVEE", "CRITIQUE")
+                lat = e.coordinates[1] if e.coordinates else None
+                lon = e.coordinates[0] if e.coordinates else None
+                fiabilite = min(1.0, e.reliability_score + 0.1 * e.corroboration_score)
+                type_ev = _TYPE_MAP.get(e.event_type.value, "AUTRE")
+
+                result = await conn.execute(text("""
+                    INSERT INTO evenement_flux (
+                        source_agent, type_evenement, titre, description,
+                        province_pcode, lat, lon,
+                        fiabilite, statut_verification, nb_sources,
+                        gravite, impacte_statut,
+                        source_url, source_externe_id, date_evenement
+                    ) VALUES (
+                        'VEILLE', :type_ev, :titre, :desc,
+                        :pcode, :lat, :lon,
+                        :fiabilite, :statut, :nb_sources,
+                        :gravite, :impacte,
+                        :url, :ext_id, :date_ev
+                    )
+                    ON CONFLICT (source_agent, source_externe_id)
+                    WHERE source_externe_id IS NOT NULL
+                    DO NOTHING
+                """), {
+                    "type_ev":   type_ev,
+                    "titre":     e.title[:500],
+                    "desc":      e.description,
+                    "pcode":     e.p_code,
+                    "lat":       lat,
+                    "lon":       lon,
+                    "fiabilite": round(fiabilite, 2),
+                    "statut":    stat,
+                    "nb_sources": e.sources_count,
+                    "gravite":   grav,
+                    "impacte":   impacte,
+                    "url":       e.source_url,
+                    "ext_id":    f"{e.source_id}:{e.external_id}",
+                    "date_ev":   e.fetched_at,
+                })
+                inserted += result.rowcount
+
+        logger.info("veille_agent.flux_propagated", count=inserted)
+        return inserted
 
     def _feed_feature_cache(
         self, connector: AbstractConnector, canonical: list[CanonicalEvent]
