@@ -408,6 +408,19 @@ export function CartographiePage() {
     staleTime: 10 * 60 * 1000,
   });
 
+  // Flux commun — statuts provinces (signaux confirmés + non confirmés)
+  const { data: fluxStatuts } = useQuery({
+    queryKey: ['flux-statut-provinces'],
+    queryFn: () =>
+      apiClient
+        .get<{ pcode: string; statut: string; confirmes: number; aConfirmer: number; fiabiliteMax: number }[]>(
+          '/flux/statut-provinces'
+        )
+        .then(r => r.data),
+    staleTime: 2 * 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+
   // Tous les quartiers (niveau 4) — chargés une fois quand le zoom s'approche
   const { data: quartiersGlobalRaw } = useQuery({
     queryKey: ['quartiers-global'],
@@ -435,6 +448,37 @@ export function CartographiePage() {
       geojson.features.map(f => [f.properties?.pcode as string, f.properties?.name as string])
     );
   }, [geojson, level]);
+
+  // Flux signaux non confirmés — surcouche hachurée sur la carte (uniquement level=1)
+  const fluxSignauxGeoJson = useMemo<GeoJSON.FeatureCollection>(() => {
+    if (level !== 1 || !geojson?.features || !fluxStatuts?.length) {
+      return { type: 'FeatureCollection', features: [] };
+    }
+    const byPcode = new Map(fluxStatuts.map(s => [s.pcode, s]));
+    const features: GeoJSON.Feature[] = [];
+    for (const f of geojson.features) {
+      const pcode = f.properties?.pcode as string;
+      const flux = byPcode.get(pcode);
+      if (!flux || (flux.aConfirmer === 0 && flux.confirmes === 0)) continue;
+      features.push({
+        ...f,
+        properties: {
+          ...f.properties,
+          flux_a_confirmer: flux.aConfirmer,
+          flux_confirmes:   flux.confirmes,
+          flux_statut:      flux.statut,
+          flux_fiabilite:   flux.fiabiliteMax,
+        },
+      });
+    }
+    return { type: 'FeatureCollection', features };
+  }, [geojson, fluxStatuts, level]);
+
+  // Index rapide flux par pcode pour le panneau d'entité
+  const fluxByPcode = useMemo(
+    () => new Map((fluxStatuts ?? []).map(s => [s.pcode, s])),
+    [fluxStatuts],
+  );
 
   // Aggregate recent events by province (first 4 chars of location_pcode)
   const incidentsByProvince = useMemo(() => {
@@ -1032,6 +1076,38 @@ export function CartographiePage() {
                 />
               </Source>
 
+              {/* Surcouche flux — signaux non confirmés (orange translucide + tirets) */}
+              <Source id="flux-signaux" type="geojson" data={fluxSignauxGeoJson}>
+                {/* Remplissage translucide — indique un signal non vérifié */}
+                <Layer
+                  id="flux-signaux-fill"
+                  type="fill"
+                  paint={{
+                    'fill-color': [
+                      'case',
+                      ['>', ['get', 'flux_confirmes'], 0], '#ea580c',
+                      '#f97316',
+                    ] as any,
+                    'fill-opacity': 0.12,
+                  }}
+                />
+                {/* Bordure tiretée — distingue visuellement du statut officiel */}
+                <Layer
+                  id="flux-signaux-line"
+                  type="line"
+                  paint={{
+                    'line-color': [
+                      'case',
+                      ['>', ['get', 'flux_confirmes'], 0], '#ea580c',
+                      '#f97316',
+                    ] as any,
+                    'line-width': 1.5,
+                    'line-dasharray': [4, 3],
+                    'line-opacity': 0.7,
+                  }}
+                />
+              </Source>
+
               {/* Source toujours monté pour éviter unmount/remount lors de la navigation entre niveaux */}
               <Source id="carto" type="geojson" data={polygonGeojson}>
                   {/* Fill */}
@@ -1402,18 +1478,27 @@ export function CartographiePage() {
                   {colorMode === 'statut' ? 'Situation' : colorMode === 'sinistres' ? 'Incidents 30j' : 'Responsable'}
                 </div>
                 {colorMode === 'statut' ? (
-                  [
-                    { color: '#dc2626', label: 'CRISE'     },
-                    { color: '#ea580c', label: 'ALERTE'    },
-                    { color: '#eab308', label: 'VIGILANCE' },
-                    { color: '#16a34a', label: 'NORMAL'    },
-                    { color: '#64748b', label: 'Inconnu'   },
-                  ].map(l => (
-                    <div key={l.label} className="flex items-center gap-2">
-                      <div className="w-3.5 h-3.5 rounded-sm shrink-0" style={{ backgroundColor: l.color }} />
-                      <span className="text-[9px] text-gray-400">{l.label}</span>
-                    </div>
-                  ))
+                  <>
+                    {[
+                      { color: '#dc2626', label: 'CRISE'     },
+                      { color: '#ea580c', label: 'ALERTE'    },
+                      { color: '#eab308', label: 'VIGILANCE' },
+                      { color: '#16a34a', label: 'NORMAL'    },
+                      { color: '#64748b', label: 'Inconnu'   },
+                    ].map(l => (
+                      <div key={l.label} className="flex items-center gap-2">
+                        <div className="w-3.5 h-3.5 rounded-sm shrink-0" style={{ backgroundColor: l.color }} />
+                        <span className="text-[9px] text-gray-400">{l.label}</span>
+                      </div>
+                    ))}
+                    {/* Légende flux signaux non confirmés */}
+                    {fluxSignauxGeoJson.features.length > 0 && (
+                      <div className="flex items-center gap-2 mt-1 pt-1 border-t border-cc-700">
+                        <div className="w-3.5 h-3.5 rounded-sm shrink-0 border-2 border-dashed border-orange-500 opacity-70" />
+                        <span className="text-[9px] text-orange-400">Signaux non confirmés</span>
+                      </div>
+                    )}
+                  </>
                 ) : colorMode === 'responsable' ? (
                   [
                     { color: '#16a34a', label: 'Responsable nommé' },
@@ -1492,6 +1577,7 @@ export function CartographiePage() {
               {entities.map(entity => {
                 const statut = STATUT_STYLE[entity.statut] ?? STATUT_STYLE['NORMAL']!;
                 const isSelected = selected?.pcode === entity.pcode;
+                const fluxSig = level === 1 ? fluxByPcode.get(entity.pcode as string) : undefined;
                 return (
                   <tr
                     key={entity.pcode}
@@ -1513,6 +1599,14 @@ export function CartographiePage() {
                       <span className={`text-[8px] px-1.5 py-px rounded border font-bold ${statut.cls}`}>
                         {entity.statut}
                       </span>
+                      {fluxSig && fluxSig.aConfirmer > 0 && (
+                        <span
+                          className="ml-1 text-[8px] px-1 py-px rounded border border-orange-600 text-orange-400 font-mono"
+                          title={`${fluxSig.aConfirmer} signal(s) non confirmé(s) · ${fluxSig.confirmes} confirmé(s)`}
+                        >
+                          ~{fluxSig.aConfirmer}
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-1.5 text-right font-mono text-cc-500">
                       {entity.population != null ? entity.population.toLocaleString('fr-FR') : '—'}

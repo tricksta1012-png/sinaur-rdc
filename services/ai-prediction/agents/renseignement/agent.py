@@ -49,11 +49,19 @@ class RenseignementAgent:
         self._scheduler = AsyncIOScheduler(timezone="UTC")
 
     async def start(self) -> None:
+        # Cycle complet toutes les 2h (analyse IA, bulletins, assessments)
         self._scheduler.add_job(
             self.run_analysis, "interval", hours=2,
             id="renseignement_analysis", name="Renseignement:analyse",
             next_run_time=datetime.now(timezone.utc),
             misfire_grace_time=600, coalesce=True,
+        )
+        # Collecte rapide toutes les 5 min — sources PRIORITAIRES uniquement
+        self._scheduler.add_job(
+            self.run_collecte_rapide, "interval", minutes=5,
+            id="renseignement_collecte_rapide", name="Renseignement:collecte-5min",
+            next_run_time=datetime.now(timezone.utc) + __import__('datetime').timedelta(seconds=30),
+            misfire_grace_time=120, coalesce=True,
         )
         self._scheduler.start()
         logger.info("renseignement_agent.started")
@@ -308,10 +316,154 @@ class RenseignementAgent:
                     },
                 )
 
-            logger.info("renseignement_agent.db_saved",
-                        events=len(events), assessments=len(assessments))
+                # Propager vers evenement_flux (flux commun)
+                flux_count = await self._propagate_to_flux(events, conn)
+                logger.info("renseignement_agent.db_saved",
+                            events=len(events), assessments=len(assessments),
+                            flux_inserted=flux_count)
         except Exception as exc:
             logger.error("renseignement_agent.db_save_failed", error=str(exc))
+
+    # ── Mots-clés graves → alerte précoce ────────────────────────────────────
+
+    _MOTS_CLES_GRAVES = [
+        'ville tombée', 'ville tombe', 'prise de', "s'empare", 'contrôle la ville',
+        'chute de', 'massacre', 'tuerie', 'attaque massive', 'offensive majeure',
+        'déplacement massif', 'fuite de la population', 'siège', 'encerclement',
+        'exécutions', 'bombardement', 'frappe aérienne',
+    ]
+
+    def _detect_gravite(self, ev: "IntelEvent") -> str:
+        texte = ((ev.title or '') + ' ' + (ev.content or '')).lower()
+        if any(m in texte for m in self._MOTS_CLES_GRAVES):
+            return 'CRITIQUE'
+        cat = (ev.category.value if hasattr(ev.category, 'value') else ev.category or '').upper()
+        if cat in ('CONFLICT', 'SECURITY', 'CONFLIT', 'SECURITE'):
+            return 'ELEVEE'
+        return 'NORMALE'
+
+    def _map_type_evenement(self, category: str) -> str:
+        mapping = {
+            'CONFLICT': 'CONFLIT', 'CONFLIT': 'CONFLIT',
+            'SECURITY': 'SECURITE', 'SECURITE': 'SECURITE',
+            'CATASTROPHE': 'CATASTROPHE', 'EPIDEMIE': 'EPIDEMIE',
+            'HUMANITARIAN': 'HUMANITAIRE', 'HUMANITAIRE': 'HUMANITAIRE',
+        }
+        return mapping.get(category.upper(), 'AUTRE')
+
+    # ── Propagation vers evenement_flux ──────────────────────────────────────
+
+    async def _propagate_to_flux(
+        self, events: list["IntelEvent"], conn
+    ) -> int:
+        """Écrit les nouveaux événements dans evenement_flux.
+        Retourne le nombre d'insertions effectives."""
+        count = 0
+        for ev in events:
+            gravite = self._detect_gravite(ev)
+            type_ev = self._map_type_evenement(
+                ev.category.value if hasattr(ev.category, 'value') else ev.category or 'AUTRE'
+            )
+            fiabilite = ev.reliability or 0.5
+            # Statut de vérification selon fiabilité
+            if fiabilite >= 0.85:
+                statut = 'PROBABLE'
+            else:
+                statut = 'A_CORROBORER'
+            # Impacte le statut seulement si probable ET grave
+            impacte = statut in ('CORROBORE', 'PROBABLE') and gravite in ('ELEVEE', 'CRITIQUE')
+            source_ext_id = f"{ev.source_id}:{ev.external_id}" if ev.source_id and ev.external_id else None
+
+            result = await conn.execute(
+                text("""
+                    INSERT INTO evenement_flux (
+                        source_agent, type_evenement, titre, description,
+                        province_pcode, fiabilite, statut_verification,
+                        sources, nb_sources, gravite, impacte_statut,
+                        source_url, source_externe_id, date_evenement
+                    ) VALUES (
+                        'RENSEIGNEMENT', :type_ev, :titre, :desc,
+                        :pcode, :fiab, :statut,
+                        :sources, 1, :gravite, :impacte,
+                        :url, :ext_id, :date
+                    )
+                    ON CONFLICT (source_agent, source_externe_id)
+                    WHERE source_externe_id IS NOT NULL
+                    DO NOTHING
+                """),
+                {
+                    "type_ev":  type_ev,
+                    "titre":    ev.title,
+                    "desc":     ev.content,
+                    "pcode":    ev.p_code,
+                    "fiab":     fiabilite,
+                    "statut":   statut,
+                    "sources":  json.dumps([ev.source_id] if ev.source_id else []),
+                    "gravite":  gravite,
+                    "impacte":  impacte,
+                    "url":      ev.url,
+                    "ext_id":   source_ext_id,
+                    "date":     self._parse_date(ev.date),
+                },
+            )
+            count += result.rowcount
+        return count
+
+    # ── Collecte rapide 5 min (sources PRIORITAIRES uniquement) ──────────────
+
+    async def run_collecte_rapide(self) -> None:
+        """Collecte uniquement les sources PRIORITAIRES + alerte précoce."""
+        logger.debug("renseignement_agent.collecte_rapide.start")
+        events: list["IntelEvent"] = []
+
+        try:
+            okapi = await fetch_okapi_events()
+            # Filtre sur le cache : éviter de retraiter les items déjà vus
+            okapi = self._filter_nouveaux(okapi, 'radio_okapi')
+            events.extend(okapi)
+        except Exception as exc:
+            logger.debug("renseignement_agent.collecte_rapide.okapi_failed", error=str(exc))
+
+        try:
+            kmp = await fetch_kmp_events()
+            kmp = self._filter_nouveaux(kmp, 'kmp_rss')
+            events.extend(kmp)
+        except Exception as exc:
+            logger.debug("renseignement_agent.collecte_rapide.kmp_failed", error=str(exc))
+
+        if not events:
+            return
+
+        # Détecter alertes précoces (mots-clés graves) et les insérer tout de suite
+        graves = [e for e in events if self._detect_gravite(e) == 'CRITIQUE']
+        if graves:
+            logger.warning("renseignement_agent.alerte_precoce",
+                           count=len(graves),
+                           titres=[e.title[:80] for e in graves[:3]])
+
+        # Propager vers flux
+        try:
+            from db import engine
+            async with engine.begin() as conn:
+                n = await self._propagate_to_flux(events, conn)
+                if n > 0:
+                    logger.info("renseignement_agent.collecte_rapide.flux_updated",
+                                inserted=n, total_fetched=len(events))
+        except Exception as exc:
+            logger.warning("renseignement_agent.collecte_rapide.flux_failed", error=str(exc))
+
+    # Cache simple en mémoire (external_id déjà traités par source)
+    _seen_ids: dict[str, set[str]] = {}
+
+    def _filter_nouveaux(self, events: list["IntelEvent"], source_id: str) -> list["IntelEvent"]:
+        seen = self._seen_ids.setdefault(source_id, set())
+        nouveaux = [e for e in events if e.external_id not in seen]
+        # Met à jour le cache (garde les 1000 derniers IDs max)
+        for e in nouveaux:
+            seen.add(e.external_id)
+        if len(seen) > 1000:
+            self._seen_ids[source_id] = set(list(seen)[-500:])
+        return nouveaux
 
     def get_events(self, category: str | None = None, p_code: str | None = None) -> list[dict]:
         result = list(_EVENT_STORE)
