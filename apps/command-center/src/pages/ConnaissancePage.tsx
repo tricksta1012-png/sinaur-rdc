@@ -69,10 +69,39 @@ interface ProjectionEntite {
   activite_recente?: number;
 }
 
+interface VelocityEntite {
+  id: number;
+  nom: string;
+  type_entite: string;
+  niveau_confiance: number;
+  cnt_7d: number;
+  cnt_prev7d: number;
+  delta: number;
+}
+
+interface ZoneActive {
+  province: string;
+  pcode: string;
+  nb_entites: number;
+  entites_noms: string;
+  confiance_max: number;
+}
+
+interface HubReseau {
+  id: number;
+  nom: string;
+  type_entite: string;
+  niveau_confiance: number;
+  nb_relations: number;
+}
+
 interface Projection {
   ready: boolean;
   entites_montantes: ProjectionEntite[];
   entites_risque: ProjectionEntite[];
+  velocity: VelocityEntite[];
+  zones_actives: ZoneActive[];
+  hubs_reseau: HubReseau[];
   synthese: string;
 }
 
@@ -212,6 +241,14 @@ function groupByDay(entries: Journal[]): [string, Journal[]][] {
 function formatDayHeader(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00Z');
   return d.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function trendArrow(delta: number): { icon: string; color: string; label: string } {
+  if (delta >= 3)  return { icon: '↑↑', color: 'text-red-400',    label: 'forte hausse' };
+  if (delta > 0)   return { icon: '↑',  color: 'text-orange-400', label: 'hausse' };
+  if (delta === 0) return { icon: '→',  color: 'text-slate-400',  label: 'stable' };
+  if (delta > -3)  return { icon: '↓',  color: 'text-blue-400',   label: 'baisse' };
+  return                  { icon: '↓↓', color: 'text-slate-500',  label: 'forte baisse' };
 }
 
 function renderSynthese(text: string) {
@@ -826,6 +863,120 @@ export function ConnaissancePage() {
                         {confBar(e.niveau_confiance)}
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Vélocité — tendance 7j */}
+              {projectionData.velocity && projectionData.velocity.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    Vélocité — tendance 7 derniers jours
+                  </h3>
+                  <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-700">
+                          <th className="text-left px-3 py-2 text-slate-500 font-medium">Entité</th>
+                          <th className="text-right px-3 py-2 text-slate-500 font-medium">7j</th>
+                          <th className="text-right px-3 py-2 text-slate-500 font-medium">7j préc.</th>
+                          <th className="text-right px-3 py-2 text-slate-500 font-medium">Tendance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projectionData.velocity.map(v => {
+                          const tr = trendArrow(v.delta);
+                          return (
+                            <tr key={v.id} className="border-b border-slate-800 last:border-0 hover:bg-slate-800/40">
+                              <td className="px-3 py-2">
+                                <span className={`text-[10px] mr-1 ${TYPE_COLOR[v.type_entite] || 'text-slate-500'}`}>
+                                  {TYPE_LABEL[v.type_entite] || v.type_entite}
+                                </span>
+                                <span className="text-white font-medium">{v.nom}</span>
+                              </td>
+                              <td className="px-3 py-2 text-right text-white font-mono">{v.cnt_7d}</td>
+                              <td className="px-3 py-2 text-right text-slate-500 font-mono">{v.cnt_prev7d}</td>
+                              <td className="px-3 py-2 text-right">
+                                <span className={`font-bold text-sm ${tr.color}`} title={tr.label}>
+                                  {tr.icon}
+                                </span>
+                                {v.delta !== 0 && (
+                                  <span className={`ml-1 font-mono ${tr.color}`}>
+                                    {v.delta > 0 ? '+' : ''}{v.delta}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Zones actives */}
+              {projectionData.zones_actives && projectionData.zones_actives.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    Zones géographiques actives
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {projectionData.zones_actives.map(z => (
+                      <div key={z.pcode} className="bg-slate-800/50 border border-slate-700 rounded-lg p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-white font-semibold text-sm truncate">{z.province}</div>
+                            <div className="text-[10px] text-slate-500 mt-0.5 font-mono">{z.pcode}</div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-blue-400 font-bold text-lg leading-none">{z.nb_entites}</div>
+                            <div className="text-[10px] text-slate-500">entité{z.nb_entites > 1 ? 's' : ''}</div>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-2 line-clamp-2">{z.entites_noms}</p>
+                        <div className="mt-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="flex-1 h-1 bg-slate-700 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-blue-500/70 rounded-full"
+                                style={{ width: `${Math.round(z.confiance_max * 100)}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] text-slate-500">conf. max {Math.round(z.confiance_max * 100)}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Hubs réseau */}
+              {projectionData.hubs_reseau && projectionData.hubs_reseau.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    Hubs du réseau — centralité documentaire
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {projectionData.hubs_reseau.map((h, i) => {
+                      const maxRel = projectionData.hubs_reseau[0].nb_relations;
+                      const sizePct = 0.75 + (h.nb_relations / maxRel) * 0.5;
+                      return (
+                        <div
+                          key={h.id}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${TYPE_BG[h.type_entite] || TYPE_BG.AUTRE}`}
+                          style={{ fontSize: `${sizePct * 0.75}rem` }}
+                          title={`${h.nb_relations} relation${h.nb_relations > 1 ? 's' : ''} — conf. ${Math.round(h.niveau_confiance * 100)}%`}
+                        >
+                          <span className={`font-bold text-base leading-none ${TYPE_COLOR[h.type_entite]}`}>
+                            {i === 0 ? '◉' : '○'}
+                          </span>
+                          <span className="text-white font-medium">{h.nom}</span>
+                          <span className="text-slate-500">{h.nb_relations}×</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

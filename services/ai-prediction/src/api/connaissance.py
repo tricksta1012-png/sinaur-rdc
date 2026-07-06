@@ -299,8 +299,85 @@ def get_projection():
         for r in risques:
             r["niveau_confiance"] = float(r.get("niveau_confiance") or 0.5)
 
+        # Velocity: compare last 7d vs previous 7d
+        velocity = fetch_all("""
+            WITH last7 AS (
+                SELECT entite_id, COUNT(*) AS cnt
+                FROM kb_apprentissage
+                WHERE date_appris >= NOW() - INTERVAL '7 days'
+                GROUP BY entite_id
+            ),
+            prev7 AS (
+                SELECT entite_id, COUNT(*) AS cnt
+                FROM kb_apprentissage
+                WHERE date_appris >= NOW() - INTERVAL '14 days'
+                  AND date_appris < NOW() - INTERVAL '7 days'
+                GROUP BY entite_id
+            )
+            SELECT e.id, e.nom, e.type_entite, e.niveau_confiance,
+                   COALESCE(l.cnt, 0)::int AS cnt_7d,
+                   COALESCE(p.cnt, 0)::int AS cnt_prev7d,
+                   (COALESCE(l.cnt, 0) - COALESCE(p.cnt, 0))::int AS delta
+            FROM kb_entite e
+            JOIN last7 l ON l.entite_id = e.id
+            LEFT JOIN prev7 p ON p.entite_id = e.id
+            WHERE e.actif = TRUE
+            ORDER BY delta DESC, cnt_7d DESC
+            LIMIT 8
+        """, {})
+        for r in velocity:
+            r["niveau_confiance"] = float(r.get("niveau_confiance") or 0.5)
+            r["cnt_7d"] = int(r.get("cnt_7d") or 0)
+            r["cnt_prev7d"] = int(r.get("cnt_prev7d") or 0)
+            r["delta"] = int(r.get("delta") or 0)
+
+        # Zones actives: entities grouped by province (pcode level=1)
+        zones_actives = fetch_all("""
+            SELECT ad.name_fr AS province, ad.pcode,
+                   COUNT(e.id)::int AS nb_entites,
+                   STRING_AGG(DISTINCT e.nom, ', ' ORDER BY e.nom) AS entites_noms,
+                   MAX(e.niveau_confiance) AS confiance_max
+            FROM kb_entite e
+            JOIN admin_divisions ad ON ad.pcode = e.pcode AND ad.level = 1
+            WHERE e.actif = TRUE AND e.pcode IS NOT NULL
+            GROUP BY ad.name_fr, ad.pcode
+            ORDER BY nb_entites DESC, confiance_max DESC
+            LIMIT 6
+        """, {})
+        for r in zones_actives:
+            r["nb_entites"] = int(r.get("nb_entites") or 0)
+            r["confiance_max"] = float(r.get("confiance_max") or 0.5)
+
+        # Hubs réseau: entities with highest relation degree
+        hubs_reseau = fetch_all("""
+            SELECT e.id, e.nom, e.type_entite, e.niveau_confiance,
+                   COUNT(r.id)::int AS nb_relations
+            FROM kb_entite e
+            JOIN kb_relation r ON (r.source_id = e.id OR r.cible_id = e.id)
+              AND r.actif = TRUE
+            WHERE e.actif = TRUE
+            GROUP BY e.id, e.nom, e.type_entite, e.niveau_confiance
+            ORDER BY nb_relations DESC
+            LIMIT 6
+        """, {})
+        for r in hubs_reseau:
+            r["niveau_confiance"] = float(r.get("niveau_confiance") or 0.5)
+            r["nb_relations"] = int(r.get("nb_relations") or 0)
+
         # Synthèse
         parts = []
+
+        # Velocity signal
+        accelerating = [r for r in velocity if r["delta"] > 0]
+        if accelerating:
+            top_acc = accelerating[0]
+            label = _TYPE_LABELS.get(top_acc["type_entite"], top_acc["type_entite"])
+            parts.append(
+                f"**Signal de montée en activité** : {top_acc['nom']} ({label}) enregistre "
+                f"{top_acc['cnt_7d']} mise{'s' if top_acc['cnt_7d'] > 1 else ''} à jour ces 7 derniers jours "
+                f"(+{top_acc['delta']} vs semaine précédente). "
+                f"Cette accélération suggère une évolution de situation à surveiller."
+            )
 
         if montantes:
             top = montantes[0]
@@ -331,6 +408,26 @@ def get_projection():
                 f"Un suivi sanitaire renforcé est recommandé dans les zones d'influence documentées."
             )
 
+        # Geographic concentration signal
+        if zones_actives:
+            top_zone = zones_actives[0]
+            parts.append(
+                f"**Zone de concentration principale** : {top_zone['province']} "
+                f"({top_zone['nb_entites']} entité{'s' if top_zone['nb_entites'] > 1 else ''} actives documentées). "
+                f"Cette province concentre le plus grand nombre d'acteurs connus et représente "
+                f"un foyer de risques prioritaire."
+            )
+
+        # Network hub signal
+        if hubs_reseau:
+            top_hub = hubs_reseau[0]
+            label = _TYPE_LABELS.get(top_hub["type_entite"], top_hub["type_entite"])
+            parts.append(
+                f"**Hub du réseau** : {top_hub['nom']} ({label}) est l'entité la plus connectée "
+                f"du graphe de connaissance ({top_hub['nb_relations']} lien{'s' if top_hub['nb_relations'] > 1 else ''} documentés). "
+                f"Surveiller cet acteur permet d'observer les dynamiques relationnelles de l'ensemble du réseau."
+            )
+
         total = sum(r["activite_recente"] for r in montantes)
         if montantes or risques:
             if total > 20:
@@ -357,6 +454,9 @@ def get_projection():
             "ready": True,
             "entites_montantes": montantes,
             "entites_risque": risques,
+            "velocity": velocity,
+            "zones_actives": zones_actives,
+            "hubs_reseau": hubs_reseau,
             "synthese": "\n\n".join(parts),
         }
     except Exception as e:
@@ -365,6 +465,9 @@ def get_projection():
             "ready": False,
             "entites_montantes": [],
             "entites_risque": [],
+            "velocity": [],
+            "zones_actives": [],
+            "hubs_reseau": [],
             "synthese": "Erreur lors du calcul de la projection.",
         }
 
