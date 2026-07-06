@@ -755,6 +755,20 @@ export function OpsRoomPage() {
             <Layer id="province-border" type="line" paint={{ 'line-color': '#2d4a6e', 'line-width': 1 }} />
           </Source>
 
+          {/* Territoires (admin2) OCHA — lignes de référence entre les provinces */}
+          <Source id="admin2" type="geojson" data="/geo/admin2.geojson">
+            <Layer
+              id="territory-lines"
+              type="line"
+              paint={{
+                'line-color': '#93c5fd',
+                'line-width': 0.4,
+                'line-dasharray': [4, 3],
+                'line-opacity': 0.45,
+              }}
+            />
+          </Source>
+
           {annotatedGeoJSON && (
             <Source id="events" type="geojson" data={annotatedGeoJSON}
               cluster={true} clusterMaxZoom={8} clusterRadius={45}>

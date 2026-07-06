@@ -426,6 +426,33 @@ export function CartePage() {
             />
           </Source>
 
+          {/* Territoires (admin2) — limites officielles OCHA, référence géographique */}
+          <Source id="admin2" type="geojson" data="/geo/admin2.geojson">
+            <Layer
+              id="territory-lines"
+              type="line"
+              paint={{
+                'line-color': '#6b7280',
+                'line-width': 0.5,
+                'line-dasharray': [3, 2],
+                'line-opacity': 0.5,
+              }}
+            />
+          </Source>
+
+          {/* Frontière nationale (admin0) */}
+          <Source id="admin0" type="geojson" data="/geo/admin0.geojson">
+            <Layer
+              id="country-border"
+              type="line"
+              paint={{
+                'line-color': '#374151',
+                'line-width': 1.5,
+                'line-opacity': 0.8,
+              }}
+            />
+          </Source>
+
           {/* Événements — montés après les provinces */}
           <Source
             id="events"

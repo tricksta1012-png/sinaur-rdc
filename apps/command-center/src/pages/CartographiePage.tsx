@@ -983,6 +983,32 @@ export function CartographiePage() {
               ]}
               style={{ width: '100%', height: '100%' }}
             >
+              {/* Limites officielles OCHA — toujours montées en dessous de carto */}
+              <Source id="admin2" type="geojson" data="/geo/admin2.geojson">
+                <Layer
+                  id="territory-lines"
+                  type="line"
+                  maxzoom={8}
+                  paint={{
+                    'line-color': '#94a3b8',
+                    'line-width': 0.5,
+                    'line-dasharray': [4, 3],
+                    'line-opacity': 0.4,
+                  }}
+                />
+              </Source>
+              <Source id="admin0" type="geojson" data="/geo/admin0.geojson">
+                <Layer
+                  id="country-border"
+                  type="line"
+                  paint={{
+                    'line-color': '#475569',
+                    'line-width': 1.5,
+                    'line-opacity': 0.7,
+                  }}
+                />
+              </Source>
+
               {/* Source toujours monté pour éviter unmount/remount lors de la navigation entre niveaux */}
               <Source id="carto" type="geojson" data={polygonGeojson}>
                   {/* Fill */}
