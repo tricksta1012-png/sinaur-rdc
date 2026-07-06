@@ -76,6 +76,15 @@ export async function connaissanceRoutes(fastify: FastifyInstance): Promise<void
     },
   );
 
+  // GET /connaissance/projection
+  fastify.get('/connaissance/projection',
+    { preHandler: [requireAuth, requireRole(...RESTRICTED_ROLES)] },
+    async (_req, reply) => {
+      const { status, data } = await aiGet('/internal/connaissance/projection');
+      return reply.status(status).send(data);
+    },
+  );
+
   // POST /connaissance/analyser  (test d'extraction manuelle)
   fastify.post('/connaissance/analyser',
     { preHandler: [requireAuth, requireRole('system_admin')] },

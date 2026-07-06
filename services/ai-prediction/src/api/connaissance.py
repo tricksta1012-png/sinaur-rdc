@@ -248,6 +248,127 @@ def get_apprentissage(limit: int = 50):
         return {"data": []}
 
 
+_TYPE_LABELS = {
+    "GROUPE_ARME": "Groupe armé",
+    "PERSONNE": "Personne",
+    "LIEU": "Lieu",
+    "EVENEMENT": "Événement",
+    "EPIDEMIE": "Épidémie",
+    "AUTRE": "Autre",
+}
+
+
+# ── Projection IA ─────────────────────────────────────────────────────────────
+
+@router.get("/projection")
+def get_projection():
+    if not _tables_exist():
+        return {
+            "ready": False,
+            "entites_montantes": [],
+            "entites_risque": [],
+            "synthese": "Base de connaissance non initialisée.",
+        }
+    try:
+        montantes = fetch_all("""
+            SELECT e.id, e.nom, e.type_entite,
+                   e.niveau_confiance, e.nb_mentions, e.statut_connaissance,
+                   COUNT(a.id)::int AS activite_recente
+            FROM kb_entite e
+            JOIN kb_apprentissage a ON a.entite_id = e.id
+            WHERE e.actif = TRUE
+              AND a.date_appris >= NOW() - INTERVAL '30 days'
+            GROUP BY e.id, e.nom, e.type_entite, e.niveau_confiance,
+                     e.nb_mentions, e.statut_connaissance
+            ORDER BY activite_recente DESC, e.nb_mentions DESC
+            LIMIT 10
+        """, {})
+        for r in montantes:
+            r["niveau_confiance"] = float(r.get("niveau_confiance") or 0.5)
+            r["activite_recente"] = int(r.get("activite_recente") or 0)
+
+        risques = fetch_all("""
+            SELECT id, nom, type_entite, niveau_confiance, nb_mentions, statut_connaissance
+            FROM kb_entite
+            WHERE actif = TRUE
+              AND type_entite IN ('GROUPE_ARME', 'EPIDEMIE')
+              AND niveau_confiance >= 0.6
+            ORDER BY niveau_confiance DESC, nb_mentions DESC
+            LIMIT 8
+        """, {})
+        for r in risques:
+            r["niveau_confiance"] = float(r.get("niveau_confiance") or 0.5)
+
+        # Synthèse
+        parts = []
+
+        if montantes:
+            top = montantes[0]
+            label = _TYPE_LABELS.get(top["type_entite"], top["type_entite"])
+            conf = int(top["niveau_confiance"] * 100)
+            parts.append(
+                f"**Entité la plus active (30 derniers jours)** : {top['nom']} ({label}) — "
+                f"{top['activite_recente']} événements d'apprentissage, confiance {conf}%. "
+                f"Ce niveau d'activité indique une présence terrain récente et bien documentée."
+            )
+
+        ga = [r for r in risques if r["type_entite"] == "GROUPE_ARME"]
+        if ga:
+            noms = ", ".join(f"{r['nom']} ({int(r['niveau_confiance']*100)}%)" for r in ga[:4])
+            parts.append(
+                f"**Groupes armés prioritaires** : {noms}. "
+                f"Ces acteurs présentent des indices de confiance documentaire élevés, "
+                f"signalant une présence terrain confirmée. "
+                f"Une surveillance renforcée et une collecte de renseignements dans leurs "
+                f"zones d'opération connues sont recommandées."
+            )
+
+        epi = [r for r in risques if r["type_entite"] == "EPIDEMIE"]
+        if epi:
+            noms = ", ".join(r["nom"] for r in epi[:3])
+            parts.append(
+                f"**Risques épidémiologiques identifiés** : {noms}. "
+                f"Un suivi sanitaire renforcé est recommandé dans les zones d'influence documentées."
+            )
+
+        total = sum(r["activite_recente"] for r in montantes)
+        if montantes or risques:
+            if total > 20:
+                intensite = "élevée"
+                tendance = "La base de connaissance est en expansion rapide — de nouvelles informations sont régulièrement intégrées."
+            elif total > 5:
+                intensite = "modérée"
+                tendance = "La base de connaissance progresse régulièrement."
+            else:
+                intensite = "faible"
+                tendance = "La base de connaissance nécessite davantage de données sources pour améliorer sa précision."
+            parts.append(
+                f"**Activité globale (30j)** : {total} mises à jour enregistrées "
+                f"(intensité {intensite}). {tendance}"
+            )
+
+        if not parts:
+            parts = [
+                "Données insuffisantes pour générer une projection. "
+                "Alimentez la base de connaissance via l'analyse de rapports et de textes sources."
+            ]
+
+        return {
+            "ready": True,
+            "entites_montantes": montantes,
+            "entites_risque": risques,
+            "synthese": "\n\n".join(parts),
+        }
+    except Exception as e:
+        logger.error(f"connaissance/projection: {e}")
+        return {
+            "ready": False,
+            "entites_montantes": [],
+            "entites_risque": [],
+            "synthese": "Erreur lors du calcul de la projection.",
+        }
+
+
 # ── Analyser (extraction IA) ─────────────────────────────────────────────────
 
 @router.post("/analyser")
