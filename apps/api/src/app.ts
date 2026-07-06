@@ -48,6 +48,7 @@ import { responsablesRoutes } from './routes/responsables.js'
 import { ruesRoutes } from './routes/rues.js'
 import { catastrophesRoutes } from './routes/catastrophes.js'
 import { hubRoutes } from './routes/hub.js'
+import { mediaLocalRoutes } from './routes/media-local.js'
 import { logSecurityEvent } from './auth/security.js'
 import { aiHealthCheck } from './services/aiClient.js'
 import { registerClient } from './websocket/broadcast.js'
@@ -174,6 +175,7 @@ export async function createApp(): Promise<FastifyInstance> {
   await fastify.register(ruesRoutes)
   await fastify.register(catastrophesRoutes)
   await fastify.register(hubRoutes)
+  await fastify.register(mediaLocalRoutes)
 
   fastify.get('/ws', { websocket: true }, (socket, request) => {
     let scope: string[] = []

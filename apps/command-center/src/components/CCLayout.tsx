@@ -61,6 +61,8 @@ const NAV_ITEMS = [
     roles: ['system_admin', 'national_decision_maker', 'humanitarian_partner'] },
   { to: '/connaissance',  icon: '🧠', labelKey: 'nav_connaissance',
     roles: ['system_admin', 'national_decision_maker', 'humanitarian_partner'] },
+  { to: '/media-local',   icon: '📻', labelKey: 'nav_media_local',
+    roles: ['system_admin', 'national_decision_maker', 'humanitarian_partner', 'provincial_coordinator'] },
   { to: '/admin',         icon: '⚙️', labelKey: 'nav_admin',
     roles: ['system_admin'] },
 ] as const;
