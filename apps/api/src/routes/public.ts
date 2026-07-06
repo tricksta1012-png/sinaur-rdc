@@ -151,6 +151,101 @@ export async function publicRoutes(fastify: FastifyInstance) {
       })
   })
 
+  // ── GeoJSON provinces avec stats (choroplèthe public) ─────────────────────
+
+  fastify.get('/public/geo/provinces', async (_request, reply) => {
+    const rows = await sql`
+      SELECT
+        d.pcode,
+        d.name_fr,
+        ST_AsGeoJSON(ST_Simplify(d.geom, 0.01))::json AS geometry,
+        COALESCE(ps.events_30d, 0)::int   AS events_30d,
+        COALESCE(ps.events_7d, 0)::int    AS events_7d,
+        COALESCE(ps.active_alerts, 0)::int AS active_alerts,
+        ps.last_event_at
+      FROM admin_divisions d
+      LEFT JOIN public_stats ps ON ps.pcode = d.pcode
+      WHERE d.level = 1
+        AND d.geom IS NOT NULL
+    ` as unknown as {
+        pcode: string; nameFr: string; geometry: object | null;
+        events30d: number; events7d: number; activeAlerts: number;
+        lastEventAt: string | null;
+      }[];
+
+    const features = rows
+      .filter(r => r.geometry)
+      .map(r => ({
+        type: 'Feature' as const,
+        geometry: r.geometry,
+        properties: {
+          pcode:        r.pcode,
+          nameFr:       r.nameFr,
+          events30d:    r.events30d,
+          events7d:     r.events7d,
+          activeAlerts: r.activeAlerts,
+          lastEventAt:  r.lastEventAt ?? null,
+        },
+      }));
+
+    return reply
+      .header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
+      .send({ type: 'FeatureCollection', features });
+  });
+
+  // ── GeoJSON événements publics (points, 30 derniers jours) ─────────────────
+
+  fastify.get('/public/events/map', async (_request, reply) => {
+    const rows = await sql`
+      SELECT
+        e.id,
+        e.hazard_type,
+        e.severity,
+        e.location_pcode,
+        e.title            AS description,
+        d.name_fr          AS location_name,
+        p.name_fr          AS province_name,
+        e.created_at,
+        COALESCE(ST_X(d.centroid), ST_X(p.centroid)) AS lng,
+        COALESCE(ST_Y(d.centroid), ST_Y(p.centroid)) AS lat
+      FROM disaster_events e
+      LEFT JOIN admin_divisions d ON d.pcode = e.location_pcode
+      LEFT JOIN admin_divisions p
+        ON p.pcode = LEFT(e.location_pcode, 4) AND p.level = 1
+      WHERE e.is_public = TRUE
+        AND e.created_at >= NOW() - INTERVAL '30 days'
+        AND (d.centroid IS NOT NULL OR p.centroid IS NOT NULL)
+      ORDER BY e.created_at DESC
+      LIMIT 200
+    ` as unknown as {
+        id: string; hazardType: string; severity: string;
+        locationPcode: string; description: string;
+        locationName: string; provinceName: string;
+        createdAt: string; lng: number; lat: number;
+      }[];
+
+    const features = rows
+      .filter(r => r.lng != null && r.lat != null)
+      .map(r => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [r.lng, r.lat] },
+        properties: {
+          id:            r.id,
+          hazardType:    r.hazardType,
+          severity:      r.severity,
+          locationPcode: r.locationPcode,
+          locationName:  r.locationName,
+          provinceName:  r.provinceName,
+          description:   r.description,
+          createdAt:     r.createdAt,
+        },
+      }));
+
+    return reply
+      .header('Cache-Control', 'public, max-age=60, stale-while-revalidate=120')
+      .send({ type: 'FeatureCollection', features });
+  });
+
   // ── Export HXL CSV — événements ───────────────────────────────────────────
 
   fastify.get('/public/export/events.csv', {

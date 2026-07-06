@@ -46,6 +46,17 @@ export interface PublicStats {
   trend: { statDate: string; hazardType: string; eventCount: number }[]
 }
 
+export interface GeoFeature {
+  type: 'Feature'
+  geometry: { type: string; coordinates: unknown }
+  properties: Record<string, unknown>
+}
+
+export interface GeoCollection {
+  type: 'FeatureCollection'
+  features: GeoFeature[]
+}
+
 export const publicApi = {
   getAlerts: () =>
     api.get<{ success: true; data: PublicAlert[] }>('/alerts').then(r => r.data.data),
@@ -57,4 +68,10 @@ export const publicApi = {
 
   getStats: () =>
     api.get<{ success: true; data: PublicStats }>('/stats').then(r => r.data.data),
+
+  getProvinceGeo: () =>
+    api.get<GeoCollection>('/geo/provinces').then(r => r.data),
+
+  getEventsMap: () =>
+    api.get<GeoCollection>('/events/map').then(r => r.data),
 }
