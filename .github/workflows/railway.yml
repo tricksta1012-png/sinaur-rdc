@@ -45,8 +45,9 @@ jobs:
           SERVICE: ${{ matrix.service.name }}
         run: |
           if [ -n "$SERVICE_ID" ]; then
-            # Use pre-built Docker Hub image — Railway builds FROM the hub tag directly
-            echo "FROM matroschka/sinaur-rdc-${SERVICE}:latest" > Dockerfile
+            # Use SHA-pinned image tag to bypass Railway's cache of the :latest tag
+            SHA=$(git rev-parse --short HEAD)
+            echo "FROM matroschka/sinaur-rdc-${SERVICE}:sha-${SHA}" > Dockerfile
             railway up --service "$SERVICE_ID" --detach
           else
             echo "⚠️  ${SERVICE}: secret ${{ matrix.service.service_id_secret }} not set, skipping."
