@@ -1,0 +1,27 @@
+{
+  "name": "@sinaur/agent9-ingestion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "run:once": "tsx --env-file=../../.env src/index.ts --once"
+  },
+  "dependencies": {
+    "postgres": "^3.4.4",
+    "node-cron": "^3.0.3",
+    "zod": "^3.23.8",
+    "pino": "^9.3.2",
+    "pino-pretty": "^11.2.2",
+    "axios": "^1.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.0"
+  }
+}

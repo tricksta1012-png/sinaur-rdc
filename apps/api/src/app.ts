@@ -50,6 +50,7 @@ import { catastrophesRoutes } from './routes/catastrophes.js'
 import { hubRoutes } from './routes/hub.js'
 import { mediaLocalRoutes } from './routes/media-local.js'
 import { fluxRoutes } from './routes/flux.js'
+import { agent9Routes } from './routes/agent9.js'
 import { logSecurityEvent } from './auth/security.js'
 import { aiHealthCheck } from './services/aiClient.js'
 import { registerClient } from './websocket/broadcast.js'
@@ -178,6 +179,7 @@ export async function createApp(): Promise<FastifyInstance> {
   await fastify.register(hubRoutes)
   await fastify.register(mediaLocalRoutes)
   await fastify.register(fluxRoutes)
+  await fastify.register(agent9Routes)
 
   fastify.get('/ws', { websocket: true }, (socket, request) => {
     let scope: string[] = []
@@ -190,6 +192,23 @@ export async function createApp(): Promise<FastifyInstance> {
     } catch {}
     registerClient(socket.socket, scope)
     socket.socket.send(JSON.stringify({ type: 'CONNECTED', payload: { message: 'SINAUR-RDC flux temps réel actif' } }))
+
+    // Répondre aux PING applicatifs du client
+    socket.socket.on('message', (data: Buffer) => {
+      try {
+        const msg = JSON.parse(data.toString()) as { type: string }
+        if (msg.type === 'PING' && socket.socket.readyState === 1) {
+          socket.socket.send(JSON.stringify({ type: 'PONG', payload: { ts: Date.now() } }))
+        }
+      } catch {}
+    })
+
+    // Keepalive protocole WebSocket toutes les 20s — garantit du trafic bidirectionnel
+    // pour éviter la fermeture par le proxy Railway (~60s idle timeout)
+    const pingInterval = setInterval(() => {
+      if (socket.socket.readyState === 1) socket.socket.ping()
+    }, 20_000)
+    socket.socket.on('close', () => clearInterval(pingInterval))
   })
 
   fastify.addHook('onReady', async () => {

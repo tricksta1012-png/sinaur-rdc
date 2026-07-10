@@ -57,6 +57,7 @@ export function useRealtimeFeed() {
   const wsRef        = useRef<WebSocket | null>(null)
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const retryCount   = useRef(0)
+  const mountedRef   = useRef(true)
   const tokens = useAuthStore(s => s.tokens)
 
   // Chargement HTTP initial : évite que le panneau reste vide en attendant un message WebSocket
@@ -113,6 +114,7 @@ export function useRealtimeFeed() {
 
     ws.onclose = () => {
       setConnected(false)
+      if (!mountedRef.current) return
       // Backoff exponentiel : 2s, 4s, 8s … plafonné à 30s
       const delay = Math.min(2_000 * Math.pow(2, retryCount.current), 30_000)
       retryCount.current += 1
@@ -124,8 +126,8 @@ export function useRealtimeFeed() {
 
     ws.onmessage = (e) => {
       try {
-        const msg = JSON.parse(e.data) as FeedEvent
-        if (msg.type === 'CONNECTED') return
+        const msg = JSON.parse(e.data) as FeedEvent & { type: string }
+        if (msg.type === 'CONNECTED' || msg.type === 'PONG') return
         setEvents(prev => [
           { ...msg, receivedAt: new Date().toISOString() },
           ...prev.slice(0, MAX_FEED_ITEMS - 1),
@@ -139,8 +141,10 @@ export function useRealtimeFeed() {
   useEffect(() => { connectRef.current = connect }, [connect])
 
   useEffect(() => {
+    mountedRef.current = true
     if (tokens) connect()
     return () => {
+      mountedRef.current = false
       if (reconnectRef.current) clearTimeout(reconnectRef.current)
       wsRef.current?.close()
       wsRef.current = null

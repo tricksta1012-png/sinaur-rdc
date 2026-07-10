@@ -437,6 +437,7 @@ export function OpsRoomPage() {
     queryFn: () => apiClient.get('/dashboard/stats').then(r => r.data.data),
     staleTime: 30_000,
     refetchInterval: 30_000,
+    refetchIntervalInBackground: true,
   });
 
   const { data: mapGeoJSON } = useQuery({
@@ -444,6 +445,7 @@ export function OpsRoomPage() {
     queryFn: () => apiClient.get(`/events/map?${mapQueryParams}`).then(r => r.data),
     staleTime: 30_000,
     refetchInterval: 30_000,
+    refetchIntervalInBackground: true,
   });
 
   const { data: divisionsGeo = [] } = useQuery({
@@ -464,6 +466,7 @@ export function OpsRoomPage() {
     }),
     staleTime: 30_000,
     refetchInterval: 30_000,
+    refetchIntervalInBackground: true,
   });
 
   const { data: riskMapData } = useQuery({

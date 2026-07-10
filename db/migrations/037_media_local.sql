@@ -44,6 +44,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS media_local_updated_at ON media_local;
 CREATE TRIGGER media_local_updated_at
   BEFORE UPDATE ON media_local
   FOR EACH ROW EXECUTE FUNCTION update_mis_a_jour_le();

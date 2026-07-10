@@ -35,6 +35,9 @@ jobs:
           - service: ai-prediction
             context: .
             dockerfile: services/ai-prediction/Dockerfile
+          - service: agent9-ingestion
+            context: .
+            dockerfile: services/agent9-ingestion/Dockerfile
           - service: command-center
             context: .
             dockerfile: apps/command-center/Dockerfile

@@ -190,6 +190,28 @@ services:
     profiles:
       - full
 
+  agent9-ingestion:
+    build:
+      context: .
+      dockerfile: services/agent9-ingestion/Dockerfile
+    container_name: sinaur-agent9-ingestion
+    environment:
+      DATABASE_URL: postgresql://sinaur:sinaur_secret@postgres:5432/sinaur_rdc
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Clé ACLED — inscription gratuite sur https://acleddata.com/register/
+      ACLED_API_KEY: ${ACLED_API_KEY:-}
+      ACLED_EMAIL: ${ACLED_EMAIL:-}
+      ACLED_PILOT_PROVINCE: ${ACLED_PILOT_PROVINCE:-}    # vide = toute la RDC
+      ACLED_LOOKBACK_HOURS: ${ACLED_LOOKBACK_HOURS:-48}
+      INGESTION_INTERVAL_HOURS: ${INGESTION_INTERVAL_HOURS:-6}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - full
+      - agent9
+
 volumes:
   postgres_data:
   redis_data:

@@ -29,6 +29,8 @@ jobs:
             service_id_secret: RAILWAY_SERVICE_PUBLIC_ID
           - name: alerting
             service_id_secret: RAILWAY_SERVICE_ALERTING_ID
+          - name: agent9-ingestion
+            service_id_secret: RAILWAY_SERVICE_AGENT9_ID
 
     steps:
       - uses: actions/checkout@v6
