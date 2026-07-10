@@ -126,8 +126,9 @@ export function useRealtimeFeed() {
 
     ws.onmessage = (e) => {
       try {
-        const msg = JSON.parse(e.data) as FeedEvent & { type: string }
-        if (msg.type === 'CONNECTED' || msg.type === 'PONG') return
+        const raw = JSON.parse(e.data) as { type: string }
+        if (raw.type === 'CONNECTED' || raw.type === 'PONG') return
+        const msg = raw as FeedEvent
         setEvents(prev => [
           { ...msg, receivedAt: new Date().toISOString() },
           ...prev.slice(0, MAX_FEED_ITEMS - 1),
