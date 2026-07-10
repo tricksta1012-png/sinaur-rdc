@@ -30,7 +30,7 @@ async function overpassQuery(query: string, description: string): Promise<OsmPoi
     }
     const center = el['center'] as Record<string, number> | undefined
     if (center && typeof center['lat'] === 'number') {
-      return [{ lat: center['lat'], lng: center['lon'] }]
+      return [{ lat: center['lat'] as number, lng: center['lon'] as number }]
     }
     return []
   })

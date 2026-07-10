@@ -258,7 +258,7 @@ export async function runScoringCycle(): Promise<{ zones: number; scored: number
         const rs = await computeScoreForPcode(pcode, horizonDays, weights, globalMax)
         if (!rs) continue
 
-        const [inserted] = await sql<{ id: string; level: string }[]>`
+        const insertResult = await sql`
           INSERT INTO risk_scores_agent9 (
             pcode, score, level, confidence,
             uncertainty_low, uncertainty_high,
@@ -269,13 +269,14 @@ export async function runScoringCycle(): Promise<{ zones: number; scored: number
           ) VALUES (
             ${pcode}, ${rs.score}, ${rs.level}, ${rs.confidence},
             ${rs.uncertaintyLow}, ${rs.uncertaintyHigh},
-            ${rs.topFactors}, ${horizonDays}, '1.0.0',
+            ${JSON.stringify(rs.topFactors)}, ${horizonDays}, '1.0.0',
             ${rs.scoreHistorique}, ${rs.scoreEconomique}, ${rs.scoreRessources},
             ${rs.scoreGeographique}, ${rs.scoreEvolution}, ${rs.scoreSignauxPublics},
             ${rs.scoreVulnerabilite}, TRUE
           )
           RETURNING id, level
         `
+        const inserted = insertResult[0] as { id: string; level: string } | undefined
         scored++
 
         if (inserted && (inserted.level === 'ELEVE' || inserted.level === 'CRITIQUE')) {
@@ -292,7 +293,7 @@ export async function runScoringCycle(): Promise<{ zones: number; scored: number
           if (!existing) {
             await sql`
               INSERT INTO agent9_alerts (risk_score_id, pcode, level, statut, recommended_actions)
-              VALUES (${inserted.id}, ${pcode}, ${rs.level}, 'PENDING_VALIDATION', ${buildRecommendedActions(rs)})
+              VALUES (${inserted.id}, ${pcode}, ${rs.level}, 'PENDING_VALIDATION', ${JSON.stringify(buildRecommendedActions(rs))})
             `
             alertsCreated++
           }
