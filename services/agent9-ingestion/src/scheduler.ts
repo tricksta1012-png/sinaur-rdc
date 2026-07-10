@@ -6,6 +6,7 @@ import { fetchAllAcledEvents } from './connectors/acled.js'
 import { normalizeUcdpEvent, normalizeAcledEvent, upsertIncidents } from './normalizer.js'
 import { runScoringCycle }       from './scorer.js'
 import { runVulnerabilityCycle } from './vulnerability.js'
+import { runSignalsCycle }       from './signals.js'
 
 export interface IngestionResult {
   source:     string
@@ -78,7 +79,15 @@ export async function runCycle(): Promise<void> {
     logger.info('ACLED_API_KEY non défini — source ACLED ignorée')
   }
 
-  // Scoring — toujours après ingestion
+  // Signaux publics — RSS avant scoring pour que les signaux frais soient intégrés
+  try {
+    const result = await runSignalsCycle()
+    logger.info(result, 'Signaux publics terminés')
+  } catch (err) {
+    logger.error({ err }, 'Erreur cycle de signaux')
+  }
+
+  // Scoring — toujours en dernier (intègre incidents + signaux + vulnérabilité)
   try {
     const result = await runScoringCycle()
     logger.info(result, 'Scoring Agent 9 terminé')
