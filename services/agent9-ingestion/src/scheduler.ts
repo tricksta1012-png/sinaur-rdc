@@ -4,7 +4,8 @@ import { logger } from './logger.js'
 import { fetchAllUcdpEvents }  from './connectors/ucdp.js'
 import { fetchAllAcledEvents } from './connectors/acled.js'
 import { normalizeUcdpEvent, normalizeAcledEvent, upsertIncidents } from './normalizer.js'
-import { runScoringCycle } from './scorer.js'
+import { runScoringCycle }       from './scorer.js'
+import { runVulnerabilityCycle } from './vulnerability.js'
 
 export interface IngestionResult {
   source:     string
@@ -89,8 +90,13 @@ export async function runCycle(): Promise<void> {
 export function startScheduler(): void {
   void runCycle()
 
+  // Vulnérabilité structurelle : une fois par semaine (dim. 02h00)
+  // Exécution immédiate au démarrage pour initialiser zone_vulnerability
+  void runVulnerabilityCycle()
+  cron.schedule('0 2 * * 0', () => { void runVulnerabilityCycle() })
+
   const hours    = config.INGESTION_INTERVAL_HOURS
   const cronExpr = `0 */${hours} * * *`
-  logger.info({ cronExpr }, 'Scheduler Agent 9 démarré (UCDP actif, ACLED si clé)')
+  logger.info({ cronExpr }, 'Scheduler Agent 9 démarré (UCDP actif, ACLED si clé, vulnérabilité hebdo)')
   cron.schedule(cronExpr, () => { void runCycle() })
 }
