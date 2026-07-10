@@ -45,9 +45,12 @@ jobs:
           SERVICE: ${{ matrix.service.name }}
         run: |
           if [ -n "$SERVICE_ID" ]; then
-            # Use SHA-pinned image tag to bypass Railway's cache of the :latest tag
+            # Deploy depuis un répertoire vide contenant uniquement le Dockerfile
+            # Évite que Railway détecte le monorepo et remplace le CMD de l'image
             SHA=$(git rev-parse --short HEAD)
-            echo "FROM matroschka/sinaur-rdc-${SERVICE}:sha-${SHA}" > Dockerfile
+            DEPLOY_DIR=$(mktemp -d)
+            echo "FROM matroschka/sinaur-rdc-${SERVICE}:sha-${SHA}" > "$DEPLOY_DIR/Dockerfile"
+            cd "$DEPLOY_DIR"
             railway up --service "$SERVICE_ID" --detach
           else
             echo "⚠️  ${SERVICE}: secret ${{ matrix.service.service_id_secret }} not set, skipping."
