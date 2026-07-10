@@ -4,6 +4,7 @@ import { logger } from './logger.js'
 import { fetchAllUcdpEvents }  from './connectors/ucdp.js'
 import { fetchAllAcledEvents } from './connectors/acled.js'
 import { normalizeUcdpEvent, normalizeAcledEvent, upsertIncidents } from './normalizer.js'
+import { runScoringCycle } from './scorer.js'
 
 export interface IngestionResult {
   source:     string
@@ -74,6 +75,14 @@ export async function runCycle(): Promise<void> {
     }
   } else {
     logger.info('ACLED_API_KEY non défini — source ACLED ignorée')
+  }
+
+  // Scoring — toujours après ingestion
+  try {
+    const result = await runScoringCycle()
+    logger.info(result, 'Scoring Agent 9 terminé')
+  } catch (err) {
+    logger.error({ err }, 'Erreur cycle de scoring')
   }
 }
 

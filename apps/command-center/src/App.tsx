@@ -23,6 +23,7 @@ import { PropositionsPage } from './pages/PropositionsPage.js';
 import { RuesPage } from './pages/RuesPage.js';
 import { ConnaissancePage } from './pages/ConnaissancePage.js';
 import { MediaLocalPage } from './pages/MediaLocalPage.js';
+import { Agent9Page } from './pages/Agent9Page.js';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
@@ -67,6 +68,7 @@ export default function App() {
         <Route path="rues"           element={<RuesPage />} />
         <Route path="connaissance"   element={<ConnaissancePage />} />
         <Route path="media-local"    element={<MediaLocalPage />} />
+        <Route path="agent9"         element={<Agent9Page />} />
         <Route path="admin" element={
           <RequireRole role="system_admin"><AdminPage /></RequireRole>
         } />
