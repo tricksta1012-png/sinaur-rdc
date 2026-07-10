@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import MapGL, { Source, Layer, Popup, type MapLayerMouseEvent } from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { apiClient } from '../lib/api.js';
 import { useAuthStore } from '../stores/auth.js';
+import { useRealtimeFeed } from '../hooks/useRealtimeFeed.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -207,16 +210,163 @@ function ValidationModal({
   )
 }
 
+// ── Carte MapLibre ────────────────────────────────────────────────────────────
+
+const MAP_STYLE = {
+  version: 8 as const,
+  sources: {
+    osm: { type: 'raster' as const, tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap' },
+  },
+  layers: [
+    { id: 'bg',  type: 'background' as const, paint: { 'background-color': '#0d1b2a' } },
+    { id: 'osm', type: 'raster' as const, source: 'osm', paint: { 'raster-saturation': -1, 'raster-brightness-max': 0.25, 'raster-opacity': 0.70 } },
+  ],
+}
+
+const LEVEL_FILL = [
+  'match', ['get', 'level'],
+  'CRITIQUE', '#dc2626',
+  'ELEVE',    '#ea580c',
+  'MOYEN',    '#ca8a04',
+  'FAIBLE',   '#16a34a',
+  '#1e293b',
+]
+
+interface PopupInfo {
+  lng: number; lat: number;
+  pcode: string; zoneName: string;
+  level: string; score: number | null;
+  topFactors: Array<{ factor: string; contribution: number }>;
+}
+
+function RiskMap({ horizon }: { horizon: number }) {
+  const [popupInfo, setPopupInfo] = useState<PopupInfo | null>(null)
+
+  const { data: geojson, isLoading } = useQuery({
+    queryKey: ['agent9-geojson', horizon],
+    queryFn:  () => apiClient
+      .get<{ data: GeoJSON.FeatureCollection }>(`/agent9/scores/geojson?horizon=${horizon}`)
+      .then(r => r.data.data),
+    staleTime: 30 * 60 * 1000,
+  })
+
+  const handleClick = useCallback((e: MapLayerMouseEvent) => {
+    const f = e.features?.[0]
+    if (!f) { setPopupInfo(null); return }
+    const p = f.properties as Record<string, unknown>
+    setPopupInfo({
+      lng:        e.lngLat.lng,
+      lat:        e.lngLat.lat,
+      pcode:      String(p['pcode'] ?? ''),
+      zoneName:   String(p['zoneName'] ?? p['pcode'] ?? ''),
+      level:      String(p['level'] ?? ''),
+      score:      p['score'] != null ? Number(p['score']) : null,
+      topFactors: (() => { try { return JSON.parse(String(p['topFactors'] ?? '[]')) } catch { return [] } })(),
+    })
+  }, [])
+
+  if (isLoading) return <div className="flex items-center justify-center h-full text-cc-500 text-sm font-mono">Chargement des données…</div>
+
+  return (
+    <div className="relative h-full">
+      <MapGL
+        initialViewState={{ longitude: 24, latitude: -3, zoom: 4.5 }}
+        style={{ width: '100%', height: '100%' }}
+        mapStyle={MAP_STYLE as any}
+        interactiveLayerIds={['risk-fill']}
+        onClick={handleClick}
+      >
+        {geojson && (
+          <Source id="territories" type="geojson" data={geojson}>
+            <Layer
+              id="risk-fill"
+              type="fill"
+              paint={{ 'fill-color': LEVEL_FILL as any, 'fill-opacity': 0.65 }}
+            />
+            <Layer
+              id="risk-line"
+              type="line"
+              paint={{ 'line-color': '#334155', 'line-width': 0.5 }}
+            />
+          </Source>
+        )}
+
+        {popupInfo && (
+          <Popup
+            longitude={popupInfo.lng}
+            latitude={popupInfo.lat}
+            onClose={() => setPopupInfo(null)}
+            closeButton
+            anchor="bottom"
+            className="!bg-cc-900 !border-cc-700 !text-white"
+          >
+            <div className="p-2 min-w-[180px] space-y-2">
+              <div>
+                <div className="font-semibold text-sm text-gray-100">{popupInfo.zoneName || popupInfo.pcode}</div>
+                <div className="text-[10px] text-cc-500 font-mono">{popupInfo.pcode}</div>
+              </div>
+              {popupInfo.level ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-mono px-2 py-0.5 rounded ${LEVEL_COLORS[popupInfo.level] ?? ''}`}>
+                      {popupInfo.level}
+                    </span>
+                    {popupInfo.score != null && (
+                      <span className="text-xs text-cc-400">Score {popupInfo.score.toFixed(1)}</span>
+                    )}
+                  </div>
+                  {popupInfo.topFactors.slice(0, 2).map(f => (
+                    <div key={f.factor} className="text-[10px] text-cc-500 flex gap-1">
+                      <span className="text-orange-400">▲</span>
+                      {FACTOR_LABELS[f.factor] ?? f.factor}
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <div className="text-xs text-cc-600">Aucune donnée</div>
+              )}
+            </div>
+          </Popup>
+        )}
+      </MapGL>
+
+      {/* Légende */}
+      <div className="absolute bottom-4 left-4 bg-cc-900/90 border border-cc-700 rounded-lg p-3 space-y-1.5">
+        <div className="text-[10px] text-cc-500 font-mono mb-1">NIVEAU DE RISQUE</div>
+        {[
+          { level: 'CRITIQUE', color: 'bg-red-600',    label: 'Critique' },
+          { level: 'ELEVE',    color: 'bg-orange-600', label: 'Élevé' },
+          { level: 'MOYEN',    color: 'bg-yellow-600', label: 'Moyen' },
+          { level: 'FAIBLE',   color: 'bg-green-600',  label: 'Faible' },
+        ].map(({ color, label }) => (
+          <div key={label} className="flex items-center gap-2">
+            <span className={`w-3 h-3 rounded-sm ${color} opacity-80`} />
+            <span className="text-xs text-gray-300">{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export function Agent9Page() {
   const user = useAuthStore(s => s.user)
   const role = user?.role ?? ''
   const canValidate = ['system_admin', 'national_decision_maker'].includes(role)
+  const queryClient = useQueryClient()
 
   const [horizon, setHorizon] = useState(7)
-  const [tab, setTab]         = useState<'scores' | 'alerts'>('scores')
+  const [tab, setTab]         = useState<'carte' | 'scores' | 'alerts'>('carte')
   const [validating, setValidating] = useState<Alert | null>(null)
+
+  // Refetch alertes quand un AGENT9_ALERT arrive via WebSocket
+  const { events } = useRealtimeFeed()
+  const agent9Count = events.filter(e => e.type === 'AGENT9_ALERT').length
+  useEffect(() => {
+    if (agent9Count > 0) queryClient.invalidateQueries({ queryKey: ['agent9-alerts'] })
+  }, [agent9Count, queryClient])
 
   const { data: scoresData, isLoading: scoresLoading } = useQuery({
     queryKey: ['agent9-scores', horizon],
@@ -270,6 +420,7 @@ export function Agent9Page() {
       {/* Onglets */}
       <div className="flex gap-1 border-b border-cc-700">
         {[
+          { key: 'carte',  label: 'Carte' },
           { key: 'scores', label: 'Scores de risque' },
           ...(canValidate ? [{ key: 'alerts', label: `File de validation${pending > 0 ? ` (${pending})` : ''}` }] : []),
         ].map(({ key, label }) => (
@@ -286,6 +437,24 @@ export function Agent9Page() {
           </button>
         ))}
       </div>
+
+      {/* ── Onglet Carte ───────────────────────────────────────────────────── */}
+      {tab === 'carte' && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-cc-500 font-mono">Horizon :</span>
+            {([7, 30, 90] as const).map(h => (
+              <button key={h} onClick={() => setHorizon(h)}
+                className={`text-xs px-3 py-1 rounded font-mono transition-colors ${horizon === h ? 'bg-sinaur-700 text-white' : 'bg-cc-800 text-cc-500 hover:text-gray-300'}`}>
+                {h}j
+              </button>
+            ))}
+          </div>
+          <div className="h-[560px] rounded-xl overflow-hidden border border-cc-700">
+            <RiskMap horizon={horizon} />
+          </div>
+        </div>
+      )}
 
       {/* ── Onglet Scores ──────────────────────────────────────────────────── */}
       {tab === 'scores' && (

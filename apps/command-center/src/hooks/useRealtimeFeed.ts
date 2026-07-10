@@ -10,6 +10,7 @@ export type FeedEvent =
   | { type: 'CRISIS_UPDATED'; payload: { id: string; status: string; title: string } }
   | { type: 'TASK_CREATED';   payload: { crisisId: string; task: unknown } }
   | { type: 'TASK_UPDATED';   payload: { id: string; status: string; crisisEventId: string } }
+  | { type: 'AGENT9_ALERT';   payload: { id: string; pcode: string; level: string; zoneName: string; analystNote: string } }
   | { type: 'CONNECTED';      payload: { message: string } }
 
 const MAX_FEED_ITEMS = 100

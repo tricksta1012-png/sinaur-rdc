@@ -9,7 +9,8 @@ type WsEvent =
   | { type: 'CRISIS_UPDATED'; payload: unknown }
   | { type: 'TASK_CREATED';   payload: unknown }
   | { type: 'TASK_UPDATED';   payload: unknown }
-  | { type: 'STATS_UPDATE';   payload: unknown };
+  | { type: 'STATS_UPDATE';   payload: unknown }
+  | { type: 'AGENT9_ALERT';   payload: unknown };
 
 // Registry des connexions WebSocket actives par périmètre géographique
 const clients = new Map<WebSocket, { scope: string[] }>();
@@ -58,6 +59,10 @@ export function broadcastTaskCreated(task: unknown): void {
 
 export function broadcastTaskUpdated(task: unknown): void {
   broadcast({ type: 'TASK_UPDATED', payload: task });
+}
+
+export function broadcastAgent9Alert(alert: unknown, targetPcodes: string[] = []): void {
+  broadcast({ type: 'AGENT9_ALERT', payload: alert }, targetPcodes)
 }
 
 export function getConnectedCount(): number {

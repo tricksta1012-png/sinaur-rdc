@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { sql } from '../db.js'
 import { requireAuth, requireRole } from '../auth/jwt.js'
+import { broadcastAgent9Alert } from '../websocket/broadcast.js'
 
 // Rôles autorisés à accéder aux sorties de l'Agent 9
 // humanitarian_partner accède uniquement aux recommandations validées (pas aux scores bruts)
@@ -245,7 +246,10 @@ export async function agent9Routes(fastify: FastifyInstance): Promise<void> {
       }
 
       const [alert] = await sql`
-        SELECT id, statut, pcode FROM agent9_alerts WHERE id = ${id}
+        SELECT a.id, a.statut, a.pcode, a.level, ad.name AS zone_name
+        FROM agent9_alerts a
+        JOIN admin_divisions ad ON ad.pcode = a.pcode
+        WHERE a.id = ${id}
       `
 
       if (!alert) {
@@ -276,8 +280,79 @@ export async function agent9Routes(fastify: FastifyInstance): Promise<void> {
         RETURNING id, statut, pcode, level, validated_at
       `
 
+      // Broadcast WebSocket aux clients concernés par ce pcode
+      if (body.action !== 'REJECTED') {
+        broadcastAgent9Alert({
+          id,
+          pcode:       alert.pcode,
+          zoneName:    alert.zoneName,
+          level:       body.action === 'MODIFIED' ? body.modified_level : alert.level,
+          analystNote: body.analyst_note,
+        }, [alert.pcode])
+      }
+
       await logAccess(request, id, body.action === 'REJECTED' ? 'REJECT' : 'VALIDATE')
       return reply.send({ success: true, data: updated })
+    },
+  )
+
+  // ── GET /agent9/scores/geojson ────────────────────────────────────────────
+  // FeatureCollection admin2 colorée par niveau de risque — pour la carte
+  fastify.get(
+    '/agent9/scores/geojson',
+    { preHandler: [requireAuth, requireRole(...AGENT9_ROLES)] },
+    async (request, reply) => {
+      const { horizon } = z.object({
+        horizon: z.coerce.number().optional().default(7),
+      }).parse(request.query)
+
+      const rows = await sql`
+        WITH latest AS (
+          SELECT DISTINCT ON (pcode)
+            pcode, score, level, confidence,
+            uncertainty_low, uncertainty_high, top_factors, computed_at
+          FROM risk_scores_agent9
+          WHERE horizon_days = ${horizon}
+          ORDER BY pcode, computed_at DESC
+        )
+        SELECT
+          ad.pcode,
+          ad.name                                                      AS zone_name,
+          l.score,
+          l.level,
+          l.confidence,
+          l.uncertainty_low,
+          l.uncertainty_high,
+          l.top_factors,
+          l.computed_at,
+          ST_AsGeoJSON(
+            ST_SimplifyPreserveTopology(ad.geometry, 0.01)
+          )::json AS geometry
+        FROM admin_divisions ad
+        LEFT JOIN latest l ON l.pcode = ad.pcode
+        WHERE ad.level = 2 AND ad.geometry IS NOT NULL
+      `
+
+      const features = rows.map(r => ({
+        type: 'Feature' as const,
+        geometry: r.geometry,
+        properties: {
+          pcode:          r.pcode,
+          zoneName:       r.zoneName,
+          score:          r.score         ?? null,
+          level:          r.level         ?? null,
+          confidence:     r.confidence    ?? null,
+          uncertaintyLow: r.uncertaintyLow  ?? null,
+          uncertaintyHigh:r.uncertaintyHigh ?? null,
+          topFactors:     r.topFactors    ?? [],
+          computedAt:     r.computedAt    ?? null,
+        },
+      }))
+
+      return reply.send({
+        success: true,
+        data: { type: 'FeatureCollection', features },
+      })
     },
   )
 

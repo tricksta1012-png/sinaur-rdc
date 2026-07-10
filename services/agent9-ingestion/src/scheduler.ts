@@ -7,6 +7,7 @@ import { normalizeUcdpEvent, normalizeAcledEvent, upsertIncidents } from './norm
 import { runScoringCycle }       from './scorer.js'
 import { runVulnerabilityCycle } from './vulnerability.js'
 import { runSignalsCycle }       from './signals.js'
+import { runAggregatesCycle }    from './aggregates.js'
 
 export interface IngestionResult {
   source:     string
@@ -77,6 +78,14 @@ export async function runCycle(): Promise<void> {
     }
   } else {
     logger.info('ACLED_API_KEY non défini — source ACLED ignorée')
+  }
+
+  // Agrégats comportementaux — avant scoring (trend_pct_change utilisé dans le futur)
+  try {
+    const result = await runAggregatesCycle()
+    logger.info(result, 'Agrégats comportementaux terminés')
+  } catch (err) {
+    logger.error({ err }, 'Erreur cycle d\'agrégats')
   }
 
   // Signaux publics — RSS avant scoring pour que les signaux frais soient intégrés
