@@ -160,6 +160,9 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
       const effectiveGeom = geom ?? centroid;
       if (!effectiveGeom) continue;
 
+      const centroidCoords: [number, number] | null =
+        centroid?.coordinates ?? null;
+
       features.push({
         type: 'Feature',
         geometry: effectiveGeom,
@@ -176,6 +179,7 @@ export async function geoRoutes(fastify: FastifyInstance): Promise<void> {
           geometry_type:       r.geometryType ?? r.geometry_type ?? null,
           nb_incidents:        Number(r.nbIncidents ?? r.nb_incidents ?? 0),
           _is_point:           !geom && !!centroid,
+          centroid:            centroidCoords,
         },
       });
     }

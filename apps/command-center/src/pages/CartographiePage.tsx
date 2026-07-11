@@ -294,6 +294,11 @@ export function CartographiePage() {
   const [showNominations, setShowNominations] = useState(false);
   const [showRues, setShowRues] = useState(false);
 
+  // Salle des opérations — couches thématiques temps réel
+  const [showConflits, setShowConflits]   = useState(true);
+  const [showEpidemie, setShowEpidemie]   = useState(true);
+  const [showMilitaire, setShowMilitaire] = useState(true);
+
   // Search state
   const [searchQuery, setSearchQuery]           = useState('');
   const [debouncedSearch, setDebouncedSearch]   = useState('');
@@ -421,6 +426,30 @@ export function CartographiePage() {
     refetchInterval: 5 * 60_000,
   });
 
+  // Salle des opérations — Flux conflits + renseignement (30 s)
+  const isRestricted = ['humanitarian_partner', 'national_decision_maker', 'system_admin'].includes(user?.role ?? '');
+  const { data: fluxOpsRaw, dataUpdatedAt: opsUpdatedAt } = useQuery({
+    queryKey: ['flux-ops'],
+    queryFn: () => apiClient
+      .get<any[]>('/flux/evenements?depuis_jours=7&limit=300')
+      .then(r => r.data),
+    enabled: showConflits || showMilitaire,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+
+  // Salle des opérations — Zones épidémiques (5 min)
+  const canSeeEpidemie = ['territory_admin', 'provincial_coordinator', 'national_decision_maker', 'system_admin'].includes(user?.role ?? '');
+  const { data: epidemieZonesRaw } = useQuery({
+    queryKey: ['epidemie-zones-ops'],
+    queryFn: () => apiClient
+      .get<any[]>('/epidemie/zones')
+      .then(r => r.data),
+    enabled: showEpidemie && canSeeEpidemie,
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+
   // Tous les quartiers (niveau 4) — chargés une fois quand le zoom s'approche
   const { data: quartiersGlobalRaw } = useQuery({
     queryKey: ['quartiers-global'],
@@ -523,6 +552,100 @@ export function CartographiePage() {
     type: 'FeatureCollection' as const,
     features: ruesGeoJson.features.filter((f: GeoJSON.Feature) => f.geometry?.type === 'Point'),
   }), [ruesGeoJson]);
+
+  // ── Salle des opérations — GeoJSON dérivés ───────────────────────────────
+
+  // Centroïdes provinces depuis les features level-1
+  const provinceCentroids = useMemo<Record<string, [number, number]>>(() => {
+    if (!geojson?.features) return {};
+    const out: Record<string, [number, number]> = {};
+    for (const f of geojson.features) {
+      const pcode    = f.properties?.pcode as string | undefined;
+      const centroid = f.properties?.centroid as [number, number] | null | undefined;
+      if (pcode && centroid) out[pcode] = centroid;
+    }
+    return out;
+  }, [geojson]);
+
+  // Conflit — agrège par province_pcode, crée un point par province
+  const conflitsGeoJson = useMemo<GeoJSON.FeatureCollection>(() => {
+    if (!showConflits || !fluxOpsRaw?.length) return { type: 'FeatureCollection', features: [] };
+    const byPcode: Record<string, { count: number; maxGravite: number; titres: string[] }> = {};
+    for (const ev of fluxOpsRaw) {
+      if (ev.type_evenement !== 'CONFLIT') continue;
+      if (ev.source_agent === 'RENSEIGNEMENT') continue; // géré par la couche militaire
+      const pcode = (ev.province_pcode as string | null) ?? '';
+      if (!pcode) continue;
+      const base4 = pcode.length > 4 ? pcode.slice(0, 4) : pcode;
+      if (!byPcode[base4]) byPcode[base4] = { count: 0, maxGravite: 0, titres: [] };
+      byPcode[base4].count += 1;
+      byPcode[base4].maxGravite = Math.max(byPcode[base4].maxGravite, ev.gravite === 'CRITIQUE' ? 3 : ev.gravite === 'ELEVEE' ? 2 : 1);
+      if (byPcode[base4].titres.length < 3) byPcode[base4].titres.push(ev.titre ?? '');
+    }
+    const features: GeoJSON.Feature[] = [];
+    for (const [pcode, d] of Object.entries(byPcode)) {
+      const coords = provinceCentroids[pcode] ?? provinceCentroids[pcode.slice(0, 4)];
+      if (!coords) continue;
+      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: coords },
+        properties: { pcode, count: d.count, maxGravite: d.maxGravite, titres: d.titres.join(' · ') } });
+    }
+    return { type: 'FeatureCollection', features };
+  }, [showConflits, fluxOpsRaw, provinceCentroids]);
+
+  // Militaire — événements source RENSEIGNEMENT uniquement
+  const militaireGeoJson = useMemo<GeoJSON.FeatureCollection>(() => {
+    if (!showMilitaire || !fluxOpsRaw?.length) return { type: 'FeatureCollection', features: [] };
+    const byPcode: Record<string, { count: number; maxGravite: number; titres: string[] }> = {};
+    for (const ev of fluxOpsRaw) {
+      if (ev.source_agent !== 'RENSEIGNEMENT') continue;
+      const pcode = (ev.province_pcode as string | null) ?? '';
+      if (!pcode) continue;
+      const base4 = pcode.length > 4 ? pcode.slice(0, 4) : pcode;
+      if (!byPcode[base4]) byPcode[base4] = { count: 0, maxGravite: 0, titres: [] };
+      byPcode[base4].count += 1;
+      byPcode[base4].maxGravite = Math.max(byPcode[base4].maxGravite, ev.gravite === 'CRITIQUE' ? 3 : ev.gravite === 'ELEVEE' ? 2 : 1);
+      if (byPcode[base4].titres.length < 3) byPcode[base4].titres.push(ev.titre ?? '');
+    }
+    const features: GeoJSON.Feature[] = [];
+    for (const [pcode, d] of Object.entries(byPcode)) {
+      const coords = provinceCentroids[pcode] ?? provinceCentroids[pcode.slice(0, 4)];
+      if (!coords) continue;
+      // Décaler légèrement pour éviter la superposition avec les cercles conflit
+      const shifted: [number, number] = [coords[0] + 0.18, coords[1] - 0.18];
+      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: shifted },
+        properties: { pcode, count: d.count, maxGravite: d.maxGravite, titres: d.titres.join(' · ') } });
+    }
+    return { type: 'FeatureCollection', features };
+  }, [showMilitaire, fluxOpsRaw, provinceCentroids]);
+
+  // Épidémie — agrège zones par province (p_code 4 chars)
+  const epidemieGeoJson = useMemo<GeoJSON.FeatureCollection>(() => {
+    if (!showEpidemie || !epidemieZonesRaw?.length) return { type: 'FeatureCollection', features: [] };
+    const byPcode: Record<string, { zones: number; cas: number; deces: number; maladies: Set<string> }> = {};
+    for (const z of epidemieZonesRaw as any[]) {
+      const pcode = ((z.p_code ?? z.pCode ?? '') as string).slice(0, 4);
+      if (!pcode) continue;
+      if (!byPcode[pcode]) byPcode[pcode] = { zones: 0, cas: 0, deces: 0, maladies: new Set() };
+      byPcode[pcode].zones += 1;
+      byPcode[pcode].cas   += Number(z.casConfirmes ?? z.cas_confirmes ?? 0);
+      byPcode[pcode].deces += Number(z.decesConfirmes ?? z.deces_confirmes ?? 0);
+      if (z.maladie) byPcode[pcode].maladies.add(z.maladie);
+    }
+    const features: GeoJSON.Feature[] = [];
+    for (const [pcode, d] of Object.entries(byPcode)) {
+      const coords = provinceCentroids[pcode];
+      if (!coords) continue;
+      const shifted: [number, number] = [coords[0] - 0.18, coords[1] + 0.18];
+      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: shifted },
+        properties: { pcode, zones: d.zones, cas: d.cas, deces: d.deces,
+          maladies: [...d.maladies].join(', ') } });
+    }
+    return { type: 'FeatureCollection', features };
+  }, [showEpidemie, epidemieZonesRaw, provinceCentroids]);
+
+  const opsConflitsCount  = conflitsGeoJson.features.length;
+  const opsMilitaireCount = militaireGeoJson.features.length;
+  const opsEpidemieCount  = epidemieGeoJson.features.length;
 
   // Mutations nominations
   const validateNomMutation = useMutation({
@@ -846,10 +969,10 @@ export function CartographiePage() {
 
       {/* ── HEADER ── */}
       <div className="bg-cc-900 border-b border-cc-700 px-4 py-2.5 flex items-center gap-3 shrink-0">
-        <span className="text-lg">🗺️</span>
+        <span className="text-lg">🛰️</span>
         <div className="min-w-0 hidden sm:block">
-          <div className="text-white font-bold text-sm leading-tight">Cartographie Administrative</div>
-          <div className="text-cc-500 text-[10px] font-mono">Qui gère quoi sur le territoire de la RDC</div>
+          <div className="text-white font-bold text-sm leading-tight">Salle des Opérations</div>
+          <div className="text-cc-500 text-[10px] font-mono">Conflits · Épidémies · Renseignement · Temps réel</div>
         </div>
 
         {/* ── Recherche globale ── */}
@@ -982,6 +1105,48 @@ export function CartographiePage() {
           >
             Voies
           </button>
+
+          {/* ── Couches opérationnelles ── */}
+          <div className="w-px h-5 bg-cc-700 shrink-0" />
+          <button
+            onClick={() => setShowConflits(v => !v)}
+            title="Événements de conflit (flux temps réel · 30 s)"
+            className={`text-[10px] font-mono px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1 ${
+              showConflits
+                ? 'bg-red-900/60 text-red-300 border-red-700'
+                : 'text-cc-500 hover:text-gray-300 bg-cc-800 border-cc-700'
+            }`}
+          >
+            {showConflits && <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse shrink-0" />}
+            Conflits {opsConflitsCount > 0 && showConflits && <span className="text-[8px] opacity-70">({opsConflitsCount})</span>}
+          </button>
+          <button
+            onClick={() => setShowMilitaire(v => !v)}
+            title="Renseignement militaire (ACLED · Okapi · KMP · 30 s)"
+            className={`text-[10px] font-mono px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1 ${
+              showMilitaire
+                ? 'bg-yellow-900/60 text-yellow-300 border-yellow-700'
+                : 'text-cc-500 hover:text-gray-300 bg-cc-800 border-cc-700'
+            }`}
+          >
+            {showMilitaire && <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse shrink-0" />}
+            Militaire {opsMilitaireCount > 0 && showMilitaire && <span className="text-[8px] opacity-70">({opsMilitaireCount})</span>}
+          </button>
+          {canSeeEpidemie && (
+            <button
+              onClick={() => setShowEpidemie(v => !v)}
+              title="Zones épidémiques actives (5 min)"
+              className={`text-[10px] font-mono px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1 ${
+                showEpidemie
+                  ? 'bg-purple-900/60 text-purple-300 border-purple-700'
+                  : 'text-cc-500 hover:text-gray-300 bg-cc-800 border-cc-700'
+              }`}
+            >
+              {showEpidemie && <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse shrink-0" />}
+              Épidémies {opsEpidemieCount > 0 && showEpidemie && <span className="text-[8px] opacity-70">({opsEpidemieCount})</span>}
+            </button>
+          )}
+
           {user?.role === 'system_admin' && (
             <button
               onClick={() => refreshStatutsMutation.mutate()}
@@ -1106,6 +1271,83 @@ export function CartographiePage() {
                     'line-opacity': 0.7,
                   }}
                 />
+              </Source>
+
+              {/* ── SALLE DES OPÉRATIONS — Couches thématiques temps réel ── */}
+
+              {/* Conflits civils — cercles rouges par province */}
+              <Source id="ops-conflits" type="geojson" data={conflitsGeoJson}>
+                <Layer id="ops-conflits-halo" type="circle" paint={{
+                  'circle-radius': ['interpolate', ['linear'], ['get', 'count'], 1, 14, 10, 28, 30, 40] as any,
+                  'circle-color': ['case',
+                    ['>=', ['get', 'maxGravite'], 3], '#dc2626',
+                    ['>=', ['get', 'maxGravite'], 2], '#ea580c',
+                    '#f97316'] as any,
+                  'circle-opacity': 0.15,
+                  'circle-stroke-width': 0,
+                }} />
+                <Layer id="ops-conflits-circle" type="circle" paint={{
+                  'circle-radius': ['interpolate', ['linear'], ['get', 'count'], 1, 7, 10, 16, 30, 24] as any,
+                  'circle-color': ['case',
+                    ['>=', ['get', 'maxGravite'], 3], '#dc2626',
+                    ['>=', ['get', 'maxGravite'], 2], '#ea580c',
+                    '#f97316'] as any,
+                  'circle-opacity': 0.85,
+                  'circle-stroke-color': '#fff',
+                  'circle-stroke-width': 1.5,
+                }} />
+                <Layer id="ops-conflits-label" type="symbol" layout={{
+                  'text-field': ['to-string', ['get', 'count']] as any,
+                  'text-size': 11,
+                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                  'text-anchor': 'center',
+                }} paint={{ 'text-color': '#fff', 'text-halo-color': '#000', 'text-halo-width': 0.5 }} />
+              </Source>
+
+              {/* Renseignement militaire — losanges jaunes */}
+              <Source id="ops-militaire" type="geojson" data={militaireGeoJson}>
+                <Layer id="ops-militaire-halo" type="circle" paint={{
+                  'circle-radius': ['interpolate', ['linear'], ['get', 'count'], 1, 12, 20, 26] as any,
+                  'circle-color': '#eab308',
+                  'circle-opacity': 0.15,
+                  'circle-stroke-width': 0,
+                }} />
+                <Layer id="ops-militaire-circle" type="circle" paint={{
+                  'circle-radius': ['interpolate', ['linear'], ['get', 'count'], 1, 6, 20, 14] as any,
+                  'circle-color': '#eab308',
+                  'circle-opacity': 0.9,
+                  'circle-stroke-color': '#1c1917',
+                  'circle-stroke-width': 1.5,
+                }} />
+                <Layer id="ops-militaire-label" type="symbol" layout={{
+                  'text-field': ['to-string', ['get', 'count']] as any,
+                  'text-size': 10,
+                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                  'text-anchor': 'center',
+                }} paint={{ 'text-color': '#1c1917', 'text-halo-color': '#eab308', 'text-halo-width': 0.3 }} />
+              </Source>
+
+              {/* Épidémies — cercles violets */}
+              <Source id="ops-epidemie" type="geojson" data={epidemieGeoJson}>
+                <Layer id="ops-epidemie-halo" type="circle" paint={{
+                  'circle-radius': ['interpolate', ['linear'], ['get', 'cas'], 0, 12, 100, 28, 500, 42] as any,
+                  'circle-color': '#a855f7',
+                  'circle-opacity': 0.15,
+                  'circle-stroke-width': 0,
+                }} />
+                <Layer id="ops-epidemie-circle" type="circle" paint={{
+                  'circle-radius': ['interpolate', ['linear'], ['get', 'cas'], 0, 6, 100, 14, 500, 22] as any,
+                  'circle-color': '#a855f7',
+                  'circle-opacity': 0.88,
+                  'circle-stroke-color': '#fff',
+                  'circle-stroke-width': 1.5,
+                }} />
+                <Layer id="ops-epidemie-label" type="symbol" layout={{
+                  'text-field': ['to-string', ['get', 'cas']] as any,
+                  'text-size': 10,
+                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                  'text-anchor': 'center',
+                }} paint={{ 'text-color': '#fff', 'text-halo-color': '#000', 'text-halo-width': 0.5 }} />
               </Source>
 
               {/* Source toujours monté pour éviter unmount/remount lors de la navigation entre niveaux */}
@@ -1530,6 +1772,36 @@ export function CartographiePage() {
                 {showRues && !ruesPcode && (
                   <div className="mt-1 pt-1.5 border-t border-cc-700 text-[8px] text-blue-400 font-mono italic">
                     Voies : naviguez au<br />niveau Secteur/Groupement
+                  </div>
+                )}
+
+                {/* Légende couches opérationnelles */}
+                {(showConflits || showMilitaire || showEpidemie) && (
+                  <div className="mt-1.5 pt-1.5 border-t border-cc-700 space-y-1">
+                    <div className="text-[8px] font-mono text-cc-600 uppercase mb-1">Salle des ops</div>
+                    {showConflits && (
+                      <div className="flex items-center gap-2">
+                        <div className="w-3.5 h-3.5 rounded-full bg-red-500 shrink-0 opacity-85" />
+                        <span className="text-[9px] text-red-300">Conflits ({opsConflitsCount} prov.)</span>
+                      </div>
+                    )}
+                    {showMilitaire && (
+                      <div className="flex items-center gap-2">
+                        <div className="w-3.5 h-3.5 rounded-full bg-yellow-500 shrink-0 opacity-90" />
+                        <span className="text-[9px] text-yellow-300">Renseignement ({opsMilitaireCount} prov.)</span>
+                      </div>
+                    )}
+                    {showEpidemie && (
+                      <div className="flex items-center gap-2">
+                        <div className="w-3.5 h-3.5 rounded-full bg-purple-500 shrink-0 opacity-88" />
+                        <span className="text-[9px] text-purple-300">Épidémies ({opsEpidemieCount} prov.)</span>
+                      </div>
+                    )}
+                    {opsUpdatedAt > 0 && (
+                      <div className="text-[8px] font-mono text-cc-700">
+                        ↻ {new Date(opsUpdatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
