@@ -12,6 +12,7 @@ import re
 import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime as _rss_parse
 
 import httpx
 import structlog
@@ -101,6 +102,18 @@ KNOWN_ACTORS = [
 ]
 
 
+def _to_iso(raw: str | None) -> str:
+    if not raw:
+        return datetime.now(timezone.utc).isoformat()
+    try:
+        return _rss_parse(raw).isoformat()
+    except Exception:
+        try:
+            return datetime.fromisoformat(raw).isoformat()
+        except Exception:
+            return datetime.now(timezone.utc).isoformat()
+
+
 def _is_relevant(text: str, categories: set[str]) -> bool:
     if categories & EXCLUDED_CATEGORIES:
         return False
@@ -154,7 +167,7 @@ async def _fetch_one(
             title = (item.findtext("title") or "").strip()
             desc  = re.sub(r"<[^>]+>", "", item.findtext("description") or "")
             link  = (item.findtext("link") or "").strip()
-            pub   = item.findtext("pubDate") or datetime.now(timezone.utc).isoformat()
+            pub   = _to_iso(item.findtext("pubDate"))
             categories = {(c.text or "").strip().lower() for c in item.findall("category")}
             combined = f"{title} {desc}"
 

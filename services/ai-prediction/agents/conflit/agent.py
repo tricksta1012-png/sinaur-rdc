@@ -551,6 +551,11 @@ def _parse_dt(val: Any) -> datetime:
             return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
         except ValueError:
             pass
+        try:
+            from email.utils import parsedate_to_datetime
+            return parsedate_to_datetime(val)
+        except Exception:
+            pass
     return datetime.min.replace(tzinfo=timezone.utc)
 
 
