@@ -17,6 +17,7 @@ from .sources.kivu_morning_post import fetch_kmp_events
 from .sources.kivu_morning_post_youtube import fetch_kmp_youtube_events
 from .sources.presse_rdc import fetch_presse_rdc_events
 from .analyzers.threat_assessment import assess_provinces
+from agents import bus
 
 logger = structlog.get_logger(__name__)
 
@@ -128,6 +129,7 @@ class RenseignementAgent:
         await self._save_to_redis()
         await self._save_to_db(events, assessments, bulletin)
         await self._feed_prediction_cache(events, assessments)
+        await self._publish_conflit_events(events)
         logger.info("renseignement_agent.run_analysis.done",
                     events=len(events), assessments=len(assessments))
 
@@ -324,6 +326,35 @@ class RenseignementAgent:
         except Exception as exc:
             logger.error("renseignement_agent.db_save_failed", error=str(exc))
 
+    # ── Publication bus → Agent 9 conflit ────────────────────────────────────
+
+    _CONFLIT_CATEGORIES = {'ACTIVITE_MILITAIRE', 'INCIDENT_SECURITAIRE', 'DEPLACEMENT'}
+
+    async def _publish_conflit_events(self, events: list["IntelEvent"]) -> None:
+        """Publie les événements militaires/sécuritaires sur renseignement.intel → Agent 9."""
+        count = 0
+        for ev in events:
+            cat = ev.category.value if hasattr(ev.category, 'value') else str(ev.category or '')
+            if cat not in self._CONFLIT_CATEGORIES:
+                continue
+            await bus.publish("renseignement.intel", {
+                "source_id":   ev.source_id,
+                "external_id": ev.external_id,
+                "title":       ev.title,
+                "date":        ev.date,
+                "content":     ev.content,
+                "url":         ev.url,
+                "reliability": ev.reliability,
+                "category":    cat,
+                "p_code":      ev.p_code,
+                "province":    ev.province,
+                "territoire":  ev.territoire,
+                "actor_names": ev.actor_names or [],
+            })
+            count += 1
+        if count:
+            logger.info("renseignement_agent.intel_published", count=count)
+
     # ── Mots-clés graves → alerte précoce ────────────────────────────────────
 
     _MOTS_CLES_GRAVES = [
@@ -451,6 +482,8 @@ class RenseignementAgent:
                                 inserted=n, total_fetched=len(events))
         except Exception as exc:
             logger.warning("renseignement_agent.collecte_rapide.flux_failed", error=str(exc))
+
+        await self._publish_conflit_events(events)
 
     # Cache simple en mémoire (external_id déjà traités par source)
     _seen_ids: dict[str, set[str]] = {}

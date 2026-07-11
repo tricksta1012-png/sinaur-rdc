@@ -5,6 +5,7 @@ Topics:
   signalements.new          → Agent 8 (épidémie)
   signalements.catastrophe  → Agent 2 (prédiction)
   veille.new_event          → Agent 2 (prédiction), Agent 9 (conflit)
+  renseignement.intel       → Agent 9 (conflit) — événements ACTIVITE_MILITAIRE / INCIDENT_SECURITAIRE / DEPLACEMENT
   prediction.critical       → Agent 7 (logistique)
   anomalie_stocks.flag      → Agent 3 (antifraud)
   epidemie.alert            → Agent 6 (reporting)

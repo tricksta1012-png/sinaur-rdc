@@ -49,6 +49,13 @@ _CRITICAL_DISPLACEMENT_THRESHOLD = 10_000  # personnes
 _REDIS_CACHE_KEY = "conflit:events:v1"
 _REDIS_TTL       = 86_400  # 24 h
 
+_SEVERITY_FROM_INTEL_CATEGORY: dict[str, int] = {
+    "ACTIVITE_MILITAIRE":     4,
+    "INCIDENT_SECURITAIRE":   3,
+    "DEPLACEMENT":            3,
+    "DOMMAGE_INFRASTRUCTURE": 2,
+}
+
 
 # ---------------------------------------------------------------------------
 # Agent
@@ -114,6 +121,9 @@ class ConflitAgent:
         import asyncio
         asyncio.get_event_loop().create_task(
             bus.subscribe("veille.new_event", self._handle_veille_event)
+        )
+        asyncio.get_event_loop().create_task(
+            bus.subscribe("renseignement.intel", self._handle_renseignement_intel)
         )
 
         # Try Redis cache first — avoids cold-start latency and API dependency
@@ -238,6 +248,58 @@ class ConflitAgent:
 
             print(f"[conflit] bootstrap_done events_loaded={len(_EVENT_STORE)}", flush=True)
             logger.info("conflit_agent.bootstrap_done", events_loaded=len(_EVENT_STORE))
+
+            # Enrichissement depuis intel_events (renseignement agent — 30 derniers jours)
+            try:
+                from db import engine
+                from sqlalchemy import text as sa_text
+                async with engine.connect() as conn:
+                    result = await conn.execute(sa_text("""
+                        SELECT source_id, external_id, title, date, content, url,
+                               reliability, category, p_code, province, territoire, actor_names
+                        FROM intel_events
+                        WHERE category IN ('ACTIVITE_MILITAIRE', 'INCIDENT_SECURITAIRE', 'DEPLACEMENT')
+                          AND date >= NOW() - INTERVAL '30 days'
+                        ORDER BY date DESC
+                        LIMIT 500
+                    """))
+                    existing_ids = {e.get("external_id") for e in _EVENT_STORE}
+                    intel_count = 0
+                    for row in result:
+                        r = dict(row._mapping)
+                        ext_id = f"intel:{r['source_id']}:{r['external_id']}"
+                        if ext_id in existing_ids:
+                            continue
+                        cat = str(r.get("category") or "")
+                        sev = _SEVERITY_FROM_INTEL_CATEGORY.get(cat, 2)
+                        dt = r.get("date")
+                        event_date = dt.isoformat() if hasattr(dt, "isoformat") else str(dt or datetime.now(timezone.utc).isoformat())
+                        _EVENT_STORE.append({
+                            "external_id":         ext_id,
+                            "source":              r["source_id"],
+                            "event_date":          event_date,
+                            "event_type":          "conflict",
+                            "province":            r["province"],
+                            "p_code":              r["p_code"],
+                            "severity":            sev,
+                            "displacement_risk":   0.70 if cat == "DEPLACEMENT" else 0.50 + (sev - 1) * 0.05,
+                            "territoire":          r["territoire"],
+                            "coordinates":         None,
+                            "fatalities_reported": None,
+                            "raw_notes":           r["content"],
+                            "source_url":          r["url"],
+                            "actor_names":         r.get("actor_names") or [],
+                            "reliability":         float(r.get("reliability") or 0.75),
+                            "sources_count":       1,
+                        })
+                        existing_ids.add(ext_id)
+                        intel_count += 1
+                    print(f"[conflit] bootstrap_intel count={intel_count}", flush=True)
+                    logger.info("conflit_agent.bootstrap_intel_done", count=intel_count)
+            except Exception as intel_exc:
+                print(f"[conflit] bootstrap_intel_FAILED error={intel_exc}", flush=True)
+                logger.warning("conflit_agent.bootstrap_intel_failed", error=str(intel_exc))
+
             await self._save_to_redis()
         except Exception as exc:
             import traceback
@@ -246,8 +308,42 @@ class ConflitAgent:
             logger.warning("conflit_agent.bootstrap_failed", error=str(exc))
 
     # ------------------------------------------------------------------
-    # Bus handler
+    # Bus handlers
     # ------------------------------------------------------------------
+
+    async def _handle_renseignement_intel(self, payload: dict) -> None:
+        """
+        Reçoit les événements militaires/sécuritaires du renseignement agent (topic renseignement.intel)
+        et les intègre dans _EVENT_STORE pour enrichir la surveillance conflits.
+        """
+        try:
+            external_id = f"intel:{payload.get('source_id')}:{payload.get('external_id')}"
+            if any(e.get("external_id") == external_id for e in _EVENT_STORE):
+                return
+            cat = str(payload.get("category") or "")
+            severity = _SEVERITY_FROM_INTEL_CATEGORY.get(cat, 2)
+            _EVENT_STORE.append({
+                "external_id":         external_id,
+                "source":              payload.get("source_id", "renseignement"),
+                "event_date":          payload.get("date") or datetime.now(timezone.utc).isoformat(),
+                "event_type":          "conflict",
+                "province":            payload.get("province"),
+                "p_code":              payload.get("p_code"),
+                "severity":            severity,
+                "displacement_risk":   0.70 if cat == "DEPLACEMENT" else 0.50 + (severity - 1) * 0.05,
+                "territoire":          payload.get("territoire"),
+                "coordinates":         None,
+                "fatalities_reported": None,
+                "raw_notes":           payload.get("content"),
+                "source_url":          payload.get("url"),
+                "actor_names":         payload.get("actor_names") or [],
+                "reliability":         payload.get("reliability", 0.75),
+                "sources_count":       1,
+            })
+            logger.debug("conflit_agent.renseignement_intel_ingested",
+                         external_id=external_id, province=payload.get("province"))
+        except Exception as exc:
+            logger.error("conflit_agent.renseignement_intel_error", error=str(exc))
 
     async def _handle_veille_event(self, payload: dict) -> None:
         """
