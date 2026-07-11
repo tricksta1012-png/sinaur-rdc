@@ -158,7 +158,7 @@ export async function publicRoutes(fastify: FastifyInstance) {
       SELECT
         d.pcode,
         d.name_fr,
-        ST_AsGeoJSON(ST_Simplify(d.geom, 0.01))::json AS geometry,
+        ST_AsGeoJSON(ST_Simplify(d.geometry, 0.01))::json AS geometry,
         COALESCE(ps.events_30d, 0)::int   AS events_30d,
         COALESCE(ps.events_7d, 0)::int    AS events_7d,
         COALESCE(ps.active_alerts, 0)::int AS active_alerts,
@@ -166,7 +166,7 @@ export async function publicRoutes(fastify: FastifyInstance) {
       FROM admin_divisions d
       LEFT JOIN public_stats ps ON ps.pcode = d.pcode
       WHERE d.level = 1
-        AND d.geom IS NOT NULL
+        AND d.geometry IS NOT NULL
     ` as unknown as {
         pcode: string; nameFr: string; geometry: object | null;
         events30d: number; events7d: number; activeAlerts: number;
