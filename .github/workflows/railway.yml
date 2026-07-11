@@ -1,7 +1,6 @@
 name: Deploy to Railway
 
 on:
-  # Déclenché après que le workflow Docker ait réussi (nouvelles images disponibles)
   workflow_run:
     workflows: [Docker]
     types: [completed]
@@ -12,7 +11,6 @@ jobs:
   deploy:
     name: Deploy ${{ matrix.service.name }}
     runs-on: ubuntu-latest
-    # Ne déployer que si le workflow Docker a réussi (ou si déclenché manuellement)
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     strategy:
       fail-fast: false
@@ -21,22 +19,22 @@ jobs:
         service:
           - name: api
             service_id_secret: RAILWAY_SERVICE_API_ID
-            cmd: '["node", "apps/api/dist/index.js"]'
+            cmd: 'node apps/api/dist/index.js'
           - name: ai-prediction
             service_id_secret: RAILWAY_SERVICE_AI_ID
-            cmd: '["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]'
+            cmd: 'uvicorn main:app --host 0.0.0.0 --port 8000 --log-level info'
           - name: command-center
             service_id_secret: RAILWAY_SERVICE_CC_ID
-            cmd: '["/bin/sh", "-c", "envsubst ${PORT} < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g daemon off;"]'
+            cmd: ''
           - name: public
             service_id_secret: RAILWAY_SERVICE_PUBLIC_ID
-            cmd: '["/bin/sh", "-c", "envsubst ${PORT} < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g daemon off;"]'
+            cmd: ''
           - name: alerting
             service_id_secret: RAILWAY_SERVICE_ALERTING_ID
-            cmd: '["node", "services/alerting/dist/index.js"]'
+            cmd: 'node services/alerting/dist/index.js'
           - name: agent9-ingestion
             service_id_secret: RAILWAY_SERVICE_AGENT9_ID
-            cmd: '["node", "services/agent9-ingestion/dist/index.js"]'
+            cmd: 'node services/agent9-ingestion/dist/index.js'
 
     steps:
       - uses: actions/checkout@v6
@@ -55,22 +53,15 @@ jobs:
             SHA=$(git rev-parse --short HEAD)
             DEPLOY_DIR=$(mktemp -d)
 
-            # Dockerfile minimal — force le builder DOCKERFILE (pas Nixpacks)
-            # et réécrit le CMD exact pour éviter la détection auto de Railway
-            cat > "$DEPLOY_DIR/Dockerfile" <<DOCKERFILE
-FROM matroschka/sinaur-rdc-${SERVICE}:sha-${SHA}
-CMD ${SERVICE_CMD}
-DOCKERFILE
+            echo "FROM matroschka/sinaur-rdc-${SERVICE}:sha-${SHA}" > "$DEPLOY_DIR/Dockerfile"
+            if [ -n "$SERVICE_CMD" ]; then
+              printf 'CMD ["%s"]\n' "$(echo "$SERVICE_CMD" | sed 's/ /", "/g')" >> "$DEPLOY_DIR/Dockerfile"
+            fi
 
-            # railway.toml : désactive Nixpacks, utilise le Dockerfile tel quel
-            cat > "$DEPLOY_DIR/railway.toml" <<TOML
-[build]
-builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
-TOML
+            printf '[build]\nbuilder = "DOCKERFILE"\ndockerfilePath = "Dockerfile"\n' > "$DEPLOY_DIR/railway.toml"
 
             cd "$DEPLOY_DIR"
             railway up --service "$SERVICE_ID" --detach
           else
-            echo "⚠️  ${SERVICE}: secret ${{ matrix.service.service_id_secret }} not set, skipping."
+            echo "Warning: secret ${{ matrix.service.service_id_secret }} not set, skipping $SERVICE"
           fi
