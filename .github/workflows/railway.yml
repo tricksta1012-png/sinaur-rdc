@@ -21,16 +21,22 @@ jobs:
         service:
           - name: api
             service_id_secret: RAILWAY_SERVICE_API_ID
+            cmd: '["node", "apps/api/dist/index.js"]'
           - name: ai-prediction
             service_id_secret: RAILWAY_SERVICE_AI_ID
+            cmd: '["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]'
           - name: command-center
             service_id_secret: RAILWAY_SERVICE_CC_ID
+            cmd: '["/bin/sh", "-c", "envsubst ${PORT} < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g daemon off;"]'
           - name: public
             service_id_secret: RAILWAY_SERVICE_PUBLIC_ID
+            cmd: '["/bin/sh", "-c", "envsubst ${PORT} < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g daemon off;"]'
           - name: alerting
             service_id_secret: RAILWAY_SERVICE_ALERTING_ID
+            cmd: '["node", "services/alerting/dist/index.js"]'
           - name: agent9-ingestion
             service_id_secret: RAILWAY_SERVICE_AGENT9_ID
+            cmd: '["node", "services/agent9-ingestion/dist/index.js"]'
 
     steps:
       - uses: actions/checkout@v6
@@ -43,13 +49,26 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           SERVICE_ID: ${{ secrets[matrix.service.service_id_secret] }}
           SERVICE: ${{ matrix.service.name }}
+          SERVICE_CMD: ${{ matrix.service.cmd }}
         run: |
           if [ -n "$SERVICE_ID" ]; then
-            # Deploy depuis un répertoire vide contenant uniquement le Dockerfile
-            # Évite que Railway détecte le monorepo et remplace le CMD de l'image
             SHA=$(git rev-parse --short HEAD)
             DEPLOY_DIR=$(mktemp -d)
-            echo "FROM matroschka/sinaur-rdc-${SERVICE}:sha-${SHA}" > "$DEPLOY_DIR/Dockerfile"
+
+            # Dockerfile minimal — force le builder DOCKERFILE (pas Nixpacks)
+            # et réécrit le CMD exact pour éviter la détection auto de Railway
+            cat > "$DEPLOY_DIR/Dockerfile" <<DOCKERFILE
+FROM matroschka/sinaur-rdc-${SERVICE}:sha-${SHA}
+CMD ${SERVICE_CMD}
+DOCKERFILE
+
+            # railway.toml : désactive Nixpacks, utilise le Dockerfile tel quel
+            cat > "$DEPLOY_DIR/railway.toml" <<TOML
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+TOML
+
             cd "$DEPLOY_DIR"
             railway up --service "$SERVICE_ID" --detach
           else
