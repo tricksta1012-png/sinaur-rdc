@@ -54,11 +54,16 @@ jobs:
             DEPLOY_DIR=$(mktemp -d)
 
             echo "FROM matroschka/sinaur-rdc-${SERVICE}:sha-${SHA}" > "$DEPLOY_DIR/Dockerfile"
-            if [ -n "$SERVICE_CMD" ]; then
-              printf 'CMD ["%s"]\n' "$(echo "$SERVICE_CMD" | sed 's/ /", "/g')" >> "$DEPLOY_DIR/Dockerfile"
-            fi
 
-            printf '[build]\nbuilder = "DOCKERFILE"\ndockerfilePath = "Dockerfile"\n' > "$DEPLOY_DIR/railway.toml"
+            # railway.toml : DOCKERFILE builder + startCommand natif Railway
+            # (startCommand override Nixpacks même en mode DOCKERFILE)
+            echo '[build]'                        > "$DEPLOY_DIR/railway.toml"
+            echo 'builder = "DOCKERFILE"'        >> "$DEPLOY_DIR/railway.toml"
+            echo 'dockerfilePath = "Dockerfile"' >> "$DEPLOY_DIR/railway.toml"
+            if [ -n "$SERVICE_CMD" ]; then
+              echo '[deploy]'                     >> "$DEPLOY_DIR/railway.toml"
+              echo "startCommand = \"${SERVICE_CMD}\"" >> "$DEPLOY_DIR/railway.toml"
+            fi
 
             cd "$DEPLOY_DIR"
             railway up --service "$SERVICE_ID" --detach
