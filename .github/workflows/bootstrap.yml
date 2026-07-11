@@ -1,0 +1,71 @@
+name: Bootstrap Admin Account
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      PROJECT_ID: b8deb892-93a6-4ea1-adfc-96220a7fa7e1
+      BOOTSTRAP_SECRET_VALUE: sinaur-bootstrap-2026
+      API_URL: https://api-production-65ad.up.railway.app
+
+    steps:
+      - name: Get Railway environment ID
+        id: env_id
+        run: |
+          RESP=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\": \"{ project(id: \\\"$PROJECT_ID\\\") { environments { edges { node { id name } } } } }\"}")
+          echo "Response: $RESP"
+          ENV_ID=$(echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); envs=d['data']['project']['environments']['edges']; print(next(e['node']['id'] for e in envs if 'production' in e['node']['name'].lower() or True))")
+          echo "env_id=$ENV_ID" >> $GITHUB_OUTPUT
+          echo "Found environment: $ENV_ID"
+
+      - name: Set BOOTSTRAP_SECRET on api service
+        env:
+          SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_API_ID }}
+          ENV_ID: ${{ steps.env_id.outputs.env_id }}
+        run: |
+          RESP=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\": \"mutation { variableUpsert(input: { projectId: \\\"$PROJECT_ID\\\", environmentId: \\\"$ENV_ID\\\", serviceId: \\\"$SERVICE_ID\\\", name: \\\"BOOTSTRAP_SECRET\\\", value: \\\"$BOOTSTRAP_SECRET_VALUE\\\" }) }\"}")
+          echo "Set variable response: $RESP"
+
+      - name: Wait for API to be ready
+        run: |
+          echo "Waiting for API to reload with new env var..."
+          for i in $(seq 1 40); do
+            R=$(curl -s "$API_URL/health" 2>/dev/null)
+            echo "[$i] $R"
+            echo "$R" | grep -q '"status":"ok"' && break
+            sleep 5
+          done
+
+      - name: Create admin account
+        run: |
+          RESP=$(curl -s -X POST "$API_URL/auth/bootstrap" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"bootstrapSecret\": \"$BOOTSTRAP_SECRET_VALUE\",
+              \"email\": \"admin@sinaur-rdc.cd\",
+              \"password\": \"TestSinaur2026!\",
+              \"displayName\": \"Admin SINAUR\"
+            }")
+          echo "Bootstrap response: $RESP"
+          echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print('SUCCESS' if d.get('success') else 'FAILED: ' + str(d))"
+
+      - name: Remove BOOTSTRAP_SECRET
+        env:
+          SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_API_ID }}
+          ENV_ID: ${{ steps.env_id.outputs.env_id }}
+        run: |
+          RESP=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\": \"mutation { variableDelete(input: { projectId: \\\"$PROJECT_ID\\\", environmentId: \\\"$ENV_ID\\\", serviceId: \\\"$SERVICE_ID\\\", name: \\\"BOOTSTRAP_SECRET\\\" }) }\"}")
+          echo "Delete variable response: $RESP"
