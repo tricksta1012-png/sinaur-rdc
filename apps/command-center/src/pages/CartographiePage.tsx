@@ -298,6 +298,14 @@ export function CartographiePage() {
   const [showConflits, setShowConflits]   = useState(true);
   const [showEpidemie, setShowEpidemie]   = useState(true);
   const [showMilitaire, setShowMilitaire] = useState(true);
+  const [fenetre, setFenetre]             = useState<'24h' | '7j' | '30j'>('7j');
+
+  // Pulsation alarme CRITIQUE (indépendant du mode surveillance)
+  const [alarmPulse, setAlarmPulse] = useState(false);
+  useEffect(() => {
+    const t = setInterval(() => setAlarmPulse(p => !p), 800);
+    return () => clearInterval(t);
+  }, []);
 
   // Search state
   const [searchQuery, setSearchQuery]           = useState('');
@@ -428,10 +436,11 @@ export function CartographiePage() {
 
   // Salle des opérations — Flux conflits + renseignement (30 s)
   const isRestricted = ['humanitarian_partner', 'national_decision_maker', 'system_admin'].includes(user?.role ?? '');
+  const fenetreDays  = fenetre === '24h' ? 1 : fenetre === '7j' ? 7 : 30;
   const { data: fluxOpsRaw, dataUpdatedAt: opsUpdatedAt } = useQuery({
-    queryKey: ['flux-ops'],
+    queryKey: ['flux-ops', fenetreDays],
     queryFn: () => apiClient
-      .get<any[]>('/flux/evenements?depuis_jours=7&limit=300')
+      .get<any[]>(`/flux/evenements?depuis_jours=${fenetreDays}&limit=300`)
       .then(r => r.data),
     enabled: showConflits || showMilitaire,
     staleTime: 30_000,
@@ -646,6 +655,18 @@ export function CartographiePage() {
   const opsConflitsCount  = conflitsGeoJson.features.length;
   const opsMilitaireCount = militaireGeoJson.features.length;
   const opsEpidemieCount  = epidemieGeoJson.features.length;
+
+  // Points d'alarme — uniquement les événements CRITIQUE (cercle pulsant rouge)
+  const alarmGeoJson = useMemo<GeoJSON.FeatureCollection>(() => {
+    const features: GeoJSON.Feature[] = [];
+    for (const f of conflitsGeoJson.features) {
+      if ((f.properties?.maxGravite ?? 0) >= 3) features.push(f);
+    }
+    for (const f of militaireGeoJson.features) {
+      if ((f.properties?.maxGravite ?? 0) >= 3) features.push(f);
+    }
+    return { type: 'FeatureCollection', features };
+  }, [conflitsGeoJson, militaireGeoJson]);
 
   // Mutations nominations
   const validateNomMutation = useMutation({
@@ -1026,6 +1047,21 @@ export function CartographiePage() {
               SURVEILLANCE {survIndex + 1}/{crisisFeatures.length}
             </span>
           )}
+          {/* Fenêtre temporelle */}
+          <div className="flex rounded-lg overflow-hidden border border-cc-700 shrink-0">
+            {(['24h', '7j', '30j'] as const).map(f => (
+              <button
+                key={f}
+                onClick={() => setFenetre(f)}
+                className={`text-[10px] font-mono px-2.5 py-1 transition-colors ${
+                  fenetre === f ? 'bg-sinaur-700 text-white' : 'text-cc-500 hover:text-gray-300 bg-cc-800'
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+
           {/* Fond de carte */}
           <div className="flex rounded-lg overflow-hidden border border-cc-700">
             {(Object.entries(FONDS_CARTE) as [FondType, typeof FONDS_CARTE[FondType]][]).map(([cle, fond]) => (
@@ -1274,6 +1310,23 @@ export function CartographiePage() {
               </Source>
 
               {/* ── SALLE DES OPÉRATIONS — Couches thématiques temps réel ── */}
+
+              {/* Alarmes CRITIQUE — halo pulsant rouge (rendu en premier = derrière) */}
+              <Source id="ops-alarm" type="geojson" data={alarmGeoJson}>
+                <Layer id="ops-alarm-outer" type="circle" paint={{
+                  'circle-radius': alarmPulse ? 44 : 28,
+                  'circle-color': '#dc2626',
+                  'circle-opacity': alarmPulse ? 0.06 : 0.14,
+                  'circle-stroke-width': alarmPulse ? 2 : 1,
+                  'circle-stroke-color': '#dc2626',
+                  'circle-stroke-opacity': alarmPulse ? 0.9 : 0.3,
+                }} />
+                <Layer id="ops-alarm-inner" type="circle" paint={{
+                  'circle-radius': alarmPulse ? 20 : 14,
+                  'circle-color': '#dc2626',
+                  'circle-opacity': alarmPulse ? 0.25 : 0.12,
+                }} />
+              </Source>
 
               {/* Conflits civils — cercles rouges par province */}
               <Source id="ops-conflits" type="geojson" data={conflitsGeoJson}>
@@ -1797,11 +1850,16 @@ export function CartographiePage() {
                         <span className="text-[9px] text-purple-300">Épidémies ({opsEpidemieCount} prov.)</span>
                       </div>
                     )}
-                    {opsUpdatedAt > 0 && (
-                      <div className="text-[8px] font-mono text-cc-700">
-                        ↻ {new Date(opsUpdatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    {alarmGeoJson.features.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <div className={`w-3.5 h-3.5 rounded-full border-2 border-red-500 shrink-0 transition-opacity duration-300 ${alarmPulse ? 'opacity-100' : 'opacity-30'}`} />
+                        <span className="text-[9px] text-red-400 font-bold">⚠ CRITIQUE ({alarmGeoJson.features.length})</span>
                       </div>
                     )}
+                    <div className="text-[8px] font-mono text-cc-700">
+                      Fenêtre : {fenetre} · ↻ 30 s
+                      {opsUpdatedAt > 0 && ` · ${new Date(opsUpdatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`}
+                    </div>
                   </div>
                 )}
               </div>

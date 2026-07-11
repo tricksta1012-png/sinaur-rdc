@@ -3,7 +3,6 @@ import { useAuthStore } from './stores/auth.js';
 import { CCLayout } from './components/CCLayout.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { DashboardPage } from './pages/DashboardPage.js';
-import { OpsRoomPage } from './pages/OpsRoomPage.js';
 import { CrisesPage } from './pages/CrisesPage.js';
 import { RegistrePage } from './pages/RegistrePage.js';
 import { DistributionsPage } from './pages/DistributionsPage.js';
@@ -49,7 +48,7 @@ export default function App() {
       >
         <Route index                 element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard"      element={<DashboardPage />} />
-        <Route path="ops"            element={<OpsRoomPage />} />
+        <Route path="ops"            element={<Navigate to="/cartographie" replace />} />
         <Route path="crises"         element={<CrisesPage />} />
         <Route path="registre"       element={<RegistrePage />} />
         <Route path="distributions"  element={<DistributionsPage />} />

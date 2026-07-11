@@ -39,7 +39,6 @@ const ROLE_META: Record<string, { label: string; color: string }> = {
 // Nav items avec les rôles autorisés (undefined = tous les rôles)
 const NAV_ITEMS = [
   { to: '/dashboard',     icon: '📊', labelKey: 'nav_dashboard'    },
-  { to: '/ops',           icon: '🖥️', labelKey: 'nav_ops'           },
   { to: '/crises',        icon: '🚨', labelKey: 'nav_crises'        },
   { to: '/idp',           icon: '🏕️', labelKey: 'nav_idp'           },
   { to: '/epidemie',      icon: '🦠', labelKey: 'nav_epidemie'      },
@@ -50,7 +49,7 @@ const NAV_ITEMS = [
   { to: '/rapports',      icon: '📄', labelKey: 'nav_reports'       },
   { to: '/ai',            icon: '🤖', labelKey: 'nav_ai',
     roles: ['system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin', 'humanitarian_partner'] },
-  { to: '/cartographie',  icon: '🗺️', labelKey: 'nav_cartographie' },
+  { to: '/cartographie',  icon: '🛰️', labelKey: 'nav_cartographie' },
   { to: '/propositions',  icon: '📰', labelKey: 'nav_propositions',
     roles: ['system_admin', 'national_decision_maker', 'provincial_coordinator', 'territory_admin'] },
   { to: '/rues',          icon: '🏙️', labelKey: 'nav_rues',

@@ -4,7 +4,7 @@ import { initReactI18next } from 'react-i18next';
 const resources = {
   fr: { translation: {
     nav_dashboard: 'Tableau de bord',
-    nav_ops: 'Salle des opérations',
+    nav_ops: 'Salle des Opérations',
     nav_crises: 'Gestion des crises',
     nav_registry: 'Registre sinistrés',
     nav_distributions: 'Distributions',
@@ -17,7 +17,7 @@ const resources = {
     nav_etd: 'Agent ETD',
     nav_idp: 'Suivi Déplacés',
     nav_epidemie: 'Épidémie & Santé',
-    nav_cartographie: 'Cartographie Admin',
+    nav_cartographie: 'Salle des Opérations',
     nav_responsables: 'Responsables ETD',
     nav_propositions: 'Nominations détectées',
     nav_rues: 'Rues & Voies',
@@ -57,7 +57,7 @@ const resources = {
     nav_etd: 'Wakala wa ETD',
     nav_idp: 'Ufuatiliaji wa Wakimbizi',
     nav_epidemie: 'Janga & Afya',
-    nav_cartographie: 'Ramani ya Utawala',
+    nav_cartographie: 'Chumba cha Operesheni',
     nav_responsables: 'Wasimamizi wa ETD',
     nav_propositions: 'Uteuzi Uliogunduliwa',
     nav_rues: 'Barabara & Njia',
