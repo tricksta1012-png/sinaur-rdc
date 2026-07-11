@@ -152,27 +152,28 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.send({ success: true, data: { message: 'Mot de passe réinitialisé avec succès' } });
   });
 
-  // POST /auth/bootstrap — crée le premier system_admin (nécessite BOOTSTRAP_SECRET)
+  // POST /auth/bootstrap — crée le premier system_admin
+  // Si BOOTSTRAP_SECRET est configuré : le secret est requis.
+  // Si BOOTSTRAP_SECRET est absent ET aucun admin n'existe : autorisé (first-run).
   fastify.post('/auth/bootstrap', async (request, reply) => {
     const secret = fastify.config.BOOTSTRAP_SECRET;
-    if (!secret) {
-      return reply.status(403).send({ success: false, error: { code: 'FORBIDDEN', message: 'Bootstrap non activé' } });
-    }
 
     const body = z.object({
-      bootstrapSecret: z.string(),
+      bootstrapSecret: z.string().optional(),
       email: z.string().email(),
       password: z.string().min(10),
       displayName: z.string().min(2),
     }).parse(request.body);
 
-    if (body.bootstrapSecret !== secret) {
-      return reply.status(403).send({ success: false, error: { code: 'FORBIDDEN', message: 'Secret invalide' } });
-    }
-
     const [existing] = await sql`SELECT id FROM users WHERE role = 'system_admin' AND deleted_at IS NULL LIMIT 1`;
     if (existing) {
       return reply.status(409).send({ success: false, error: { code: 'ALREADY_BOOTSTRAPPED', message: 'Un admin existe déjà' } });
+    }
+
+    if (secret) {
+      if (body.bootstrapSecret !== secret) {
+        return reply.status(403).send({ success: false, error: { code: 'FORBIDDEN', message: 'Secret invalide' } });
+      }
     }
 
     const hash = await bcrypt.hash(body.password, 12);
