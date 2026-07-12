@@ -160,4 +160,56 @@ export async function conflitRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.status(status).send(data);
     },
   );
+
+  // POST /conflit/analyser-strategique — intelligence stratégique : deux logiques séparées
+  fastify.post(
+    '/conflit/analyser-strategique',
+    { preHandler: [requireAuth, requireRole(...RESTRICTED_ROLES)] },
+    async (request, reply) => {
+      const { aiPost } = await import('../services/aiClient.js');
+      const userRole = request.jwtUser.role;
+      const body = z.object({
+        evenement: z.object({
+          titre:            z.string().optional(),
+          event_type:       z.string().optional(),
+          province:         z.string().optional(),
+          territoire:       z.string().optional(),
+          p_code:           z.string().optional(),
+          description:      z.string().optional(),
+          raw_notes:        z.string().optional(),
+          displacement_risk:z.number().optional(),
+          severity:         z.number().optional(),
+          coordinates:      z.array(z.number()).length(2).optional(),
+          actor_names:      z.array(z.string()).optional(),
+        }),
+        acteurs: z.array(z.string()).default([]),
+      }).parse(request.body);
+      const { status, data } = await aiPost(
+        '/internal/conflit/analyser-strategique', body,
+        { 'X-User-Role': userRole },
+      );
+      return reply.status(status).send(data);
+    },
+  );
+
+  // GET /conflit/points-strategiques — géographie de valeur (mines, axes, frontières)
+  fastify.get(
+    '/conflit/points-strategiques',
+    { preHandler: [requireAuth, requireRole(...RESTRICTED_ROLES)] },
+    async (request, reply) => {
+      const userRole = request.jwtUser.role;
+      const { groupe, type_valeur } = z.object({
+        groupe:      z.string().optional(),
+        type_valeur: z.string().optional(),
+      }).parse(request.query);
+      const params: Record<string, string> = {};
+      if (groupe)      params.groupe      = groupe;
+      if (type_valeur) params.type_valeur = type_valeur;
+      const { status, data } = await aiGet(
+        '/internal/conflit/points-strategiques', params,
+        { 'X-User-Role': userRole },
+      );
+      return reply.status(status).send(data);
+    },
+  );
 }

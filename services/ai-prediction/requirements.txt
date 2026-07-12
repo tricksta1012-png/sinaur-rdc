@@ -20,3 +20,5 @@ lxml==5.2.2
 feedparser==6.0.11
 geopy==2.4.1
 anthropic>=0.40.0
+pypdf>=4.0.0     # extraction texte depuis PDF (upload bibliothèque RAG)
+voyageai>=0.3.0  # optionnel — active la recherche vectorielle (sinon mode trigram)

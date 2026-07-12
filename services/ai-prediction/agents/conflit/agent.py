@@ -395,6 +395,31 @@ class ConflitAgent:
         except Exception as exc:
             logger.warning("conflit_agent.media_fetch_failed", error=str(exc))
 
+        # Enrichir avec GDELT (temps réel, global, aucune clé)
+        try:
+            from agents.conflit.sources.gdelt import fetch_gdelt_events
+            gdelt_events = await fetch_gdelt_events(since_days=30)
+            existing_ids = {e.get("external_id") for e in _EVENT_STORE}
+            new_gdelt = [e for e in gdelt_events if e.get("external_id") not in existing_ids]
+            _EVENT_STORE.extend(new_gdelt)
+            logger.info("conflit_agent.gdelt_ingested", new_events=len(new_gdelt),
+                        total_fetched=len(gdelt_events))
+        except Exception as exc:
+            logger.warning("conflit_agent.gdelt_fetch_failed", error=str(exc))
+
+        # Enrichir avec UCDP GED (données académiques vérifiées, 180 derniers jours)
+        # Sonde automatiquement les versions 25.1 → 22.1 jusqu'à en trouver une active.
+        try:
+            from agents.conflit.sources.ucdp import fetch_ucdp_events
+            ucdp_events = await fetch_ucdp_events(since_days=180)
+            existing_ids = {e.get("external_id") for e in _EVENT_STORE}
+            new_ucdp = [e for e in ucdp_events if e.get("external_id") not in existing_ids]
+            _EVENT_STORE.extend(new_ucdp)
+            logger.info("conflit_agent.ucdp_ingested", new_events=len(new_ucdp),
+                        total_fetched=len(ucdp_events))
+        except Exception as exc:
+            logger.warning("conflit_agent.ucdp_fetch_failed", error=str(exc))
+
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(days=30)
 

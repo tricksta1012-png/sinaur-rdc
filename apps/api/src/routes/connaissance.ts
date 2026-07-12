@@ -97,4 +97,83 @@ export async function connaissanceRoutes(fastify: FastifyInstance): Promise<void
       return reply.status(status).send(data);
     },
   );
+
+  // ── RAG — Bibliothèque analytique ─────────────────────────────────────────
+
+  // GET /connaissance/rag/status
+  fastify.get('/connaissance/rag/status',
+    { preHandler: [requireAuth, requireRole(...RESTRICTED_ROLES)] },
+    async (_req, reply) => {
+      const { status, data } = await aiGet('/internal/connaissance/rag/status');
+      return reply.status(status).send(data);
+    },
+  );
+
+  // GET /connaissance/rag/documents
+  fastify.get('/connaissance/rag/documents',
+    { preHandler: [requireAuth, requireRole(...RESTRICTED_ROLES)] },
+    async (request, reply) => {
+      const { type_document, limit, offset } = z.object({
+        type_document: z.string().optional(),
+        limit:  z.coerce.number().int().min(1).max(200).default(50),
+        offset: z.coerce.number().int().min(0).default(0),
+      }).parse(request.query);
+      const params: Record<string, string> = { limit: String(limit), offset: String(offset) };
+      if (type_document) params.type_document = type_document;
+      const { status, data } = await aiGet('/internal/connaissance/rag/documents', params);
+      return reply.status(status).send(data);
+    },
+  );
+
+  // POST /connaissance/rag/documents  (texte collé OU PDF en base64)
+  fastify.post<{ Body: unknown }>('/connaissance/rag/documents',
+    {
+      preHandler: [requireAuth, requireRole('system_admin', 'national_decision_maker')],
+      bodyLimit: 20 * 1024 * 1024,   // 20 MB — pour les PDF base64
+    },
+    async (request, reply) => {
+      const body = z.object({
+        titre:           z.string().min(3).max(500),
+        type_document:   z.enum(['RAPPORT', 'ANALYSE', 'FICHE_GROUPE', 'NOTE_TERRAIN']).default('RAPPORT'),
+        source:          z.string().default('INTERNE'),
+        url:             z.string().url().optional(),
+        date_publication:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        fiabilite:       z.number().min(0).max(1).default(0.7),
+        themes:          z.array(z.string()).default([]),
+        texte:           z.string().optional(),      // texte collé (texte OU pdf_base64)
+        pdf_base64:      z.string().optional(),      // PDF encodé en base64
+        pdf_filename:    z.string().optional(),
+        ajoute_par:      z.string().optional(),
+      }).refine(d => !!(d.texte || d.pdf_base64), {
+        message: 'texte ou pdf_base64 requis',
+      }).parse(request.body);
+      const { status, data } = await aiPost('/internal/connaissance/rag/documents', body);
+      return reply.status(status).send(data);
+    },
+  );
+
+  // POST /connaissance/rag/analyser-evenement
+  fastify.post('/connaissance/rag/analyser-evenement',
+    { preHandler: [requireAuth, requireRole(...RESTRICTED_ROLES)] },
+    async (request, reply) => {
+      const body = z.object({
+        id:          z.string().optional(),
+        titre:       z.string().min(3),
+        description: z.string().optional(),
+        source_agent:z.string().optional(),
+      }).parse(request.body);
+      const { status, data } = await aiPost('/internal/connaissance/rag/analyser-evenement', body);
+      return reply.status(status).send(data);
+    },
+  );
+
+  // GET /connaissance/rag/analyses
+  fastify.get('/connaissance/rag/analyses',
+    { preHandler: [requireAuth, requireRole(...RESTRICTED_ROLES)] },
+    async (request, reply) => {
+      const { limit } = z.object({ limit: z.coerce.number().int().min(1).max(100).default(20) }).parse(request.query);
+      const { status, data } = await aiGet('/internal/connaissance/rag/analyses', { limit: String(limit) });
+      return reply.status(status).send(data);
+    },
+  );
 }

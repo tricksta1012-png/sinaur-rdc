@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { apiClient } from '../lib/api.js';
 import { FraicheurBadge } from '../components/FraicheurBadge.js';
+import { useAuthStore } from '../stores/auth.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type KbTab = 'entites' | 'graphe' | 'apprentissage' | 'projection';
+type KbTab = 'entites' | 'graphe' | 'apprentissage' | 'projection' | 'bibliotheque';
 
 interface Entite {
   id: number;
@@ -104,6 +105,55 @@ interface Projection {
   hubs_reseau: HubReseau[];
   synthese: string;
 }
+
+interface KbDocument {
+  id: number;
+  titre: string;
+  type_document: string;
+  source: string;
+  url: string | null;
+  date_publication: string | null;
+  fiabilite: number;
+  themes: string[];
+  nb_fragments: number;
+  indexe_le: string | null;
+  ajoute_le: string;
+  ajoute_par: string;
+}
+
+interface KbAnalyse {
+  id: number;
+  evenement_id: string | null;
+  evenement_titre: string;
+  source_agent: string;
+  analyse_brute: string | null;
+  sources_utilisees: string[];
+  pertinence_max: number;
+  created_at: string;
+}
+
+interface RagStatus {
+  documents: number;
+  fragments: number;
+  avec_embeddings: number;
+  analyses: number;
+  mode: 'vectoriel' | 'trigram';
+  voyage_api_configuree: boolean;
+}
+
+const DOC_TYPE_LABEL: Record<string, string> = {
+  RAPPORT:      'Rapport',
+  ANALYSE:      'Analyse',
+  FICHE_GROUPE: 'Fiche groupe armé',
+  NOTE_TERRAIN: 'Note de terrain',
+};
+
+const DOC_TYPE_COLOR: Record<string, string> = {
+  RAPPORT:      'text-blue-400 bg-blue-900/30 border-blue-800',
+  ANALYSE:      'text-cyan-400 bg-cyan-900/30 border-cyan-800',
+  FICHE_GROUPE: 'text-red-400 bg-red-900/30 border-red-800',
+  NOTE_TERRAIN: 'text-green-400 bg-green-900/30 border-green-800',
+};
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -552,6 +602,20 @@ export function ConnaissancePage() {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
+  const user = useAuthStore(s => s.user);
+  const canAddDoc = ['system_admin', 'national_decision_maker'].includes(user?.role ?? '');
+  const qc = useQueryClient();
+
+  // Bibliothèque RAG state
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [docForm, setDocForm] = useState({
+    titre: '', type_document: 'RAPPORT', source: '', date_publication: '',
+    fiabilite: 0.75, themes: '', texte: '', url: '',
+  });
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfError, setPdfError] = useState('');
+  const [uploadMode, setUploadMode] = useState<'texte' | 'pdf'>('texte');
+
   const { data: status } = useQuery({
     queryKey: ['kb-status'],
     queryFn: () => apiClient.get<Record<string, unknown>>('/connaissance/status').then(r => r.data),
@@ -597,6 +661,66 @@ export function ConnaissancePage() {
     enabled: tab === 'projection',
   });
 
+  // RAG — Bibliothèque analytique
+  const { data: ragStatus } = useQuery({
+    queryKey: ['rag-status'],
+    queryFn: () => apiClient.get<RagStatus>('/connaissance/rag/status').then(r => r.data),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+    enabled: tab === 'bibliotheque',
+  });
+  const { data: docsData, isLoading: loadingDocs, isFetching: fetchingDocs, dataUpdatedAt: docsUpdatedAt, refetch: refetchDocs } = useQuery({
+    queryKey: ['rag-documents'],
+    queryFn: () => apiClient.get<{ data: KbDocument[]; total: number }>('/connaissance/rag/documents', { params: { limit: '100' } }).then(r => r.data),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+    enabled: tab === 'bibliotheque',
+  });
+  const { data: analysesData, isLoading: loadingAnalyses } = useQuery({
+    queryKey: ['rag-analyses'],
+    queryFn: () => apiClient.get<{ data: KbAnalyse[] }>('/connaissance/rag/analyses', { params: { limit: '10' } }).then(r => r.data),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+    enabled: tab === 'bibliotheque',
+  });
+
+  const addDocMutation = useMutation({
+    mutationFn: async (payload: { form: typeof docForm; pdf: File | null }) => {
+      const { form, pdf } = payload;
+      const base: Record<string, unknown> = {
+        titre:           form.titre,
+        type_document:   form.type_document,
+        source:          form.source,
+        date_publication: form.date_publication || undefined,
+        fiabilite:       Number(form.fiabilite),
+        themes:          form.themes.split(',').map(t => t.trim()).filter(Boolean),
+        url:             form.url || undefined,
+        ajoute_par:      'utilisateur',
+      };
+      if (pdf) {
+        const b64 = await new Promise<string>((res, rej) => {
+          const reader = new FileReader();
+          reader.onload = () => res((reader.result as string).split(',')[1]!);
+          reader.onerror = rej;
+          reader.readAsDataURL(pdf);
+        });
+        return apiClient.post('/connaissance/rag/documents', {
+          ...base, pdf_base64: b64, pdf_filename: pdf.name,
+        });
+      }
+      return apiClient.post('/connaissance/rag/documents', { ...base, texte: form.texte });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['rag-documents'] });
+      void qc.invalidateQueries({ queryKey: ['rag-status'] });
+      setShowAddForm(false);
+      setPdfFile(null);
+      setPdfError('');
+      setUploadMode('texte');
+      setDocForm({ titre: '', type_document: 'RAPPORT', source: '', date_publication: '', fiabilite: 0.75, themes: '', texte: '', url: '' });
+    },
+  });
+
   const entites = entitesData?.data ?? [];
   const total = entitesData?.total ?? 0;
   const journalEntries = apprentissageData?.data ?? [];
@@ -607,6 +731,7 @@ export function ConnaissancePage() {
     { id: 'graphe',        label: 'Graphe' },
     { id: 'apprentissage', label: 'Journal' },
     { id: 'projection',    label: 'Projection IA' },
+    { id: 'bibliotheque',  label: 'Bibliothèque RAG' },
   ];
 
   return (
@@ -638,7 +763,7 @@ export function ConnaissancePage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-slate-700 pb-0">
+      <div className="flex items-center gap-1 border-b border-slate-700 pb-0 overflow-x-auto">
         {TABS.map(t => (
           <button
             key={t.id}
@@ -664,6 +789,9 @@ export function ConnaissancePage() {
           )}
           {tab === 'projection' && (
             <FraicheurBadge dataUpdatedAt={projectionUpdatedAt} isFetching={fetchingProjection} isError={false} onRefresh={() => refetchProjection()} />
+          )}
+          {tab === 'bibliotheque' && (
+            <FraicheurBadge dataUpdatedAt={docsUpdatedAt} isFetching={fetchingDocs} isError={false} onRefresh={() => refetchDocs()} />
           )}
         </div>
       </div>
@@ -981,6 +1109,298 @@ export function ConnaissancePage() {
                 </div>
               )}
             </>
+          )}
+        </div>
+      )}
+
+      {/* ── Onglet Bibliothèque RAG ──────────────────────────────────────────── */}
+      {tab === 'bibliotheque' && (
+        <div className="space-y-4">
+          {/* Statut RAG */}
+          {ragStatus && (
+            <div className="flex gap-3 flex-wrap">
+              <div className="bg-slate-800 rounded-lg px-3 py-2 text-center">
+                <div className="text-blue-400 font-bold text-lg">{ragStatus.documents}</div>
+                <div className="text-slate-500 text-xs">Documents</div>
+              </div>
+              <div className="bg-slate-800 rounded-lg px-3 py-2 text-center">
+                <div className="text-cyan-400 font-bold text-lg">{ragStatus.fragments}</div>
+                <div className="text-slate-500 text-xs">Fragments</div>
+              </div>
+              <div className="bg-slate-800 rounded-lg px-3 py-2 text-center">
+                <div className="text-purple-400 font-bold text-lg">{ragStatus.analyses}</div>
+                <div className="text-slate-500 text-xs">Analyses</div>
+              </div>
+              <div className={`rounded-lg px-3 py-2 text-center ${ragStatus.voyage_api_configuree ? 'bg-green-900/30 border border-green-800' : 'bg-slate-800'}`}>
+                <div className={`font-bold text-sm ${ragStatus.voyage_api_configuree ? 'text-green-400' : 'text-slate-400'}`}>
+                  {ragStatus.mode === 'vectoriel' ? '◈ Vectoriel' : '≈ Trigram'}
+                </div>
+                <div className="text-slate-500 text-xs">
+                  {ragStatus.voyage_api_configuree ? `${ragStatus.avec_embeddings} vec.` : 'Sans VOYAGE_API_KEY'}
+                </div>
+              </div>
+              {canAddDoc && (
+                <button
+                  onClick={() => setShowAddForm(v => !v)}
+                  className={`ml-auto px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    showAddForm
+                      ? 'bg-slate-700 text-white'
+                      : 'bg-blue-800 hover:bg-blue-700 text-white'
+                  }`}
+                >
+                  {showAddForm ? '✕ Annuler' : '+ Ajouter un document'}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Formulaire d'ajout */}
+          {showAddForm && canAddDoc && (
+            <div className="bg-slate-800/70 border border-slate-700 rounded-xl p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-white">Indexer un nouveau document</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="text-xs text-slate-400 block mb-1">Titre *</label>
+                  <input
+                    value={docForm.titre}
+                    onChange={e => setDocForm(f => ({ ...f, titre: e.target.value }))}
+                    placeholder="Ex : Rapport ICG — M23 et dynamiques régionales"
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Type</label>
+                  <select
+                    value={docForm.type_document}
+                    onChange={e => setDocForm(f => ({ ...f, type_document: e.target.value }))}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  >
+                    {Object.entries(DOC_TYPE_LABEL).map(([v, l]) => (
+                      <option key={v} value={v}>{l}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Source</label>
+                  <input
+                    value={docForm.source}
+                    onChange={e => setDocForm(f => ({ ...f, source: e.target.value }))}
+                    placeholder="ICG, ONU, KST, INTERNE…"
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Date de publication *</label>
+                  <input
+                    type="date"
+                    value={docForm.date_publication}
+                    onChange={e => setDocForm(f => ({ ...f, date_publication: e.target.value }))}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Fiabilité ({Math.round(docForm.fiabilite * 100)}%)</label>
+                  <input
+                    type="range" min="0.3" max="1" step="0.05"
+                    value={docForm.fiabilite}
+                    onChange={e => setDocForm(f => ({ ...f, fiabilite: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-xs text-slate-400 block mb-1">Thèmes (séparés par virgule)</label>
+                  <input
+                    value={docForm.themes}
+                    onChange={e => setDocForm(f => ({ ...f, themes: e.target.value }))}
+                    placeholder="M23, Nord-Kivu, déplacement, Rutshuru…"
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">URL source (optionnel)</label>
+                  <input
+                    type="url"
+                    value={docForm.url}
+                    onChange={e => setDocForm(f => ({ ...f, url: e.target.value }))}
+                    placeholder="https://…"
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  {/* Mode toggle */}
+                  <div className="flex gap-2 mb-3">
+                    <button
+                      type="button"
+                      onClick={() => { setUploadMode('texte'); setPdfFile(null); setPdfError(''); }}
+                      className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${uploadMode === 'texte' ? 'bg-blue-800 text-white' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-700'}`}
+                    >
+                      Coller du texte
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setUploadMode('pdf'); setDocForm(f => ({ ...f, texte: '' })); setPdfError(''); }}
+                      className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${uploadMode === 'pdf' ? 'bg-blue-800 text-white' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-700'}`}
+                    >
+                      Uploader un PDF
+                    </button>
+                  </div>
+
+                  {uploadMode === 'texte' ? (
+                    <>
+                      <label className="text-xs text-slate-400 block mb-1">Texte à indexer *</label>
+                      <textarea
+                        rows={8}
+                        value={docForm.texte}
+                        onChange={e => setDocForm(f => ({ ...f, texte: e.target.value }))}
+                        placeholder="Coller ici le texte intégral ou les extraits du document…"
+                        className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 resize-y"
+                      />
+                      <div className="text-[10px] text-slate-600 mt-1">
+                        {docForm.texte.length} car. · ~{Math.ceil(Math.max(docForm.texte.length, 1) / 800)} fragment{Math.ceil(Math.max(docForm.texte.length, 1) / 800) > 1 ? 's' : ''} estimé{Math.ceil(Math.max(docForm.texte.length, 1) / 800) > 1 ? 's' : ''}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <label className="text-xs text-slate-400 block mb-1">Fichier PDF *</label>
+                      <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-slate-600 rounded-lg cursor-pointer hover:border-blue-500 hover:bg-slate-900/50 transition-colors">
+                        <div className="text-slate-500 text-sm text-center px-4">
+                          {pdfFile ? pdfFile.name : 'Cliquer pour choisir un fichier PDF'}
+                        </div>
+                        {pdfFile && (
+                          <div className={`text-xs mt-1 ${pdfFile.size > 10 * 1024 * 1024 ? 'text-orange-400' : 'text-slate-500'}`}>
+                            {(pdfFile.size / 1024 / 1024).toFixed(1)} Mo
+                            {pdfFile.size > 10 * 1024 * 1024 && ' · volumineux, envoi peut prendre quelques secondes'}
+                          </div>
+                        )}
+                        <input
+                          type="file"
+                          accept=".pdf,application/pdf"
+                          className="hidden"
+                          onChange={e => {
+                            const file = e.target.files?.[0] ?? null;
+                            setPdfFile(file);
+                            setPdfError('');
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      {pdfError && <div className="text-xs text-red-400 mt-1">{pdfError}</div>}
+                      <div className="text-[10px] text-slate-600 mt-1">
+                        Texte extrait côté serveur via pypdf. PDFs scannés (images seules) non supportés.
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => addDocMutation.mutate({ form: docForm, pdf: pdfFile })}
+                  disabled={addDocMutation.isPending || !docForm.titre || (uploadMode === 'texte' ? !docForm.texte : !pdfFile)}
+                  className="px-4 py-2 bg-blue-700 hover:bg-blue-600 text-white text-sm rounded-lg font-medium transition-colors disabled:opacity-40"
+                >
+                  {addDocMutation.isPending ? '⏳ Indexation…' : '◈ Indexer dans la bibliothèque'}
+                </button>
+                {addDocMutation.isError && (
+                  <span className="text-red-400 text-xs">Erreur lors de l'indexation</span>
+                )}
+                {addDocMutation.isSuccess && (
+                  <span className="text-green-400 text-xs">✓ Document indexé avec succès</span>
+                )}
+              </div>
+              <p className="text-[10px] text-slate-600 italic">
+                Le document sera découpé en fragments (~800 car.) et indexé pour la recherche contextuelle.
+                Assurez-vous d'avoir les droits sur les documents que vous indexez.
+              </p>
+            </div>
+          )}
+
+          {/* Liste des documents */}
+          <div>
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+              Documents indexés ({docsData?.total ?? 0})
+            </h3>
+            {loadingDocs ? (
+              <div className="text-center text-slate-400 py-8">Chargement…</div>
+            ) : !docsData?.data?.length ? (
+              <div className="text-center text-slate-500 py-8 text-sm">Aucun document indexé</div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {docsData.data.map(doc => (
+                  <div
+                    key={doc.id}
+                    className="bg-slate-800/60 border border-slate-700 rounded-lg p-3 space-y-2"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${DOC_TYPE_COLOR[doc.type_document] || 'text-slate-400 border-slate-700'}`}>
+                        {DOC_TYPE_LABEL[doc.type_document] || doc.type_document}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-white leading-tight line-clamp-2">{doc.titre}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 text-[10px] text-slate-500">
+                      <span>{doc.source}</span>
+                      {doc.date_publication && (
+                        <span>{doc.date_publication.slice(0, 7)}</span>
+                      )}
+                      <span className="ml-auto">{doc.nb_fragments} frag.</span>
+                    </div>
+                    {doc.themes?.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {doc.themes.slice(0, 5).map(t => (
+                          <span key={t} className="text-[9px] bg-slate-700 text-slate-300 rounded px-1.5 py-0.5">{t}</span>
+                        ))}
+                        {doc.themes.length > 5 && (
+                          <span className="text-[9px] text-slate-500">+{doc.themes.length - 5}</span>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 text-[9px] text-slate-600">
+                      <span>Fiabilité {Math.round(doc.fiabilite * 100)}%</span>
+                      {doc.url && (
+                        <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                           className="text-blue-500 hover:text-blue-400 ml-auto">↗ Source</a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Dernières analyses RAG */}
+          {!loadingAnalyses && (analysesData?.data?.length ?? 0) > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                Dernières analyses contextuelles ({analysesData!.data.length})
+              </h3>
+              <div className="space-y-2">
+                {analysesData!.data.map(a => (
+                  <details key={a.id} className="bg-slate-800/60 border border-slate-700 rounded-lg overflow-hidden">
+                    <summary className="px-4 py-3 cursor-pointer flex items-center gap-3 hover:bg-slate-800">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-white font-medium truncate">{a.evenement_titre}</div>
+                        <div className="text-[10px] text-slate-500 mt-0.5 flex gap-3">
+                          <span>{a.source_agent}</span>
+                          <span>{formatDistanceToNow(new Date(a.created_at), { addSuffix: true, locale: fr })}</span>
+                          {a.sources_utilisees?.length > 0 && (
+                            <span className="text-blue-400">via {a.sources_utilisees.slice(0, 2).join(', ')}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-[9px] font-mono text-slate-500 shrink-0">
+                        {Math.round(a.pertinence_max * 100)}% pert.
+                      </div>
+                    </summary>
+                    {a.analyse_brute && (
+                      <div className="px-4 py-3 border-t border-slate-700 text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">
+                        {a.analyse_brute}
+                      </div>
+                    )}
+                  </details>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}

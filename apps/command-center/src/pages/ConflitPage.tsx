@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import MapGL, { Source, Layer, type MapLayerMouseEvent, type MapRef } from 'react-map-gl/maplibre';
 import type { GeoJSONSource } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -369,6 +369,7 @@ interface ConflictEvent {
   fatalities_reported?: number | null;
   raw_notes?: string | null;
   source_url?: string | null;
+  actor_names?: string[];
   // Corroboration inter-sources
   sources_count?: number;
   sources_list?: string[];
@@ -988,6 +989,7 @@ export function ConflitPage() {
   const [expandedActorId, setExpandedActorId]   = useState<string | null>(null);
   const [detailTab, setDetailTab]               = useState<'info' | 'acteurs' | 'recs'>('info');
   const [panelVisible, setPanelVisible]         = useState(false);
+  const [stratAnalyse, setStratAnalyse]         = useState<Record<string, unknown> | null>(null);
   const [corridorTooltip, setCorridorTooltip]   = useState<{
     x: number; y: number; origin: string; destination: string; confidence: number; daysDiff: number;
   } | null>(null);
@@ -1395,6 +1397,30 @@ export function ConflitPage() {
   }, [selectedEvent, enhancedCorridors]);
 
   const corrEvents: any[] = corrData?.data ?? [];
+
+  // Réinitialiser l'analyse stratégique quand l'événement change
+  useEffect(() => { setStratAnalyse(null); }, [selectedId]);
+
+  const stratMutation = useMutation({
+    mutationFn: (ev: ConflictEvent) =>
+      apiClient.post('/conflit/analyser-strategique', {
+        evenement: {
+          titre:             ev.province ? `Incident ${ev.event_type} — ${ev.province}` : ev.external_id,
+          event_type:        ev.event_type,
+          province:          ev.province,
+          territoire:        ev.territoire,
+          p_code:            ev.p_code,
+          description:       ev.raw_notes,
+          raw_notes:         ev.raw_notes,
+          displacement_risk: ev.displacement_risk,
+          severity:          ev.severity,
+          coordinates:       ev.coordinates,
+          actor_names:       ev.actor_names,
+        },
+        acteurs: ev.actor_names ?? [],
+      }).then(r => r.data),
+    onSuccess: (data) => setStratAnalyse(data as Record<string, unknown>),
+  });
 
   // ── CSV export ────────────────────────────────────────────────────────
   const exportCSV = useCallback(() => {
@@ -2731,6 +2757,88 @@ export function ConflitPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Projection stratégique */}
+                  <div className="border-t border-cc-800 pt-2.5 mt-1">
+                    <div className="text-[9px] font-mono text-purple-400 uppercase tracking-wider mb-2">⚔ Projection stratégique</div>
+                    {!stratAnalyse && !stratMutation.isPending && (
+                      <button
+                        onClick={() => selectedEvent && stratMutation.mutate(selectedEvent)}
+                        className="w-full text-[10px] py-1.5 bg-purple-900/40 hover:bg-purple-900/70 border border-purple-800 text-purple-300 rounded-lg transition-colors font-mono"
+                      >
+                        Analyser les deux dynamiques
+                      </button>
+                    )}
+                    {stratMutation.isPending && (
+                      <div className="text-[10px] text-purple-400 font-mono animate-pulse">Analyse en cours…</div>
+                    )}
+                    {stratMutation.isError && (
+                      <div className="text-[10px] text-red-400 font-mono">Erreur — accès RESTRICTED requis</div>
+                    )}
+                    {stratAnalyse && (() => {
+                      const prog = stratAnalyse.progression_armee as Record<string, unknown> | null;
+                      const fuite = stratAnalyse.fuite_civile as Record<string, unknown> | null;
+                      const synthese = stratAnalyse.synthese_ia as string | null;
+                      const cibles = (prog?.cibles_probables as unknown[]) ?? [];
+                      const dests = (fuite?.destinations_probables as unknown[]) ?? [];
+                      return (
+                        <div className="space-y-2">
+                          {/* Progression armée */}
+                          {prog && (
+                            <div className="bg-red-950/30 border border-red-900/60 rounded-lg px-2 py-1.5">
+                              <div className="text-[9px] font-mono text-red-400 uppercase mb-1">⚔ Progression armée · {String(prog.groupe)}</div>
+                              {!!prog.vise_capitale && (
+                                <div className="text-[9px] text-orange-400 font-mono mb-1">⚠ Expansion vers Kinshasa documentée</div>
+                              )}
+                              <p className="text-[9px] text-cc-300 leading-relaxed">{prog.raisonnement as string}</p>
+                              {cibles.length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {(cibles as Array<Record<string, unknown>>).slice(0, 2).map((c, i) => (
+                                    <span key={i} className="text-[8px] bg-red-900/40 text-red-300 border border-red-800 px-1.5 py-0.5 rounded font-mono">
+                                      {c.nom as string} · {c.type_valeur as string}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {/* Fuite civile */}
+                          {fuite && (
+                            <div className="bg-blue-950/30 border border-blue-900/60 rounded-lg px-2 py-1.5">
+                              <div className="text-[9px] font-mono text-blue-400 uppercase mb-1">👥 Fuite civile · sécurité proche</div>
+                              <p className="text-[9px] text-cc-300 leading-relaxed">{fuite.raisonnement as string}</p>
+                              {dests.length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {(dests as Array<Record<string, unknown>>).slice(0, 3).map((d, i) => (
+                                    <span key={i} className="text-[8px] bg-blue-900/40 text-blue-300 border border-blue-800 px-1.5 py-0.5 rounded font-mono">
+                                      {d.nom as string}{d.distance_km ? ` ~${d.distance_km}km` : ''}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {(fuite.axes_surveillance as string[])?.length > 0 && (
+                                <div className="mt-1 text-[8px] text-cc-500 font-mono">
+                                  Axes : {((fuite.axes_surveillance as string[])[0] ?? '').slice(0, 60)}…
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {/* Synthèse IA */}
+                          {synthese && (
+                            <details className="bg-cc-900 border border-cc-800 rounded-lg overflow-hidden">
+                              <summary className="px-2 py-1.5 cursor-pointer text-[9px] font-mono text-purple-400 hover:bg-cc-800">
+                                Synthèse Claude ▸
+                              </summary>
+                              <div className="px-2 pb-2 text-[9px] text-cc-300 leading-relaxed whitespace-pre-wrap">
+                                {synthese.slice(0, 600)}{synthese.length > 600 ? '…' : ''}
+                              </div>
+                            </details>
+                          )}
+                          <div className="text-[8px] text-cc-700 italic font-mono">Hypothèses — valider avec sources terrain</div>
+                        </div>
+                      );
+                    })()}
+                  </div>
 
                   {/* Related corridors */}
                   {relatedCorridors.length > 0 && (

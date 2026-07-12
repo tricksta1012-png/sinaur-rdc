@@ -298,6 +298,7 @@ export function CartographiePage() {
   const [showConflits, setShowConflits]   = useState(true);
   const [showEpidemie, setShowEpidemie]   = useState(true);
   const [showMilitaire, setShowMilitaire] = useState(true);
+  const [showClimat, setShowClimat]       = useState(true);
   const [fenetre, setFenetre]             = useState<'24h' | '7j' | '30j'>('7j');
 
   // Pulsation alarme CRITIQUE (indépendant du mode surveillance)
@@ -457,6 +458,17 @@ export function CartographiePage() {
     enabled: showEpidemie && canSeeEpidemie,
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
+  });
+
+  // Salle des opérations — Risques climatiques (CATASTROPHE, Open-Meteo, 3 min)
+  const { data: fluxClimatRaw } = useQuery({
+    queryKey: ['flux-climat', fenetreDays],
+    queryFn: () => apiClient
+      .get<any[]>(`/flux/evenements?type_evenement=CATASTROPHE&depuis_jours=${fenetreDays}&limit=100`)
+      .then(r => r.data),
+    enabled: showClimat,
+    staleTime: 3 * 60_000,
+    refetchInterval: 3 * 60_000,
   });
 
   // Tous les quartiers (niveau 4) — chargés une fois quand le zoom s'approche
@@ -655,6 +667,32 @@ export function CartographiePage() {
   const opsConflitsCount  = conflitsGeoJson.features.length;
   const opsMilitaireCount = militaireGeoJson.features.length;
   const opsEpidemieCount  = epidemieGeoJson.features.length;
+
+  // Climat — catastrophes naturelles et prévisions météo à risque (Open-Meteo VEILLE)
+  const climatGeoJson = useMemo<GeoJSON.FeatureCollection>(() => {
+    if (!showClimat || !fluxClimatRaw?.length) return { type: 'FeatureCollection', features: [] };
+    const byPcode: Record<string, { count: number; maxGravite: number; titres: string[] }> = {};
+    for (const ev of fluxClimatRaw) {
+      const pcode = (ev.province_pcode as string | null) ?? '';
+      if (!pcode) continue;
+      const base4 = pcode.length > 4 ? pcode.slice(0, 4) : pcode;
+      if (!byPcode[base4]) byPcode[base4] = { count: 0, maxGravite: 0, titres: [] };
+      byPcode[base4].count += 1;
+      byPcode[base4].maxGravite = Math.max(byPcode[base4].maxGravite, ev.gravite === 'CRITIQUE' ? 3 : ev.gravite === 'ELEVEE' ? 2 : 1);
+      if (byPcode[base4].titres.length < 3) byPcode[base4].titres.push(ev.titre ?? '');
+    }
+    const features: GeoJSON.Feature[] = [];
+    for (const [pcode, d] of Object.entries(byPcode)) {
+      const coords = provinceCentroids[pcode] ?? provinceCentroids[pcode.slice(0, 4)];
+      if (!coords) continue;
+      const shifted: [number, number] = [coords[0] + 0.18, coords[1] + 0.18];
+      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: shifted },
+        properties: { pcode, count: d.count, maxGravite: d.maxGravite, titres: d.titres.join(' · ') } });
+    }
+    return { type: 'FeatureCollection', features };
+  }, [showClimat, fluxClimatRaw, provinceCentroids]);
+
+  const opsClimatCount = climatGeoJson.features.length;
 
   // Points d'alarme — uniquement les événements CRITIQUE (cercle pulsant rouge)
   const alarmGeoJson = useMemo<GeoJSON.FeatureCollection>(() => {
@@ -1182,6 +1220,18 @@ export function CartographiePage() {
               Épidémies {opsEpidemieCount > 0 && showEpidemie && <span className="text-[8px] opacity-70">({opsEpidemieCount})</span>}
             </button>
           )}
+          <button
+            onClick={() => setShowClimat(v => !v)}
+            title="Risques climatiques / météo (Open-Meteo · 3 min)"
+            className={`text-[10px] font-mono px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1 ${
+              showClimat
+                ? 'bg-cyan-900/60 text-cyan-300 border-cyan-700'
+                : 'text-cc-500 hover:text-gray-300 bg-cc-800 border-cc-700'
+            }`}
+          >
+            {showClimat && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shrink-0" />}
+            Climat {opsClimatCount > 0 && showClimat && <span className="text-[8px] opacity-70">({opsClimatCount})</span>}
+          </button>
 
           {user?.role === 'system_admin' && (
             <button
@@ -1401,6 +1451,32 @@ export function CartographiePage() {
                   'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
                   'text-anchor': 'center',
                 }} paint={{ 'text-color': '#fff', 'text-halo-color': '#000', 'text-halo-width': 0.5 }} />
+              </Source>
+
+              {/* Risques climatiques — cercles cyan (Open-Meteo VEILLE) */}
+              <Source id="ops-climat" type="geojson" data={climatGeoJson}>
+                <Layer id="ops-climat-halo" type="circle" paint={{
+                  'circle-radius': ['interpolate', ['linear'], ['get', 'count'], 1, 14, 10, 28, 30, 40] as any,
+                  'circle-color': '#06b6d4',
+                  'circle-opacity': 0.14,
+                  'circle-stroke-width': 0,
+                }} />
+                <Layer id="ops-climat-circle" type="circle" paint={{
+                  'circle-radius': ['interpolate', ['linear'], ['get', 'count'], 1, 7, 10, 16, 30, 24] as any,
+                  'circle-color': ['case',
+                    ['>=', ['get', 'maxGravite'], 3], '#0ea5e9',
+                    ['>=', ['get', 'maxGravite'], 2], '#22d3ee',
+                    '#67e8f9'] as any,
+                  'circle-opacity': 0.85,
+                  'circle-stroke-color': '#fff',
+                  'circle-stroke-width': 1.5,
+                }} />
+                <Layer id="ops-climat-label" type="symbol" layout={{
+                  'text-field': ['to-string', ['get', 'count']] as any,
+                  'text-size': 10,
+                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                  'text-anchor': 'center',
+                }} paint={{ 'text-color': '#0c4a6e', 'text-halo-color': '#e0f2fe', 'text-halo-width': 0.5 }} />
               </Source>
 
               {/* Source toujours monté pour éviter unmount/remount lors de la navigation entre niveaux */}
@@ -1829,7 +1905,7 @@ export function CartographiePage() {
                 )}
 
                 {/* Légende couches opérationnelles */}
-                {(showConflits || showMilitaire || showEpidemie) && (
+                {(showConflits || showMilitaire || showEpidemie || showClimat) && (
                   <div className="mt-1.5 pt-1.5 border-t border-cc-700 space-y-1">
                     <div className="text-[8px] font-mono text-cc-600 uppercase mb-1">Salle des ops</div>
                     {showConflits && (
@@ -1848,6 +1924,12 @@ export function CartographiePage() {
                       <div className="flex items-center gap-2">
                         <div className="w-3.5 h-3.5 rounded-full bg-purple-500 shrink-0 opacity-88" />
                         <span className="text-[9px] text-purple-300">Épidémies ({opsEpidemieCount} prov.)</span>
+                      </div>
+                    )}
+                    {showClimat && (
+                      <div className="flex items-center gap-2">
+                        <div className="w-3.5 h-3.5 rounded-full bg-cyan-500 shrink-0 opacity-85" />
+                        <span className="text-[9px] text-cyan-300">Climat ({opsClimatCount} prov.)</span>
                       </div>
                     )}
                     {alarmGeoJson.features.length > 0 && (

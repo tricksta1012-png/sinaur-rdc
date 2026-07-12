@@ -167,15 +167,38 @@ async def conflit_data_sources():
     return {
         "sources": [
             {
+                "name": "GDELT v2 DOC API (Global Database of Events)",
+                "status": "active",
+                "endpoint": "https://api.gdeltproject.org/api/v2/doc/doc",
+                "coverage": (
+                    "Presse mondiale en temps réel (15 min). "
+                    "Requêtes filtrées RDC + mots-clés conflit (EN + FR). "
+                    "Aucune clé API requise."
+                ),
+                "priority": "HIGH",
+            },
+            {
+                "name": "UCDP GED (Uppsala Conflict Data Program)",
+                "status": "active",
+                "endpoint": "https://ucdpapi.pcr.uu.se/api/gedevents/{version}",
+                "coverage": (
+                    "Événements académiques vérifiés pour la RDC. "
+                    "Version auto-détectée (25.1 → 22.1). Décalage ~1–3 mois. "
+                    "Aucune clé API requise."
+                ),
+                "priority": "HIGH",
+            },
+            {
                 "name": "ACLED (Armed Conflict Location & Event Data)",
-                "status": "requires_api_key",
+                "status": "optional_upgrade",
                 "endpoint": "https://api.acleddata.com/acled/read",
                 "instructions": (
-                    "Register at https://acleddata.com/register/ for free academic/NGO access. "
-                    "Set ACLED_API_KEY and ACLED_ACCESS_EMAIL in environment variables."
+                    "Inscription gratuite sur acleddata.com pour ONG/académique. "
+                    "Définir ACLED_API_KEY + ACLED_ACCESS_EMAIL pour activer. "
+                    "Avantage : mises à jour quotidiennes, géocodage au village."
                 ),
-                "coverage": "Daily updates, all conflict event types, geocoded to village level",
-                "priority": "HIGH",
+                "coverage": "Daily updates, geocoded to village level",
+                "priority": "OPTIONAL",
             },
             {
                 "name": "OCHA ReliefWeb (Conflict Reports)",
@@ -334,6 +357,80 @@ async def reload_events():
     _EVENT_STORE.clear()
     await conflit_agent._bootstrap_from_db()
     return {"events_loaded": len(_EVENT_STORE), "ok": True}
+
+
+@router.post("/analyser-strategique")
+async def analyser_evenement_strategique(
+    body: dict,
+    x_user_role: str = Header(default="citizen", alias="X-User-Role"),
+):
+    """
+    Intelligence stratégique — deux logiques séparées :
+    - Progression armée (vers cibles de valeur, jamais Kinshasa par défaut)
+    - Fuite civile (vers la sécurité la plus proche, pas la capitale)
+
+    Body : { evenement: {...}, acteurs: ["M23/AFC", ...] }
+    Accès RESTRICTED.
+    """
+    _require_restricted(x_user_role.lower())
+
+    evenement = body.get("evenement", {})
+    acteurs = body.get("acteurs", [])
+
+    if not evenement:
+        raise HTTPException(status_code=400, detail="evenement requis")
+
+    from agents.conflit.strategie.analyse_strategique import analyser_strategiquement
+    result = await analyser_strategiquement(evenement, acteurs)
+    return {"success": True, **result}
+
+
+@router.get("/points-strategiques")
+async def get_points_strategiques(
+    groupe: str | None = Query(default=None),
+    type_valeur: str | None = Query(default=None),
+    x_user_role: str = Header(default="citizen", alias="X-User-Role"),
+):
+    """
+    Géographie de valeur — points d'intérêt stratégiques connus.
+    Mines, axes, frontières, villes-relais qui attirent les groupes armés.
+    Accès RESTRICTED.
+    """
+    _require_restricted(x_user_role.lower())
+
+    try:
+        from db import engine
+        from sqlalchemy import text as sa_text
+
+        conditions = ["actif = true"]
+        params: dict = {}
+
+        if groupe:
+            conditions.append(":groupe = ANY(groupes_interesses)")
+            params["groupe"] = groupe
+        if type_valeur:
+            conditions.append("type_valeur = :type_valeur")
+            params["type_valeur"] = type_valeur
+
+        where = " AND ".join(conditions)
+        async with engine.connect() as conn:
+            rows = await conn.execute(
+                sa_text(f"""
+                    SELECT id, nom, type_valeur, ressource, province_nom,
+                           valeur_strategique, groupes_interesses, notes,
+                           ST_X(coordinates) AS lon, ST_Y(coordinates) AS lat
+                    FROM point_strategique
+                    WHERE {where}
+                    ORDER BY valeur_strategique DESC
+                """),
+                params,
+            )
+            points = [dict(r._mapping) for r in rows.fetchall()]
+
+        return {"data": points, "total": len(points)}
+    except Exception as exc:
+        logger.error("conflit.points_strategiques_failed", error=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.post("/actors/resolve")

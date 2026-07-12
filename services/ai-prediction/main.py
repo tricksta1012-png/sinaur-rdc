@@ -191,6 +191,14 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("lifespan.connaissance_agent_start_failed", error=str(exc))
 
+    # Charger les fiches RAG initiales si la bibliothèque est vide
+    try:
+        from agents.connaissance.rag_initiale import charger_fiches_initiales
+        await charger_fiches_initiales()
+        logger.info("lifespan.rag_initiale_ok")
+    except Exception as exc:
+        logger.warning("lifespan.rag_initiale_failed", error=str(exc))
+
     # Verify Redis connectivity
     try:
         redis = get_redis()
