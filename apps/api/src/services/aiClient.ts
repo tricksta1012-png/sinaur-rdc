@@ -30,8 +30,9 @@ export async function aiPost<T = unknown>(
   path: string,
   body?: unknown,
   headers?: Record<string, string>,
+  timeoutMs?: number,
 ): Promise<AiResponse<T>> {
-  const res = await ai.post<T>(path, body, { headers } as AxiosRequestConfig);
+  const res = await ai.post<T>(path, body, { headers, timeout: timeoutMs } as AxiosRequestConfig);
   return { status: res.status, data: res.data };
 }
 

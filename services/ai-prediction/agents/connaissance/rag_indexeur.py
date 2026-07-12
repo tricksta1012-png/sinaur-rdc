@@ -5,6 +5,7 @@ Mode dégradé trigram si VOYAGE_API_KEY absent ou voyageai non installé.
 from __future__ import annotations
 
 import os
+from datetime import date as _date
 import structlog
 from sqlalchemy import text
 
@@ -78,6 +79,14 @@ class IndexeurRAG:
         ajoute_par: str = "system",
     ) -> int:
         themes = themes or []
+        # asyncpg a besoin d'un datetime.date, pas d'une string
+        date_obj: _date | None = None
+        if date_publication:
+            try:
+                date_obj = _date.fromisoformat(date_publication)
+            except ValueError:
+                date_obj = None
+
         async with engine.begin() as conn:
             result = await conn.execute(
                 text("""
@@ -85,12 +94,12 @@ class IndexeurRAG:
                         (titre, type_document, source, url, date_publication,
                          fiabilite, themes, contenu_brut, ajoute_par)
                     VALUES (:titre, :type, :source, :url, :date,
-                            :fiab, :themes, :contenu, :par)
+                            :fiab, :themes::text[], :contenu, :par)
                     RETURNING id
                 """),
                 {
                     "titre": titre, "type": type_document, "source": source,
-                    "url": url, "date": date_publication,
+                    "url": url, "date": date_obj,
                     "fiab": fiabilite, "themes": themes,
                     "contenu": texte, "par": ajoute_par,
                 },
@@ -108,7 +117,7 @@ class IndexeurRAG:
                         text("""
                             INSERT INTO kb_fragment
                                 (document_id, contenu, embedding, position_ordre, themes)
-                            VALUES (:doc_id, :contenu, :emb::vector, :pos, :themes)
+                            VALUES (:doc_id, :contenu, :emb::vector, :pos, :themes::text[])
                         """),
                         {"doc_id": doc_id, "contenu": frag, "emb": emb_str,
                          "pos": i, "themes": themes},
@@ -118,7 +127,7 @@ class IndexeurRAG:
                         text("""
                             INSERT INTO kb_fragment
                                 (document_id, contenu, position_ordre, themes)
-                            VALUES (:doc_id, :contenu, :pos, :themes)
+                            VALUES (:doc_id, :contenu, :pos, :themes::text[])
                         """),
                         {"doc_id": doc_id, "contenu": frag, "pos": i, "themes": themes},
                     )

@@ -147,7 +147,7 @@ export async function connaissanceRoutes(fastify: FastifyInstance): Promise<void
       }).refine(d => !!(d.texte || d.pdf_base64), {
         message: 'texte ou pdf_base64 requis',
       }).parse(request.body);
-      const { status, data } = await aiPost('/internal/connaissance/rag/documents', body);
+      const { status, data } = await aiPost('/internal/connaissance/rag/documents', body, undefined, 120_000);
       return reply.status(status).send(data);
     },
   );

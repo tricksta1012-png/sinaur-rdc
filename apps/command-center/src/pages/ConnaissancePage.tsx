@@ -1301,7 +1301,9 @@ export function ConnaissancePage() {
                   {addDocMutation.isPending ? '⏳ Indexation…' : '◈ Indexer dans la bibliothèque'}
                 </button>
                 {addDocMutation.isError && (
-                  <span className="text-red-400 text-xs">Erreur lors de l'indexation</span>
+                  <span className="text-red-400 text-xs">
+                    {(addDocMutation.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Erreur lors de l\'indexation'}
+                  </span>
                 )}
                 {addDocMutation.isSuccess && (
                   <span className="text-green-400 text-xs">✓ Document indexé avec succès</span>
