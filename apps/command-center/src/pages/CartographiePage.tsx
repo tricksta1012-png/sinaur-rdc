@@ -1029,9 +1029,8 @@ export function CartographiePage() {
       {/* ── HEADER ── */}
       <div className="bg-cc-900 border-b border-cc-700 px-4 py-2.5 flex items-center gap-3 shrink-0">
         <span className="text-lg">🛰️</span>
-        <div className="min-w-0 hidden sm:block">
-          <div className="text-white font-bold text-sm leading-tight">Salle des Opérations</div>
-          <div className="text-cc-500 text-[10px] font-mono">Conflits · Épidémies · Renseignement · Temps réel</div>
+        <div className="shrink-0 hidden sm:block">
+          <div className="text-white font-bold text-sm whitespace-nowrap">Salle des Opérations</div>
         </div>
 
         {/* ── Recherche globale ── */}
