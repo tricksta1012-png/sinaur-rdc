@@ -467,6 +467,13 @@ class ConflitAgent:
         _PREDICTION_STORE.clear()
         _PREDICTION_STORE.extend(predictions)
 
+        # Propager les événements récents vers evenement_flux (flux commun)
+        try:
+            n_flux = await self._propagate_to_flux(recent)
+            logger.info("conflit_agent.flux_propagated", n=n_flux)
+        except Exception as exc:
+            logger.warning("conflit_agent.flux_propagation_failed", error=str(exc))
+
         logger.info(
             "conflit_agent.run_analysis.done",
             provinces_analysed=len(by_province),
@@ -618,6 +625,83 @@ class ConflitAgent:
             logger.info("conflit_agent.views_persisted", count=len(previsions))
         except Exception as exc:
             logger.error("conflit_agent.views_persist_failed", error=str(exc))
+
+    # ------------------------------------------------------------------
+    # ── Flux commun ────────────────────────────────────────────────────────────
+
+    async def _propagate_to_flux(self, events: list[dict]) -> int:
+        """Écrit les événements de conflit dans evenement_flux (ON CONFLICT → upsert gravité)."""
+        from db import engine
+        from sqlalchemy import text
+        from flux.gravite import calculer_score, score_to_gravite, statut_from_sources
+
+        inserted = 0
+        async with engine.connect() as conn:
+            for ev in events:
+                ext_id = ev.get("external_id")
+                if not ext_id:
+                    continue
+
+                fatalities = int(ev.get("fatalities_reported") or 0)
+                severity   = int(ev.get("severity", 1))
+                ampleur    = fatalities if fatalities > 0 else severity * 50
+                fiabilite  = float(ev.get("reliability", 0.5))
+                nb_src     = int(ev.get("sources_count", 1))
+                score      = calculer_score("CONFLIT", ampleur, fiabilite)
+                gravite    = score_to_gravite(score)
+                statut     = statut_from_sources(nb_src)
+                impacte    = statut in ("CORROBORE", "PROBABLE") and gravite in ("ELEVEE", "CRITIQUE")
+                guerre     = severity >= 4 or gravite == "CRITIQUE"
+
+                coords = ev.get("coordinates")
+                lat    = coords[1] if coords else None
+                lon    = coords[0] if coords else None
+                titre  = (ev.get("raw_notes") or ev.get("province") or "Incident conflit")[:500]
+
+                try:
+                    async with conn.begin_nested():
+                        r = await conn.execute(text("""
+                            INSERT INTO evenement_flux (
+                                source_agent, type_evenement, titre,
+                                province_pcode, lat, lon,
+                                fiabilite, statut_verification, nb_sources,
+                                gravite, gravite_score, ampleur, impacte_statut,
+                                guerre_signalee, source_url, source_externe_id, date_evenement
+                            ) VALUES (
+                                'SURVEILLANCE_CONFLITS', 'CONFLIT', :titre,
+                                :pcode, :lat, :lon,
+                                :fiab, :statut, :nb_src,
+                                :gravite, :score, :ampleur, :impacte,
+                                :guerre, :url, :ext_id, :date_ev
+                            )
+                            ON CONFLICT (source_agent, source_externe_id)
+                            WHERE source_externe_id IS NOT NULL
+                            DO UPDATE SET
+                                gravite       = EXCLUDED.gravite,
+                                gravite_score = EXCLUDED.gravite_score,
+                                ampleur       = EXCLUDED.ampleur,
+                                impacte_statut = EXCLUDED.impacte_statut,
+                                guerre_signalee = EXCLUDED.guerre_signalee,
+                                maj_le        = NOW()
+                        """), {
+                            "titre":  titre,
+                            "pcode":  ev.get("p_code"),
+                            "lat":    lat, "lon": lon,
+                            "fiab":   round(fiabilite, 2),
+                            "statut": statut, "nb_src": nb_src,
+                            "gravite": gravite, "score": score,
+                            "ampleur": ampleur,
+                            "impacte": impacte,
+                            "guerre":  guerre,
+                            "url":    ev.get("source_url"),
+                            "ext_id": ext_id,
+                            "date_ev": ev.get("event_date"),
+                        })
+                        inserted += r.rowcount
+                except Exception:
+                    pass
+            await conn.commit()
+        return inserted
 
     # ------------------------------------------------------------------
     # Query helpers

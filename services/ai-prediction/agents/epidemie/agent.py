@@ -531,6 +531,12 @@ class EpidemieAgent:
             validation_required=validation_required,
         )
 
+        # Propager vers evenement_flux (flux commun — bandeau alerte + carte)
+        try:
+            await self._propagate_to_flux(alert, disease_id)
+        except Exception as exc:
+            logger.warning("epidemie_agent.flux_propagation_failed", error=str(exc))
+
         # Publish to bus
         await bus.publish("epidemie.alert", {
             "alert_id": alert["alert_id"],
@@ -550,6 +556,63 @@ class EpidemieAgent:
                 "auto_validated": True,
                 "reason": "Protocole OMS: alerte Ebola sans validation humaine < 2h",
             })
+
+    # ── Flux commun ────────────────────────────────────────────────────────────
+
+    async def _propagate_to_flux(self, alert: dict, disease_id: str) -> None:
+        """Écrit l'alerte épidémique dans evenement_flux."""
+        from db import engine
+        from sqlalchemy import text
+        from flux.gravite import calculer_score, score_to_gravite
+
+        ampleur   = int(alert.get("size", 1))
+        raw_score = float(alert.get("score", 0.5))
+        fiabilite = min(1.0, raw_score / 100.0)
+        score     = calculer_score("EPIDEMIE", ampleur, fiabilite)
+        gravite   = score_to_gravite(score)
+        impacte   = alert.get("alert_level") in ("HIGH", "CRITICAL")
+        statut    = "PROBABLE" if impacte else "A_CORROBORER"
+
+        province  = alert.get("province") or "RDC"
+        titre     = f"{disease_id.upper()} — {province} ({ampleur} cas)"
+        ext_id    = f"epidemie:{alert['alert_id']}"
+
+        async with engine.connect() as conn:
+            async with conn.begin():
+                await conn.execute(text("""
+                    INSERT INTO evenement_flux (
+                        source_agent, type_evenement, titre,
+                        lat, lon,
+                        fiabilite, statut_verification,
+                        gravite, gravite_score, ampleur, impacte_statut,
+                        source_externe_id, date_evenement
+                    ) VALUES (
+                        'EPIDEMIE', 'EPIDEMIE', :titre,
+                        :lat, :lon,
+                        :fiab, :statut,
+                        :gravite, :score, :ampleur, :impacte,
+                        :ext_id, NOW()
+                    )
+                    ON CONFLICT (source_agent, source_externe_id)
+                    WHERE source_externe_id IS NOT NULL
+                    DO UPDATE SET
+                        gravite        = EXCLUDED.gravite,
+                        gravite_score  = EXCLUDED.gravite_score,
+                        ampleur        = EXCLUDED.ampleur,
+                        impacte_statut = EXCLUDED.impacte_statut,
+                        maj_le         = NOW()
+                """), {
+                    "titre":   titre,
+                    "lat":     alert.get("centroid_lat"),
+                    "lon":     alert.get("centroid_lng"),
+                    "fiab":    round(fiabilite, 2),
+                    "statut":  statut,
+                    "gravite": gravite,
+                    "score":   score,
+                    "ampleur": ampleur,
+                    "impacte": impacte,
+                    "ext_id":  ext_id,
+                })
 
     # ------------------------------------------------------------------
     # Query helpers

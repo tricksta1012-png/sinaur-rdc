@@ -308,6 +308,37 @@ export function CartographiePage() {
     return () => clearInterval(t);
   }, []);
 
+  // Bandeau alerte + son
+  const [sonActif, setSonActif] = useState(() => localStorage.getItem('ops-son') !== 'off');
+  const [bandeauDismissed, setBandeauDismissed] = useState(false);
+  const alerteIdsVues = useRef<Set<number>>(new Set());
+
+  const toggleSon = () => {
+    setSonActif(v => {
+      const next = !v;
+      localStorage.setItem('ops-son', next ? 'on' : 'off');
+      return next;
+    });
+  };
+
+  const jouerSon = () => {
+    try {
+      const ctx = new AudioContext();
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.4, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+      gain.connect(ctx.destination);
+      [660, 880, 660].forEach((hz, i) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(hz, ctx.currentTime + i * 0.18);
+        osc.connect(gain);
+        osc.start(ctx.currentTime + i * 0.18);
+        osc.stop(ctx.currentTime + i * 0.18 + 0.15);
+      });
+    } catch { /* autoplay bloqué → silencieux */ }
+  };
+
   // Search state
   const [searchQuery, setSearchQuery]           = useState('');
   const [debouncedSearch, setDebouncedSearch]   = useState('');
@@ -458,6 +489,18 @@ export function CartographiePage() {
     enabled: showEpidemie && canSeeEpidemie,
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
+  });
+
+  // Alertes graves ≤24h — toujours actif (alimente le bandeau critique + son)
+  const { data: fluxAlertesRaw } = useQuery({
+    queryKey: ['flux-alertes-precoce'],
+    queryFn: () => apiClient
+      .get<{ id: number; titre: string; gravite: string; province_nom: string | null; date_evenement: string }[]>(
+        '/flux/alerte-precoce'
+      )
+      .then(r => r.data),
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 
   // Salle des opérations — Risques climatiques (CATASTROPHE, Open-Meteo, 3 min)
@@ -693,6 +736,18 @@ export function CartographiePage() {
   }, [showClimat, fluxClimatRaw, provinceCentroids]);
 
   const opsClimatCount = climatGeoJson.features.length;
+
+  // Son sur nouvelles alertes CRITIQUE (≥60 score ou gravite=CRITIQUE)
+  useEffect(() => {
+    const critiques = (fluxAlertesRaw ?? []).filter(a => a.gravite === 'CRITIQUE');
+    const nouveaux  = critiques.filter(a => !alerteIdsVues.current.has(a.id));
+    if (nouveaux.length > 0) {
+      setBandeauDismissed(false);  // ré-afficher le bandeau si nouveaux événements
+      if (sonActif) jouerSon();
+      nouveaux.forEach(a => alerteIdsVues.current.add(a.id));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fluxAlertesRaw, sonActif]);
 
   // Points d'alarme — uniquement les événements CRITIQUE (cercle pulsant rouge)
   const alarmGeoJson = useMemo<GeoJSON.FeatureCollection>(() => {
@@ -1032,6 +1087,13 @@ export function CartographiePage() {
         <div className="shrink-0 hidden sm:block">
           <div className="text-white font-bold text-sm whitespace-nowrap">Salle des Opérations</div>
         </div>
+        <button
+          onClick={toggleSon}
+          title={sonActif ? 'Son activé — cliquer pour désactiver' : 'Son désactivé — cliquer pour activer'}
+          className={`shrink-0 text-[11px] px-2 py-1 rounded border transition-colors ${sonActif ? 'border-red-700 text-red-300 bg-red-900/30' : 'border-cc-700 text-cc-500 bg-cc-800 hover:text-white'}`}
+        >
+          {sonActif ? '🔔' : '🔕'}
+        </button>
 
         {/* ── Recherche globale ── */}
         <div ref={searchRef} className="relative flex-1 max-w-xs mx-2">
@@ -1272,6 +1334,32 @@ export function CartographiePage() {
           <span className="text-[9px] text-cc-600 font-mono animate-pulse ml-2">Chargement…</span>
         )}
       </div>
+
+      {/* ── BANDEAU ALERTE CRITIQUE ── */}
+      {(() => {
+        const critiques = (fluxAlertesRaw ?? []).filter(a => a.gravite === 'CRITIQUE');
+        if (critiques.length === 0 || bandeauDismissed) return null;
+        const premier = critiques[0];
+        return (
+          <div className="shrink-0 flex items-center gap-3 px-4 py-2 bg-red-950 border-b-2 border-red-700 text-red-200 text-xs">
+            <span className={`text-red-400 text-base shrink-0 ${alarmPulse ? 'opacity-100' : 'opacity-40'} transition-opacity duration-300`}>🔴</span>
+            <div className="flex-1 min-w-0">
+              <span className="font-bold text-red-300 mr-2">
+                {critiques.length} situation{critiques.length > 1 ? 's' : ''} critique{critiques.length > 1 ? 's' : ''}
+              </span>
+              <span className="truncate">
+                {premier.province_nom ? `[${premier.province_nom}] ` : ''}{premier.titre}
+                {critiques.length > 1 && ` · +${critiques.length - 1} autre${critiques.length > 2 ? 's' : ''}`}
+              </span>
+            </div>
+            <button
+              onClick={() => setBandeauDismissed(true)}
+              title="Masquer le bandeau"
+              className="shrink-0 text-red-600 hover:text-red-400 text-base leading-none px-1"
+            >✕</button>
+          </div>
+        );
+      })()}
 
       {/* ── BODY ── */}
       <div className="flex-1 flex overflow-hidden min-h-0">

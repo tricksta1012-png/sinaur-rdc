@@ -31,7 +31,8 @@ export async function fluxRoutes(fastify: FastifyInstance): Promise<void> {
           ef.titre, ef.description,
           ef.province_pcode, ef.lat, ef.lon,
           ef.fiabilite, ef.statut_verification, ef.nb_sources,
-          ef.gravite, ef.impacte_statut, ef.source_url,
+          ef.gravite, ef.gravite_score, ef.ampleur,
+          ef.impacte_statut, ef.guerre_signalee, ef.source_url,
           ef.date_evenement, ef.cree_le,
           ad.name_fr AS province_nom
         FROM evenement_flux ef
