@@ -21,7 +21,7 @@ export async function fluxRoutes(fastify: FastifyInstance): Promise<void> {
         province_pcode: z.string().optional(),
         statut:         z.string().optional(),
         depuis_jours:   z.coerce.number().int().min(1).max(180).default(30),
-        limit:          z.coerce.number().int().min(1).max(200).default(50),
+        limit:          z.coerce.number().int().min(1).max(500).default(50),
         gravite:        z.string().optional(),
       }).parse(request.query);
 
