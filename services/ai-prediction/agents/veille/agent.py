@@ -250,7 +250,13 @@ class VeilleAgent:
                                 source_url, source_externe_id, date_evenement
                             ) VALUES (
                                 'VEILLE', :type_ev, :titre, :desc,
-                                (SELECT pcode FROM admin_divisions WHERE pcode = :pcode LIMIT 1),
+                                COALESCE(
+                                  (SELECT pcode FROM admin_divisions WHERE level=1 AND pcode = :pcode LIMIT 1),
+                                  CASE WHEN :lat IS NOT NULL AND :lon IS NOT NULL THEN
+                                    (SELECT pcode FROM admin_divisions WHERE level=1
+                                     AND ST_Within(ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), geometry) LIMIT 1)
+                                  END
+                                ),
                                 :lat, :lon,
                                 :fiabilite, :statut, :nb_sources,
                                 :gravite, :impacte,

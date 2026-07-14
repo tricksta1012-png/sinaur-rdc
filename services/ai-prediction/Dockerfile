@@ -32,6 +32,7 @@ COPY services/ai-prediction/db.py ./db.py
 COPY services/ai-prediction/redis_client.py ./redis_client.py
 COPY services/ai-prediction/agents/ ./agents/
 COPY services/ai-prediction/schemas/ ./schemas/
+COPY services/ai-prediction/flux/ ./flux/
 
 # Model artifacts directory
 RUN mkdir -p /app/model_artifacts /app/model_store
